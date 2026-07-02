@@ -27,7 +27,8 @@ test("lê e valida um brain.yaml bem formado", async () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.brain.context.name).toBe("opvibes");
-      expect(result.brain.repos[0].url).toBe("git@github.com:opvibes/embark.git");
+      expect(result.brain.repos.length).toBe(1);
+      expect(result.brain.repos[0]!.url).toBe("git@github.com:opvibes/embark.git");
     }
   } finally {
     await rm(dir, { recursive: true, force: true });

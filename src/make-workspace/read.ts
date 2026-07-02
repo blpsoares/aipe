@@ -54,5 +54,5 @@ export async function readBrain(workspaceDir: string): Promise<ReadBrainResult> 
     if (err) return { ok: false, error: `brain.yaml: ${err}` };
   }
 
-  return { ok: true, brain: { context: context as BrainFile["context"], repos: obj.repos as RepoEntry[] } };
+  return { ok: true, brain: { context: context as unknown as BrainFile["context"], repos: obj.repos as RepoEntry[] } };
 }
