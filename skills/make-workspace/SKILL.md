@@ -1,42 +1,42 @@
 ---
 name: make-workspace
-description: Use na etapa 2 do onboarding AIPe para materializar (git clone) os repositórios declarados no .aipe/brain.yaml dentro do workspace, de forma idempotente. Não cria worktree, não detecta stack, não edita o brain.
+description: Use in step 2 of AIPe onboarding to materialize (git clone) the repositories declared in .aipe/brain.yaml inside the workspace, idempotently. Does not create a worktree, does not detect stack, does not edit the brain.
 ---
 
 # /make-workspace
 
-Materializa na máquina os repos do brain de um contexto. Você (coordenador) NÃO clona
-à mão — delega ao CLI tipado, que decide por repo (clonar / pular / erro), nunca
-sobrescreve nada e atualiza o `state.yaml`.
+Materializes the context's brain repos on the machine. You (the coordinator) do NOT
+clone by hand — you delegate to the typed CLI, which decides per repo (clone / skip /
+error), never overwrites anything, and updates `state.yaml`.
 
-## Fluxo
+## Flow
 
-1. **Confirme o workspace.** Por padrão é o diretório atual (deve ser uma pasta
-   `aipe-<contexto>` com `.aipe/brain.yaml`).
+1. **Confirm the workspace.** By default it's the current directory (must be an
+   `aipe-<context>` folder with `.aipe/brain.yaml`).
 
-2. **Cheque a pré-condição.** O brain precisa existir. Se não houver
-   `<workspace>/.aipe/brain.yaml`, oriente o PE a rodar `/context-brain` primeiro —
-   não faz sentido clonar sem o mapa.
+2. **Check the precondition.** The brain must exist. If there is no
+   `<workspace>/.aipe/brain.yaml`, guide the PE to run `/context-brain` first —
+   it makes no sense to clone without the map.
 
-3. **Execute o CLI:**
+3. **Run the CLI:**
    ```bash
-   bun <caminho-do-plugin>/src/make-workspace/cli.ts --workspace <workspace>
+   bun <plugin-path>/src/make-workspace/cli.ts --workspace <workspace>
    ```
 
-4. **Traduza a saída ao PE** (uma linha por repo):
-   - `OK cloned <repo>` → clonado agora.
-   - `SKIP <repo> (já presente)` → já estava lá, nada tocado.
-   - `ERRO <repo>: <mensagem>` → falhou (auth, rede, ou path ocupado por conteúdo
-     diferente). Explique e sugira a correção (ex: dar acesso ao repo, mover a pasta
-     ocupada, ou corrigir a URL no brain via `/context-brain`).
-   - `STATE workspace=done|pending` → estado agregado.
+4. **Translate the output to the PE** (one line per repo):
+   - `OK cloned <repo>` → cloned now.
+   - `SKIP <repo> (already present)` → was already there, nothing touched.
+   - `ERROR <repo>: <message>` → failed (auth, network, or path occupied by
+     different content). Explain and suggest the fix (e.g. grant access to the repo,
+     move the occupied folder, or fix the URL in the brain via `/context-brain`).
+   - `STATE workspace=done|pending` → aggregated state.
 
-5. **Próximo passo:** se `workspace=done` (todos presentes), o contexto está pronto
-   para a `/relationship`. Se `pending`, liste ao PE o que falta; re-rodar é seguro e
-   completa só o que faltou.
+5. **Next step:** if `workspace=done` (all present), the context is ready for
+   `/relationship`. If `pending`, list what's missing to the PE; re-running is safe and
+   only completes what's missing.
 
-## Regras
+## Rules
 
-- Nunca clone nem edite `brain.yaml`/`state.yaml` à mão — sempre pelo CLI.
-- Não crie worktrees aqui (é outro sub-projeto).
-- Falha de autenticação nunca é contornada: reporte a mensagem do git ao PE.
+- Never clone or edit `brain.yaml`/`state.yaml` by hand — always through the CLI.
+- Don't create worktrees here (that's a separate sub-project).
+- Auth failure is never worked around: report the git message to the PE.

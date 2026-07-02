@@ -1,200 +1,206 @@
-# AIPe — Hook de injeção de contexto (`SessionStart`)
+# AIPe — Context-injection hook (`SessionStart`)
 
-**Data:** 2026-07-02
-**Status:** Design aprovado
-**Sub-projeto:** peça fundacional do AIPe (ver
+**Date:** 2026-07-02
+**Status:** Design approved
+**Sub-project:** foundational piece of AIPe (see
 `2026-07-01-aipe-context-brain-design.md`)
 
 ---
 
-## 1. Propósito & mecanismo
+## 1. Purpose & mechanism
 
-O que faz o AIPe **ser** um contexto vivo — não só um conjunto de skills executáveis.
-Um hook `SessionStart` do plugin AIPe que, ao abrir uma sessão na raiz de um workspace
-`aipe-<contexto>/`, injeta **um único bloco** de contexto (`additionalContext`) com a
-"consciência" do coordenador: quem ele é, qual o contexto, os repos, a fase do
-onboarding e o próximo passo. O coordenador "acorda" já sabendo de tudo, sem o PE
-precisar explicar nada.
+What makes AIPe **be** a living context — not just a set of executable skills.
+A `SessionStart` hook of the AIPe plugin that, when a session opens at the root of
+an `aipe-<context>/` workspace, injects **a single block** of context
+(`additionalContext`) with the coordinator's "awareness": who they are, what the
+context is, the repos, the onboarding phase, and the next step. The coordinator
+"wakes up" already knowing everything, without the PE needing to explain anything.
 
-É **passivo**: `SessionStart` só injeta contexto, não toma decisões nem bloqueia. O
-disparo de cada fase do pipeline continua sendo ato deliberado do PE via skills.
+It is **passive**: `SessionStart` only injects context, it doesn't make decisions
+or block anything. Triggering each pipeline phase remains a deliberate act by the
+PE via skills.
 
 ---
 
-## 2. Ativação (garantida pela plataforma)
+## 2. Activation (guaranteed by the platform)
 
-O plugin AIPe é instalado em **escopo de pasta** — `.claude/settings.json` na raiz do
-workspace, com `enabledPlugins.aipe: true`. Consequência (documentada do Claude Code):
-os hooks de um plugin em escopo de projeto **só disparam quando a sessão abre na própria
-pasta** que contém o `.claude/settings.json`. Não sobem para diretórios-pai nem descem
-para subpastas.
+The AIPe plugin is installed at **folder scope** — `.claude/settings.json` at the
+workspace root, with `enabledPlugins.aipe: true`. Consequence (documented by Claude
+Code): hooks of a plugin at project scope **only fire when the session opens in the
+exact folder** that contains the `.claude/settings.json`. They don't propagate up
+to parent directories nor down into subfolders.
 
-Portanto:
-- **Detecção = raiz do workspace, garantida pela plataforma.** O hook não precisa
-  "subir a árvore": lê direto `$CLAUDE_PROJECT_DIR/.aipe/` (o `$CLAUDE_PROJECT_DIR` é a
-  pasta de lançamento = raiz do workspace).
-- **Fronteira com personas é natural:** abrir uma sessão dentro de um repo
-  (`aipe-opvibes/embark/`) **não dispara** este hook — o plugin não está ativo ali. A
-  injeção de persona dentro de um repo é responsabilidade do sub-projeto de personas,
-  instalado no escopo daquele repo. Zero conflito.
+Therefore:
+- **Detection = workspace root, guaranteed by the platform.** The hook doesn't need
+  to "walk up the tree": it reads directly from `$CLAUDE_PROJECT_DIR/.aipe/` (the
+  `$CLAUDE_PROJECT_DIR` is the launch folder = workspace root).
+- **The boundary with personas is natural:** opening a session inside a repo
+  (`aipe-opvibes/embark/`) **does not trigger** this hook — the plugin isn't active
+  there. Persona injection inside a repo is the responsibility of the personas
+  sub-project, installed at that repo's scope. Zero conflict.
 
-**Matcher:** `startup|resume|clear|compact`. Reaparece após `/clear` e após compactação
-automática — senão a "consciência" do coordenador sumiria no meio de uma jornada longa.
+**Matcher:** `startup|resume|clear|compact`. It reappears after `/clear` and after
+automatic compaction — otherwise the coordinator's "awareness" would disappear in
+the middle of a long journey.
 
-**Input disponível ao hook:** variáveis de ambiente `$CLAUDE_PROJECT_DIR` (raiz do
-workspace) e `$CLAUDE_PLUGIN_ROOT` (raiz do plugin); JSON no stdin com `cwd`,
-`hook_event_name`, `session_id`, etc. A base de leitura é `$CLAUDE_PROJECT_DIR`.
+**Input available to the hook:** environment variables `$CLAUDE_PROJECT_DIR`
+(workspace root) and `$CLAUDE_PLUGIN_ROOT` (plugin root); JSON on stdin with `cwd`,
+`hook_event_name`, `session_id`, etc. The reading base is `$CLAUDE_PROJECT_DIR`.
 
-**Output:** JSON em stdout no formato do Claude Code:
+**Output:** JSON on stdout in Claude Code's format:
 ```json
-{ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": "<texto>" } }
+{ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": "<text>" } }
 ```
-Sair com código 0 e stdout vazio (ou `{}`) injeta nada, de forma limpa.
+Exiting with code 0 and empty stdout (or `{}`) injects nothing, cleanly.
 
 ---
 
-## 3. O bloco único, em 3 estados
+## 3. The single block, in 3 states
 
-O hook emite **exatamente um** `additionalContext` por sessão. Um `switch` sobre o
-estado do onboarding escolhe **qual** bloco — nunca dois, nunca acúmulo.
+The hook emits **exactly one** `additionalContext` per session. A `switch` over the
+onboarding state chooses **which** block — never two, never accumulated.
 
-**Estado 1 — sem `brain.yaml`** (bootstrap: plugin ativo, contexto ainda não iniciado)
-> Workspace AIPe detectado, mas ainda sem `brain.yaml`. Rode `/context-brain` para
-> mapear o contexto e começar.
+**State 1 — no `brain.yaml`** (bootstrap: plugin active, context not yet started)
+> AIPe workspace detected, but no `brain.yaml` yet. Run `/context-brain` to
+> map the context and get started.
 
-**Estado 2 — brain existe, alguma fase `pending`** (onboarding em andamento)
-> Contexto *\<nome\>* em configuração. Coordenador: *\<coordenador\>* (em formação).
-> Estado: brain ✅ · workspace ⏳ · relationship ⏳ · generator ⏳.
-> **Próximo passo: `/<primeira-fase-pendente>`.** Conduza o PE para completar o
-> onboarding; ainda não opere como coordenador pleno.
+**State 2 — brain exists, some phase `pending`** (onboarding in progress)
+> Context *\<name\>* being configured. Coordinator: *\<coordinator\>* (in formation).
+> Status: brain ✅ · workspace ⏳ · relationship ⏳ · generator ⏳.
+> **Next step: `/<first-pending-phase>`.** Guide the PE to complete onboarding;
+> do not yet operate as a full coordinator.
 
-O "próximo passo" é derivado da **primeira** fase `pending` na ordem do pipeline
-(workspace → relationship → generator), mapeada para sua skill.
+The "next step" is derived from the **first** `pending` phase in pipeline order
+(workspace → relationship → generator), mapped to its skill.
 
-**Estado 3 — todas as fases `done`** (coordenador pleno)
-> Você É *\<coordenador\>*, coordenador do contexto *\<nome\>*. Repos: \<lista\>.
-> Opere assim: decompõe as demandas do PE, contrata especialistas (teto de 16, lei do
-> mesmo-repo serializa, repos distintos em paralelo), escala cross-repo ao PE, cada
-> especialista abre o PR final. Pronto para receber demandas.
+**State 3 — all phases `done`** (full coordinator)
+> You ARE *\<coordinator\>*, coordinator of the *\<name\>* context. Repos: \<list\>.
+> Operate like this: decompose the PE's demands, hire specialists (cap of 16, the
+> same-repo law serializes, distinct repos run in parallel), escalate cross-repo
+> issues to the PE, each specialist opens the final PR. Ready to receive demands.
 
-**Comum a todos os estados** — a linha de opt-out:
-> Modo AIPe ativo por padrão. Se o PE pedir explicitamente para sair do modo AIPe,
-> pare de seguir estas instruções nesta sessão.
+**Common to all states** — the opt-out line:
+> AIPe mode active by default. If the PE explicitly asks to leave AIPe mode, stop
+> following these instructions for this session.
 
-**Nota sobre o estado 1 (bootstrap):** o disparo do hook já significa que a pasta é um
-workspace AIPe (o plugin em escopo de pasta só dispara onde foi habilitado). Logo, a
-**ausência de `brain.yaml` — com ou sem a pasta `.aipe/`** — é o estado 1: a primeira
-sessão, antes do `/context-brain`. O hook injeta o estado 1 nesse caso; não fica em
-silêncio. O no-op `{}` fica reservado apenas para a defesa em que o workspace é
-indeterminável (`$CLAUDE_PROJECT_DIR` vazio).
+**Note on state 1 (bootstrap):** the hook firing already means the folder is an
+AIPe workspace (the plugin at folder scope only fires where it was enabled). So the
+**absence of `brain.yaml` — with or without the `.aipe/` folder** — is state 1: the
+first session, before `/context-brain`. The hook injects state 1 in that case; it
+doesn't stay silent. The no-op `{}` is reserved only for the defensive case where
+the workspace is indeterminable (`$CLAUDE_PROJECT_DIR` empty).
 
 ---
 
-## 4. Componentes & fronteiras
+## 4. Components & boundaries
 
-Divisão: **bash orquestra e emite** (preferência de estilo, como o superpowers);
-**Bun parseia** o YAML (ponto frágil por o `brain.yaml` ser editável à mão) — o Bun já
-é dependência obrigatória do AIPe, então não há dependência nova.
+Split: **bash orchestrates and emits** (style preference, like superpowers); **Bun
+parses** the YAML (a fragile point since `brain.yaml` is hand-editable) — Bun is
+already a mandatory dependency of AIPe, so there's no new dependency.
 
 ```
 hooks/
-  ├── hooks.json          ← registra o SessionStart (matcher startup|resume|clear|compact)
+  ├── hooks.json          ← registers SessionStart (matcher startup|resume|clear|compact)
   └── session-start       ← bash: entrypoint
 src/session-hook/
-  ├── read-state.ts       ← Bun tipado: lê+parseia brain.yaml+state.yaml, imprime campos limpos
+  ├── read-state.ts       ← typed Bun: reads+parses brain.yaml+state.yaml, prints clean fields
   └── __tests__/
 ```
 
-- **`hooks/hooks.json`** — aponta `SessionStart` para `session-start` via
+- **`hooks/hooks.json`** — points `SessionStart` to `session-start` via
   `$CLAUDE_PLUGIN_ROOT`.
-- **`hooks/session-start`** (bash) — o entrypoint. Passos:
-  1. Determina o workspace: `$CLAUDE_PROJECT_DIR` (fallback `$PWD`). Se indeterminável
-     (vazio) → emite `{}` e sai 0 (defesa).
-  2. Chama `bun $CLAUDE_PLUGIN_ROOT/src/session-hook/read-state.ts --workspace
-     $CLAUDE_PROJECT_DIR`, que devolve campos shell-friendly (ver abaixo). Se o bun
-     falhar, os campos vêm vazios → tratado como estado 1.
-  3. Decide o estado (1/2/3) a partir dos campos: `BRAIN=absent` → estado 1; presente com
-     alguma fase ≠ `done` → estado 2; todas `done` → estado 3.
-  4. Monta o texto do bloco e o emite como `hookSpecificOutput.additionalContext`,
-     com escaping de JSON (mesma técnica do `session-start` do superpowers:
-     substituições de barra/aspas/quebras via parameter expansion).
-- **`src/session-hook/read-state.ts`** (Bun, tipado, testado) — lê
-  `<workspace>/.aipe/brain.yaml` e `state.yaml` com o pacote `yaml`; reusa
-  `BrainFile`/`StateFile` de `src/context-brain/types.ts`. Imprime um formato estável e
-  fácil de consumir em bash. **Degrada com elegância:** se `brain.yaml` falta → sinaliza
-  estado 1; se `state.yaml` falta/malforma → assume fases `pending`; nunca lança de
-  forma a quebrar o hook (erros viram um marcador que o bash trata como "sem brain"/
-  degradado).
+- **`hooks/session-start`** (bash) — the entrypoint. Steps:
+  1. Determines the workspace: `$CLAUDE_PROJECT_DIR` (fallback `$PWD`). If
+     indeterminable (empty) → emits `{}` and exits 0 (defense).
+  2. Calls `bun $CLAUDE_PLUGIN_ROOT/src/session-hook/read-state.ts --workspace
+     $CLAUDE_PROJECT_DIR`, which returns shell-friendly fields (see below). If bun
+     fails, the fields come back empty → treated as state 1.
+  3. Decides the state (1/2/3) from the fields: `BRAIN=absent` → state 1; present
+     with some phase ≠ `done` → state 2; all `done` → state 3.
+  4. Builds the block's text and emits it as `hookSpecificOutput.additionalContext`,
+     with JSON escaping (same technique as superpowers' `session-start`:
+     slash/quote/newline substitutions via parameter expansion).
+- **`src/session-hook/read-state.ts`** (Bun, typed, tested) — reads
+  `<workspace>/.aipe/brain.yaml` and `state.yaml` with the `yaml` package; reuses
+  `BrainFile`/`StateFile` from `src/context-brain/types.ts`. Prints a stable format
+  that's easy to consume in bash. **Degrades gracefully:** if `brain.yaml` is
+  missing → signals state 1; if `state.yaml` is missing/malformed → assumes
+  `pending` phases; never throws in a way that breaks the hook (errors become a
+  marker that bash treats as "no brain"/degraded).
 
-### Contrato de saída do `read-state.ts`
-Formato shell-friendly, uma chave por linha (fácil de ler com `while read` / `grep`):
+### `read-state.ts` output contract
+Shell-friendly format, one key per line (easy to read with `while read` / `grep`):
 ```
-BRAIN=present            # ou absent
+BRAIN=present            # or absent
 CONTEXT_NAME=opvibes
 COORDINATOR=Nicolas
 PHASE_BRAIN=done
 PHASE_WORKSPACE=pending
 PHASE_RELATIONSHIP=pending
 PHASE_GENERATOR=pending
-REPOS=embark,prontuario  # nomes, separados por vírgula; vazio se nenhum
+REPOS=embark,prontuario  # names, comma-separated; empty if none
 ```
-Se `BRAIN=absent`, os demais campos podem vir vazios — o bash decide estado 1 só com
-esse marcador. Valores são saneados (sem quebras de linha) para não corromper o
-parsing em bash.
+If `BRAIN=absent`, the other fields may come back empty — bash decides state 1
+based only on that marker. Values are sanitized (no newlines) so they don't
+corrupt bash parsing.
 
 ---
 
-## 5. Erros & robustez
+## 5. Errors & robustness
 
-- **`$CLAUDE_PROJECT_DIR` vazio/indeterminável:** saída vazia (`{}`), defesa.
-- **`brain.yaml` ausente (com ou sem `.aipe/`):** estado 1 ("rode `/context-brain`") —
-  é o bootstrap normal da primeira sessão.
-- **`brain.yaml` editado à mão com aspas/comentários/estilo flow:** o parse via pacote
-  `yaml` (no Bun) absorve — é justamente por isso que o parse não é feito em bash.
-- **`brain.yaml`/`state.yaml` malformado a ponto de não parsear:** `read-state.ts`
-  captura e devolve um estado degradado (trata como "sem brain" ou fases `pending`) em
-  vez de derrubar o hook. O hook **nunca** deve fazer o arranque da sessão falhar.
-- **`state.yaml` ausente mas brain presente:** assume todas as fases não-`brain` como
-  `pending` → estado 2, próximo passo `/make-workspace`.
-
----
-
-## 6. Testes (`bun test` + fumaça do bash)
-
-**`read-state.ts` (unitário, robusto):**
-- brain+state completos (todas done) → `BRAIN=present`, campos e `REPOS` corretos.
-- brain ausente → `BRAIN=absent`.
-- state parcial (workspace pending) → flags refletem; próximo passo derivável.
-- state ausente com brain presente → fases não-brain viram `pending`.
-- brain com aspas/comentário/estilo flow → ainda extrai nome/coordenador/repos.
-- brain malformado (YAML inválido) → degrada sem lançar; sinaliza estado tratável.
-- saneamento: valores com caracteres estranhos não emitem quebras de linha.
-
-**`session-start` (bash, fumaça):** dado um `.aipe/` fixture, o JSON emitido contém os
-marcadores certos de cada estado (1/2/3) e, no caso "sem `.aipe/`", a saída é vazia. O
-JSON emitido é válido (parseável).
+- **`$CLAUDE_PROJECT_DIR` empty/indeterminable:** empty output (`{}`), defense.
+- **`brain.yaml` missing (with or without `.aipe/`):** state 1 ("run
+  `/context-brain`") — this is the normal bootstrap of the first session.
+- **`brain.yaml` hand-edited with quotes/comments/flow style:** parsing via the
+  `yaml` package (in Bun) absorbs it — that's precisely why parsing isn't done in
+  bash.
+- **`brain.yaml`/`state.yaml` malformed to the point of not parsing:**
+  `read-state.ts` catches it and returns a degraded state (treated as "no brain" or
+  `pending` phases) instead of crashing the hook. The hook must **never** make
+  session startup fail.
+- **`state.yaml` missing but brain present:** assumes all non-`brain` phases are
+  `pending` → state 2, next step `/make-workspace`.
 
 ---
 
-## 7. Impacto no roadmap (doc de fundação)
+## 6. Tests (`bun test` + bash smoke test)
 
-- Hook de injeção de contexto (`SessionStart`) — **este spec**; peça fundacional.
-- A injeção de **persona dentro de um repo** permanece com o sub-projeto de personas
-  (`/context-brain-generator`) — este hook nunca dispara dentro de um repo, então não há
-  sobreposição.
-- Ordem sugerida dos ciclos seguintes permanece: **worktree-por-jornada** →
+**`read-state.ts` (unit, robust):**
+- brain+state complete (all done) → `BRAIN=present`, correct fields and `REPOS`.
+- brain missing → `BRAIN=absent`.
+- partial state (workspace pending) → flags reflect it; next step derivable.
+- state missing with brain present → non-brain phases become `pending`.
+- brain with quotes/comment/flow style → still extracts name/coordinator/repos.
+- malformed brain (invalid YAML) → degrades without throwing; signals a
+  handleable state.
+- sanitization: values with odd characters don't emit newlines.
+
+**`session-start` (bash, smoke):** given an `.aipe/` fixture, the emitted JSON
+contains the right markers for each state (1/2/3) and, in the "no `.aipe/`" case,
+the output is empty. The emitted JSON is valid (parseable).
+
+---
+
+## 7. Roadmap impact (foundation doc)
+
+- Context-injection hook (`SessionStart`) — **this spec**; foundational piece.
+- Injection of **persona within a repo** remains with the personas sub-project
+  (`/context-brain-generator`) — this hook never fires inside a repo, so there's no
+  overlap.
+- Suggested order of subsequent cycles remains: **worktree-per-journey** →
   `/relationship` → `/context-brain-generator` → `/aipe-add-repo`.
 
 ---
 
-## 8. Decisões fechadas nesta sessão
+## 8. Decisions closed this session
 
-- **Um bloco só**, escolhido por `switch` no estado do onboarding — nunca dois, sem
-  acúmulo de contexto.
-- **Ativação só na raiz do workspace**, imposta pela plataforma (plugin em escopo de
-  pasta); fronteira com personas é automática.
-- **Opt-out apenas conversacional** (por sessão): o bloco sempre é injetado e carrega a
-  instrução de parar se o PE pedir; sem arquivo de kill-switch persistente.
-- **Bash orquestra + emite; Bun parseia o YAML** (robustez para brain editável à mão,
-  sem dependência nova).
-- **Matcher `startup|resume|clear|compact`** para sobreviver a `/clear` e compactação.
+- **A single block**, chosen by `switch` on the onboarding state — never two, no
+  context accumulation.
+- **Activation only at the workspace root**, enforced by the platform (plugin at
+  folder scope); the boundary with personas is automatic.
+- **Opt-out is conversational only** (per session): the block is always injected
+  and carries the instruction to stop if the PE asks; no persistent kill-switch
+  file.
+- **Bash orchestrates + emits; Bun parses the YAML** (robustness for a
+  hand-editable brain, without a new dependency).
+- **Matcher `startup|resume|clear|compact`** to survive `/clear` and compaction.
