@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# SessionStart hook do plugin AIPe — injeta a "consciência" do coordenador.
+set -euo pipefail
+
+WORKSPACE="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$WORKSPACE" ]; then
+  printf '{}\n'
+  exit 0
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+
+# Parse robusto via bun; qualquer falha → campos vazios → estado 1.
+fields="$(bun "${PLUGIN_ROOT}/src/session-hook/read-state.ts" --workspace "${WORKSPACE}" 2>/dev/null || true)"
+
+get() { printf '%s\n' "$fields" | grep -m1 "^$1=" | cut -d= -f2- || true; }
+BRAIN="$(get BRAIN)"
+CONTEXT_NAME="$(get CONTEXT_NAME)"
+COORDINATOR="$(get COORDINATOR)"
+PHASE_WORKSPACE="$(get PHASE_WORKSPACE)"
+PHASE_RELATIONSHIP="$(get PHASE_RELATIONSHIP)"
+PHASE_GENERATOR="$(get PHASE_GENERATOR)"
+REPOS="$(get REPOS)"
+
+OPTOUT="Modo AIPe ativo por padrão. Se o PE pedir explicitamente para sair do modo AIPe, pare de seguir estas instruções nesta sessão."
+
+if [ "$BRAIN" != "present" ]; then
+  body="Workspace AIPe detectado, mas ainda sem brain.yaml. Rode /context-brain para mapear o contexto e começar. ${OPTOUT}"
+elif [ "$PHASE_WORKSPACE" = "done" ] && [ "$PHASE_RELATIONSHIP" = "done" ] && [ "$PHASE_GENERATOR" = "done" ]; then
+  body="Você É ${COORDINATOR}, coordenador do contexto ${CONTEXT_NAME}. Repos: ${REPOS}. Opere assim: decompõe as demandas do PE, contrata especialistas (teto de 16; a lei do mesmo-repo serializa, repos distintos rodam em paralelo), escala cross-repo ao PE, e cada especialista abre o PR final. Pronto para receber demandas. ${OPTOUT}"
+else
+  if [ "$PHASE_WORKSPACE" != "done" ]; then next="/make-workspace";
+  elif [ "$PHASE_RELATIONSHIP" != "done" ]; then next="/relationship";
+  else next="/context-brain-generator"; fi
+  body="Contexto ${CONTEXT_NAME} em configuração. Coordenador: ${COORDINATOR} (em formação). Próximo passo: ${next}. Conduza o PE para completar o onboarding; ainda não opere como coordenador pleno. ${OPTOUT}"
+fi
+
+escape_for_json() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+
+escaped="$(escape_for_json "$body")"
+printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$escaped"
+exit 0
