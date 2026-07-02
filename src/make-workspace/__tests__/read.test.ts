@@ -20,7 +20,7 @@ async function makeWorkspaceDir(brainContent?: string): Promise<string> {
   return dir;
 }
 
-test("lê e valida um brain.yaml bem formado", async () => {
+test("reads and validates a well-formed brain.yaml", async () => {
   const dir = await makeWorkspaceDir(stringify(brain));
   try {
     const result = await readBrain(dir);
@@ -35,7 +35,7 @@ test("lê e valida um brain.yaml bem formado", async () => {
   }
 });
 
-test("erro quando brain.yaml não existe", async () => {
+test("errors when brain.yaml does not exist", async () => {
   const dir = await makeWorkspaceDir();
   try {
     const result = await readBrain(dir);
@@ -46,8 +46,8 @@ test("erro quando brain.yaml não existe", async () => {
   }
 });
 
-test("erro quando YAML é malformado", async () => {
-  const dir = await makeWorkspaceDir(": : : não é yaml :");
+test("errors when YAML is malformed", async () => {
+  const dir = await makeWorkspaceDir(": : : not yaml :");
   try {
     const result = await readBrain(dir);
     expect(result.ok).toBe(false);
@@ -56,7 +56,7 @@ test("erro quando YAML é malformado", async () => {
   }
 });
 
-test("erro quando repos está ausente ou vazio", async () => {
+test("errors when repos is missing or empty", async () => {
   const dir = await makeWorkspaceDir(stringify({ context: { name: "x", coordinator: "y" }, repos: [] }));
   try {
     const result = await readBrain(dir);

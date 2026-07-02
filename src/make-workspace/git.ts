@@ -39,5 +39,5 @@ export const realInspect: Inspector = async (absPath: string): Promise<RepoInspe
 export const realClone: Cloner = async (url: string, absPath: string) => {
   const result = await run(["git", "-c", "protocol.ext.allow=never", "clone", "--", url, absPath]);
   if (result.code === 0) return { ok: true };
-  return { ok: false, message: result.stderr || `git clone falhou (código ${result.code})` };
+  return { ok: false, message: result.stderr || `git clone failed (code ${result.code})` };
 };

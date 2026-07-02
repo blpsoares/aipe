@@ -16,7 +16,7 @@ export type Cloner = (
 function canonicalizeRemote(url: string): string {
   let s = url.trim();
   if (s.endsWith(".git")) s = s.slice(0, -4);
-  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, ""); // remove protocolo (https://, ssh://)
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//i, ""); // remove protocol (https://, ssh://)
   s = s.replace(/^[^@/]+@/, ""); // remove user@ (git@host)
   s = s.replace(":", "/"); // host:org/repo → host/org/repo (ssh scp-like)
   s = s.replace(/\/+$/, "");
@@ -43,12 +43,12 @@ export async function materializeRepo(
   }
 
   if (info.isGitRepo && info.remote && remotesMatch(info.remote, repo.url)) {
-    return { name: repo.name, status: "skipped", message: "já presente" };
+    return { name: repo.name, status: "skipped", message: "already present" };
   }
 
   return {
     name: repo.name,
     status: "error",
-    message: `path ocupado por conteúdo diferente (${repo.path})`,
+    message: `path occupied by different content (${repo.path})`,
   };
 }

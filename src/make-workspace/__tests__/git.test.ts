@@ -9,14 +9,14 @@ async function git(args: string[], cwd: string): Promise<void> {
   const code = await proc.exited;
   if (code !== 0) {
     const stderr = await new Response(proc.stderr).text();
-    throw new Error(`git ${args.join(" ")} falhou: ${stderr}`);
+    throw new Error(`git ${args.join(" ")} failed: ${stderr}`);
   }
 }
 
-test("path inexistente → exists:false, isGitRepo:false", async () => {
+test("nonexistent path → exists:false, isGitRepo:false", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-git-"));
   try {
-    const target = join(dir, "nao-existe");
+    const target = join(dir, "does-not-exist");
     const result = await realInspect(target);
     expect(result).toEqual({ exists: false, isGitRepo: false });
   } finally {
@@ -24,7 +24,7 @@ test("path inexistente → exists:false, isGitRepo:false", async () => {
   }
 });
 
-test("diretório é a raiz de um repo git com origin → isGitRepo:true, remote lido", async () => {
+test("directory is the root of a git repo with origin → isGitRepo:true, remote read", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-git-"));
   try {
     await git(["init"], dir);
@@ -38,12 +38,12 @@ test("diretório é a raiz de um repo git com origin → isGitRepo:true, remote 
   }
 });
 
-test("regressão: subdiretório simples dentro de um repo git ancestral não é tratado como repo", async () => {
+test("regression: a plain subdirectory inside an ancestor git repo is not treated as a repo", async () => {
   const parent = await mkdtemp(join(tmpdir(), "aipe-git-"));
   try {
     await git(["init"], parent);
     await git(["remote", "add", "origin", "git@github.com:opvibes/embark.git"], parent);
-    const child = join(parent, "subdir-vazio");
+    const child = join(parent, "empty-subdir");
     await mkdir(child);
     const result = await realInspect(child);
     expect(result.exists).toBe(true);

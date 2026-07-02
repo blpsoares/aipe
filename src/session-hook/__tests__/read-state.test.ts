@@ -23,7 +23,7 @@ const fullBrain = {
 };
 const doneState = { phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } };
 
-test("brain+state completos (tudo done)", async () => {
+test("brain+state complete (everything done)", async () => {
   const dir = await ws(fullBrain, doneState);
   try {
     const f = await readState(dir);
@@ -38,7 +38,7 @@ test("brain+state completos (tudo done)", async () => {
   }
 });
 
-test("brain ausente → estado 1 (absent)", async () => {
+test("brain absent → state 1 (absent)", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-rs-"));
   try {
     const f = await readState(dir);
@@ -49,7 +49,7 @@ test("brain ausente → estado 1 (absent)", async () => {
   }
 });
 
-test("state parcial (workspace pending) reflete as fases", async () => {
+test("partial state (workspace pending) reflects the phases", async () => {
   const dir = await ws(fullBrain, { phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" } });
   try {
     const f = await readState(dir);
@@ -60,7 +60,7 @@ test("state parcial (workspace pending) reflete as fases", async () => {
   }
 });
 
-test("state ausente com brain presente → fases não-brain = pending", async () => {
+test("state absent with brain present → non-brain phases = pending", async () => {
   const dir = await ws(fullBrain);
   try {
     const f = await readState(dir);
@@ -73,8 +73,8 @@ test("state ausente com brain presente → fases não-brain = pending", async ()
   }
 });
 
-test("brain editado à mão (aspas + comentário) ainda extrai", async () => {
-  const raw = `# contexto do time\ncontext:\n  name: "opvibes"\n  coordinator: 'Nicolas'\nrepos:\n  - name: embark\n    url: git@github.com:opvibes/embark.git\n    path: ./embark\n`;
+test("hand-edited brain (quotes + comment) still extracts", async () => {
+  const raw = `# team context\ncontext:\n  name: "opvibes"\n  coordinator: 'Nicolas'\nrepos:\n  - name: embark\n    url: git@github.com:opvibes/embark.git\n    path: ./embark\n`;
   const dir = await ws(undefined, undefined, raw);
   try {
     const f = await readState(dir);
@@ -87,8 +87,8 @@ test("brain editado à mão (aspas + comentário) ainda extrai", async () => {
   }
 });
 
-test("brain malformado (YAML inválido) degrada para absent, sem lançar", async () => {
-  const dir = await ws(undefined, undefined, ": : não é : yaml :");
+test("malformed brain (invalid YAML) degrades to absent, without throwing", async () => {
+  const dir = await ws(undefined, undefined, ": : not : yaml :");
   try {
     const f = await readState(dir);
     expect(f.brain).toBe("absent");
@@ -97,14 +97,14 @@ test("brain malformado (YAML inválido) degrada para absent, sem lançar", async
   }
 });
 
-test("formatFields sanea caracteres de controle C0 arbitrários (não só CR/LF/TAB)", async () => {
+test("formatFields sanitizes arbitrary C0 control characters (not just CR/LF/TAB)", async () => {
   const raw = 'context:\n  name: "op\\u000Bvibes"\n  coordinator: "Nic\\u000Bolas"\nrepos: []\n';
   const dir = await ws(undefined, undefined, raw);
   try {
     const f = await readState(dir);
-    // biome-ignore lint: precisa testar caracteres de controle C0 explicitamente
+    // biome-ignore lint: needs to explicitly test C0 control characters
     expect(/[\x00-\x1f]/.test(f.contextName)).toBe(false);
-    // biome-ignore lint: precisa testar caracteres de controle C0 explicitamente
+    // biome-ignore lint: needs to explicitly test C0 control characters
     expect(/[\x00-\x1f]/.test(f.coordinator)).toBe(false);
     const out = formatFields(f);
     expect(out).toContain("CONTEXT_NAME=op vibes");
@@ -114,7 +114,7 @@ test("formatFields sanea caracteres de controle C0 arbitrários (não só CR/LF/
   }
 });
 
-test("formatFields sanea quebras de linha e serializa CHAVE=valor", async () => {
+test("formatFields sanitizes line breaks and serializes KEY=value", async () => {
   const dir = await ws({ context: { name: "op\nvibes", coordinator: "Nic" }, repos: [{ name: "a", url: "u", path: "./a" }] }, doneState);
   try {
     const out = formatFields(await readState(dir));

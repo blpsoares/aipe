@@ -1,170 +1,178 @@
 # AIPe — `/make-workspace`
 
-**Data:** 2026-07-01
-**Status:** Design aprovado
-**Sub-projeto:** etapa 2 do pipeline de onboarding (ver
+**Date:** 2026-07-01
+**Status:** Design approved
+**Sub-project:** step 2 of the onboarding pipeline (see
 `2026-07-01-aipe-context-brain-design.md`)
 
 ---
 
-## 1. Propósito & escopo
+## 1. Purpose & scope
 
-A `/make-workspace` é a **etapa 2** do pipeline de onboarding: transforma o mapa
-factual (o `brain.yaml`) em **código presente na máquina**. Ela lê
-`<workspace>/.aipe/brain.yaml`, materializa cada repositório no `path` declarado (via
-`git clone`) e atualiza `<workspace>/.aipe/state.yaml`.
+`/make-workspace` is **step 2** of the onboarding pipeline: it turns the factual
+map (the `brain.yaml`) into **code present on the machine**. It reads
+`<workspace>/.aipe/brain.yaml`, materializes each repository at the declared `path`
+(via `git clone`), and updates `<workspace>/.aipe/state.yaml`.
 
-### Faz
-- Lê e valida `<workspace>/.aipe/brain.yaml`.
-- Clona cada repo declarado no seu `path` relativo ao workspace.
-- Atualiza a fase `workspace` em `state.yaml`.
-- Reporta ao PE, por repo, o que foi clonado / pulado / falhou.
+### Does
+- Reads and validates `<workspace>/.aipe/brain.yaml`.
+- Clones each repo declared, at its `path` relative to the workspace.
+- Updates the `workspace` phase in `state.yaml`.
+- Reports to the PE, per repo, what was cloned / skipped / failed.
 
-### NÃO faz (fronteiras explícitas)
-- **Não** cria worktree por jornada → é um **sub-projeto fundacional próprio**
-  (removido do escopo desta skill).
-- **Não** detecta stack → responsabilidade da `/relationship`, que lê o código a fundo
-  (fecha a questão em aberto §8 do spec de fundação: quem preenche `stack` é a
-  `/relationship`).
-- **Não** edita `brain.yaml` → só lê. O brain é fonte de verdade da `/context-brain`.
-- **Não** injeta contexto de sessão → isso é o hook `SessionStart`, próximo
-  sub-projeto fundacional (ver §7).
+### Does NOT do (explicit boundaries)
+- **Does not** create a worktree per journey → that's its **own foundational
+  sub-project** (removed from this skill's scope).
+- **Does not** detect stack → that's the responsibility of `/relationship`, which
+  reads the code in depth (closes the open question §8 of the foundation spec: who
+  fills in `stack` is `/relationship`).
+- **Does not** edit `brain.yaml` → only reads it. The brain is `/context-brain`'s
+  source of truth.
+- **Does not** inject session context → that's the `SessionStart` hook, the next
+  foundational sub-project (see §7).
 
 ---
 
-## 2. Fluxo (skill orquestra, CLI executa)
+## 2. Flow (skill orchestrates, CLI executes)
 
-Mesmo padrão da `/context-brain`: a **skill** é conversacional e orquestra; o trabalho
-determinístico (ler/validar/clonar/serializar) vive num **CLI tipado e testável**.
+Same pattern as `/context-brain`: the **skill** is conversational and orchestrates;
+the deterministic work (read/validate/clone/serialize) lives in a **typed, testable
+CLI**.
 
-1. A skill confirma o **workspace** (por padrão, diretório atual; deve ser uma pasta
-   `aipe-<contexto>`).
-2. A skill checa `state.phase.brain == done`. Se o brain ainda não existe ou não está
-   `done`, orienta o PE a rodar `/context-brain` antes — não faz sentido clonar sem
-   mapa.
-3. A skill executa:
+1. The skill confirms the **workspace** (by default, the current directory; must be
+   an `aipe-<context>` folder).
+2. The skill checks `state.phase.brain == done`. If the brain doesn't exist yet or
+   isn't `done`, it guides the PE to run `/context-brain` first — it makes no sense
+   to clone without a map.
+3. The skill runs:
    ```bash
-   bun <caminho-do-plugin>/src/make-workspace/cli.ts --workspace <workspace>
+   bun <plugin-path>/src/make-workspace/cli.ts --workspace <workspace>
    ```
-4. O CLI faz o trabalho e imprime **status por repo**.
-5. A skill lê a saída e **reporta ao PE** em linguagem natural: o que clonou, o que já
-   estava presente, o que falhou e por quê. Nada de YAML editado à mão.
+4. The CLI does the work and prints **status per repo**.
+5. The skill reads the output and **reports to the PE** in natural language: what
+   was cloned, what was already present, what failed and why. No YAML edited by
+   hand.
 
 ---
 
-## 3. CLI tipado — comportamento
+## 3. Typed CLI — behavior
 
-### Entrada
-- Flag `--workspace <path>` (default: diretório atual).
-- Lê `<workspace>/.aipe/brain.yaml` e **valida** contra os tipos existentes em
-  `src/context-brain/types.ts` (`BrainFile`, `RepoEntry`). Brain ausente ou malformado
-  → erro claro, nada é clonado.
+### Input
+- Flag `--workspace <path>` (default: current directory).
+- Reads `<workspace>/.aipe/brain.yaml` and **validates** it against the existing
+  types in `src/context-brain/types.ts` (`BrainFile`, `RepoEntry`). Missing or
+  malformed brain → clear error, nothing is cloned.
 
-### Materialização (sequencial, repo a repo)
-Para cada `repo` do brain, na ordem do arquivo:
+### Materialization (sequential, repo by repo)
+For each `repo` in the brain, in file order:
 
-| Situação do `path` | Ação | Status |
+| `path` situation | Action | Status |
 |---|---|---|
-| Não existe | `git clone <url> <path>` | `cloned` |
-| Existe, é git repo do **mesmo** remote | não toca | `skipped` |
-| Existe, mas **diverge** (não é git, ou remote diferente) | não toca | `error` (path ocupado) |
-| Clone falha (auth/rede) | — | `error` (mensagem do git) |
+| Doesn't exist | `git clone <url> <path>` | `cloned` |
+| Exists, is a git repo with the **same** remote | untouched | `skipped` |
+| Exists, but **diverges** (not git, or different remote) | untouched | `error` (path occupied) |
+| Clone fails (auth/network) | — | `error` (git message) |
 
-- **Sequencial** por escolha de design: saída limpa e previsível, alinhado com a
-  prioridade de confiabilidade.
-- Usa as **credenciais git/ssh já configuradas** do usuário. **Nunca** pede senha
-  interativamente nem tenta contornar autenticação — em falha de auth, falha limpo e
-  reporta a mensagem do git.
-- **Idempotente e não-destrutivo:** nunca sobrescreve nem apaga nada. Re-rodar completa
-  só o que falta.
+- **Sequential** by design choice: clean, predictable output, aligned with the
+  reliability priority.
+- Uses the user's **already-configured git/ssh credentials**. **Never** prompts for
+  a password interactively nor tries to work around authentication — on auth
+  failure, it fails cleanly and reports the git message.
+- **Idempotent and non-destructive:** never overwrites or deletes anything.
+  Re-running only completes what's missing.
 
-### Saída (legível pela skill)
-Uma linha por repo, prefixo estável para a skill parsear e traduzir ao PE. Exemplos:
+### Output (readable by the skill)
+One line per repo, with a stable prefix for the skill to parse and translate to
+the PE. Examples:
 ```
 OK cloned embark
-SKIP prontuario (já presente)
-ERRO faturamento: Permission denied (publickey)
+SKIP prontuario (already present)
+ERROR faturamento: Permission denied (publickey)
 ```
-E uma linha final de agregação de estado, ex.:
+And a final aggregate state line, e.g.:
 ```
-STATE workspace=pending (1 erro de 5 repos)
+STATE workspace=pending (1 error out of 5 repos)
 ```
 
-### Fronteira injetável para teste
-O `git clone` de verdade fica atrás de uma abstração injetável (um "cloner": função/
-interface que recebe `url`+`path` e devolve sucesso/erro, além de um "inspetor" de repo
-existente que informa se um path é git e qual o remote). Assim os testes rodam sem rede
-e sem tocar em repositórios reais.
+### Injectable boundary for testing
+The real `git clone` sits behind an injectable abstraction (a "cloner": a function/
+interface that takes `url`+`path` and returns success/error, plus an "inspector" of
+an existing repo that reports whether a path is git and what its remote is). This
+lets tests run without network access and without touching real repositories.
 
 ---
 
 ## 4. `state.yaml`
 
-- A fase `workspace` vira `done` **somente se todos** os repos do brain estão
-  materializados (`cloned` **ou** `skipped`). Qualquer `error` → permanece `pending`.
-- Semântica **binária**, mantendo o enum atual `Phase = "pending" | "done"` sem
-  ampliar o schema. Sem status granular por-repo no state (o granular vive só na saída
-  da execução, para o PE).
-- Consequência: `/relationship` (etapa 3) só deve rodar com `workspace == done`, isto é,
-  com todos os repos presentes.
+- The `workspace` phase becomes `done` **only if all** repos in the brain are
+  materialized (`cloned` **or** `skipped`). Any `error` → stays `pending`.
+- **Binary** semantics, keeping the current `Phase = "pending" | "done"` enum
+  without extending the schema. No per-repo granular status in the state (the
+  granular detail lives only in the execution output, for the PE).
+- Consequence: `/relationship` (step 3) should only run with `workspace == done`,
+  i.e. with all repos present.
 
 ---
 
-## 5. Erros & robustez
+## 5. Errors & robustness
 
-- **Brain ausente/malformado:** aborta antes de clonar, com mensagem apontando o
-  problema. `state` não é alterado.
-- **Path ocupado divergente:** reportado como `error`; nada é tocado. O PE decide
-  (mover a pasta, corrigir o brain, etc.) e re-roda.
-- **Falha de auth/rede em um repo:** não interrompe os demais — o CLI continua os
-  outros repos e agrega o resultado; a fase fica `pending` enquanto houver erro.
-- **Re-execução:** sempre segura (idempotência da §3).
-
----
-
-## 6. Testes (`bun test`, padrão do repo)
-
-- Validação: brain ausente / malformado → erro claro, sem clonar.
-- Clone feliz: path inexistente → `cloned` (via cloner fake).
-- Idempotência: path presente com mesmo remote → `skipped`, sem chamar o cloner.
-- Path ocupado divergente (não-git ou remote diferente) → `error`, sem sobrescrever.
-- Falha do cloner (auth/rede) → `error`, demais repos seguem.
-- Agregação de state: todos ok → `workspace=done`; qualquer erro → `workspace=pending`.
-- Preservação: `brain.yaml` nunca é modificado pela execução.
+- **Missing/malformed brain:** aborts before cloning, with a message pointing at
+  the problem. `state` is not altered.
+- **Occupied, divergent path:** reported as `error`; nothing is touched. The PE
+  decides (move the folder, fix the brain, etc.) and re-runs.
+- **Auth/network failure on one repo:** doesn't interrupt the others — the CLI
+  continues with the remaining repos and aggregates the result; the phase stays
+  `pending` while any error remains.
+- **Re-execution:** always safe (idempotence from §3).
 
 ---
 
-## 7. Impacto no roadmap (registrado no doc de fundação)
+## 6. Tests (`bun test`, repo standard)
 
-Duas decisões desta sessão que atualizam o spec de fundação:
+- Validation: missing / malformed brain → clear error, no cloning.
+- Happy clone: nonexistent path → `cloned` (via fake cloner).
+- Idempotence: path present with same remote → `skipped`, without calling the
+  cloner.
+- Occupied, divergent path (non-git or different remote) → `error`, without
+  overwriting.
+- Cloner failure (auth/network) → `error`, other repos proceed.
+- State aggregation: all ok → `workspace=done`; any error → `workspace=pending`.
+- Preservation: `brain.yaml` is never modified by the execution.
 
-1. **`/make-workspace` = clone-only.** O setup de worktree por jornada **sai do escopo**
-   desta skill e vira sub-projeto fundacional próprio.
-2. **Hook de injeção de contexto (`SessionStart`)** entra como sub-projeto fundacional.
-   Ideia central (a ser especificada no seu próprio ciclo): quando uma sessão abre num
-   `aipe-<contexto>/` com o plugin instalado em escopo de pasta, o hook lê `.aipe/`
-   (`brain.yaml` + `state.yaml`) e **injeta a "consciência" do coordenador** — quem ele
-   é (nome), qual o contexto, os repos, a fase do pipeline e o próximo passo sugerido.
-   **Por padrão é ativo** (instalar ali significa "é pra operar assim"); só deixa de ser
-   injetado/seguido se o PE **explicitamente** pedir para sair do modo AIPe (opt-out).
+---
 
-Ordem sugerida dos próximos ciclos: **`/make-workspace`** (este) → **hook de contexto
-(`SessionStart`)** → **worktree-por-jornada** → **`/relationship`** →
+## 7. Roadmap impact (recorded in the foundation doc)
+
+Two decisions from this session that update the foundation spec:
+
+1. **`/make-workspace` = clone-only.** Per-journey worktree setup **is removed from
+   the scope** of this skill and becomes its own foundational sub-project.
+2. **Context-injection hook (`SessionStart`)** enters as a foundational sub-project.
+   Core idea (to be specified in its own cycle): when a session opens in an
+   `aipe-<context>/` with the plugin installed at folder scope, the hook reads
+   `.aipe/` (`brain.yaml` + `state.yaml`) and **injects the coordinator's
+   "awareness"** — who they are (name), what the context is, the repos, the
+   pipeline phase, and the suggested next step. **Active by default** (installing
+   it there means "operate this way"); it stops being injected/followed only if the
+   PE **explicitly** asks to leave AIPe mode (opt-out).
+
+Suggested order for the next cycles: **`/make-workspace`** (this one) → **context
+hook (`SessionStart`)** → **worktree-per-journey** → **`/relationship`** →
 **`/context-brain-generator`** → **`/aipe-add-repo`**.
 
 ---
 
-## 8. Estrutura de código proposta
+## 8. Proposed code structure
 
-Espelha `src/context-brain/`:
+Mirrors `src/context-brain/`:
 
 ```
 src/make-workspace/
-  ├── types.ts        # reusa BrainFile/RepoEntry de context-brain; tipos de resultado por-repo
-  ├── read.ts         # lê + valida brain.yaml do workspace
-  ├── clone.ts        # cloner + inspetor injetáveis; lógica de decisão por-repo
-  ├── run.ts          # orquestra: lê brain → materializa cada repo → agrega state
-  ├── cli.ts          # parse de flags, chama run, imprime status por-repo + STATE
+  ├── types.ts        # reuses BrainFile/RepoEntry from context-brain; per-repo result types
+  ├── read.ts         # reads + validates the workspace's brain.yaml
+  ├── clone.ts         # injectable cloner + inspector; per-repo decision logic
+  ├── run.ts          # orchestrates: reads brain → materializes each repo → aggregates state
+  ├── cli.ts          # flag parsing, calls run, prints per-repo status + STATE
   └── __tests__/
 skills/make-workspace/SKILL.md
 ```

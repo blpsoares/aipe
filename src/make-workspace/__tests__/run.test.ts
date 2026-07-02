@@ -27,7 +27,7 @@ async function ws(): Promise<string> {
   return dir;
 }
 
-test("todos clonam → phase done e state.workspace=done", async () => {
+test("all clone → phase done and state.workspace=done", async () => {
   const dir = await ws();
   try {
     const inspect: Inspector = async () => ({ exists: false, isGitRepo: false });
@@ -45,7 +45,7 @@ test("todos clonam → phase done e state.workspace=done", async () => {
   }
 });
 
-test("um erro → phase pending e state.workspace=pending", async () => {
+test("one error → phase pending and state.workspace=pending", async () => {
   const dir = await ws();
   try {
     const inspect: Inspector = async () => ({ exists: false, isGitRepo: false });
@@ -61,7 +61,7 @@ test("um erro → phase pending e state.workspace=pending", async () => {
   }
 });
 
-test("brain ausente → ok:false, state não é tocado", async () => {
+test("brain missing → ok:false, state is not touched", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-run-"));
   try {
     const inspect: Inspector = async () => ({ exists: false, isGitRepo: false });
@@ -73,11 +73,11 @@ test("brain ausente → ok:false, state não é tocado", async () => {
   }
 });
 
-test("falha de inspeção em um repo não aborta o batch → status error para ele, phase pending", async () => {
+test("inspection failure on one repo does not abort the batch → status error for it, phase pending", async () => {
   const dir = await ws();
   try {
     const inspect: Inspector = async (absPath) => {
-      if (absPath.includes("prontuario")) throw new Error("realpath falhou");
+      if (absPath.includes("prontuario")) throw new Error("realpath failed");
       return { exists: false, isGitRepo: false };
     };
     const clone: Cloner = async () => ({ ok: true });
@@ -98,7 +98,7 @@ test("falha de inspeção em um repo não aborta o batch → status error para e
   }
 });
 
-test("skipped conta como sucesso → phase done com mix cloned/skipped", async () => {
+test("skipped counts as success → phase done with a cloned/skipped mix", async () => {
   const dir = await ws();
   try {
     const inspect: Inspector = async (absPath) => {
@@ -119,7 +119,7 @@ test("skipped conta como sucesso → phase done com mix cloned/skipped", async (
   }
 });
 
-test("brain.yaml não é modificado pela execução", async () => {
+test("brain.yaml is not modified by the run", async () => {
   const dir = await ws();
   try {
     const before = await readFile(join(dir, ".aipe", "brain.yaml"), "utf8");

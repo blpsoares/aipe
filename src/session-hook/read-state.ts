@@ -36,12 +36,12 @@ async function readYaml(path: string): Promise<unknown | undefined> {
   try {
     raw = await readFile(path, "utf8");
   } catch {
-    return undefined; // ausente
+    return undefined; // absent
   }
   try {
     return parse(raw);
   } catch {
-    return undefined; // malformado
+    return undefined; // malformed
   }
 }
 

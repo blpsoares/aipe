@@ -1,21 +1,21 @@
-# Hook SessionStart (injeção de contexto) — Implementation Plan
+# SessionStart Hook (context injection) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Um hook `SessionStart` do plugin AIPe que, ao abrir a sessão na raiz de um `aipe-<contexto>/`, injeta um único bloco de contexto do coordenador em 3 estados dirigidos pelo `state.yaml`.
+**Goal:** A `SessionStart` hook of the AIPe plugin that, when the session opens at the root of an `aipe-<context>/`, injects a single block of the coordinator's context in 3 states driven by `state.yaml`.
 
-**Architecture:** Bash orquestra e emite o JSON (`hookSpecificOutput.additionalContext`), como o `session-start` do superpowers; um helper Bun tipado e testado (`read-state.ts`) faz o parse robusto de `brain.yaml`+`state.yaml` (editáveis à mão) e devolve campos shell-friendly. O bash decide o estado (1 sem brain / 2 onboarding incompleto / 3 completo) e templata o texto.
+**Architecture:** Bash orchestrates and emits the JSON (`hookSpecificOutput.additionalContext`), like superpowers' `session-start`; a typed, tested Bun helper (`read-state.ts`) does the robust parsing of `brain.yaml`+`state.yaml` (hand-editable) and returns shell-friendly fields. Bash decides the state (1 no brain / 2 onboarding incomplete / 3 complete) and templates the text.
 
-**Tech Stack:** Bun + TypeScript strict, `bun test`, pacote `yaml`, bash, hook do Claude Code.
+**Tech Stack:** Bun + TypeScript strict, `bun test`, `yaml` package, bash, Claude Code hook.
 
 ## Global Constraints
 
-- TypeScript **strict** (`tsconfig.json`: `strict` + `noUncheckedIndexedAccess`; `bun test` NÃO checa tipos — rodar `bunx tsc --noEmit -p tsconfig.json`, 0 erros, antes de commitar).
-- Reusar `BrainFile`/`StateFile`/`Phase` de `src/context-brain/types.ts` — não redefinir.
-- Texto injetado em **português**; commits em português (Conventional Commits).
-- Hook emite **exatamente um** `additionalContext` por sessão (switch no estado), ou `{}` se `$CLAUDE_PROJECT_DIR` for vazio.
-- O hook **nunca** pode fazer o arranque da sessão falhar: toda falha de parse degrada (brain ausente/malformado → estado 1; state ausente/malformado → fases não-`brain` = `pending`).
-- Output JSON do Claude Code: `{ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": "<texto>" } }`.
+- TypeScript **strict** (`tsconfig.json`: `strict` + `noUncheckedIndexedAccess`; `bun test` does NOT type-check — run `bunx tsc --noEmit -p tsconfig.json`, 0 errors, before committing).
+- Reuse `BrainFile`/`StateFile`/`Phase` from `src/context-brain/types.ts` — do not redefine them.
+- Injected text in **English**; commits in English (Conventional Commits).
+- The hook emits **exactly one** `additionalContext` per session (switch on state), or `{}` if `$CLAUDE_PROJECT_DIR` is empty.
+- The hook must **never** make session startup fail: any parse failure degrades (missing/malformed brain → state 1; missing/malformed state → non-`brain` phases = `pending`).
+- Claude Code JSON output: `{ "hookSpecificOutput": { "hookEventName": "SessionStart", "additionalContext": "<text>" } }`.
 
 ---
 
@@ -23,31 +23,31 @@
 
 ```
 hooks/
-  ├── hooks.json                         ← registra o SessionStart (auto-descoberto pelo Claude Code)
-  └── session-start                      ← bash: entrypoint, decide estado, templata, emite JSON
+  ├── hooks.json                         ← registers SessionStart (auto-discovered by Claude Code)
+  └── session-start                      ← bash: entrypoint, decides state, templates, emits JSON
 src/session-hook/
-  ├── read-state.ts                      ← Bun tipado: parse robusto + campos shell-friendly
+  ├── read-state.ts                      ← typed Bun: robust parsing + shell-friendly fields
   └── __tests__/
-       ├── read-state.test.ts            ← unitário (bun test)
-       └── session-start.test.ts         ← fumaça: spawna o bash, valida o JSON por estado
+       ├── read-state.test.ts            ← unit (bun test)
+       └── session-start.test.ts         ← smoke: spawns the bash, validates the JSON per state
 ```
 
 ---
 
-## Task 1: Helper de leitura de estado (`read-state.ts`)
+## Task 1: State-reading helper (`read-state.ts`)
 
 **Files:**
 - Create: `src/session-hook/read-state.ts`
 - Test: `src/session-hook/__tests__/read-state.test.ts`
 
 **Interfaces:**
-- Consumes: `BrainFile`, `StateFile`, `Phase` de `src/context-brain/types.ts`.
+- Consumes: `BrainFile`, `StateFile`, `Phase` from `src/context-brain/types.ts`.
 - Produces:
   - `interface Fields { brain: "present" | "absent"; contextName: string; coordinator: string; phaseBrain: Phase; phaseWorkspace: Phase; phaseRelationship: Phase; phaseGenerator: Phase; repos: string[] }`
   - `readState(workspaceDir: string): Promise<Fields>`
-  - `formatFields(f: Fields): string` (formato `CHAVE=valor`, uma por linha)
+  - `formatFields(f: Fields): string` (`KEY=value` format, one per line)
 
-- [ ] **Step 1: Escrever o teste que falha**
+- [ ] **Step 1: Write the failing test**
 
 Create `src/session-hook/__tests__/read-state.test.ts`:
 
@@ -77,7 +77,7 @@ const fullBrain = {
 };
 const doneState = { phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } };
 
-test("brain+state completos (tudo done)", async () => {
+test("brain+state complete (all done)", async () => {
   const dir = await ws(fullBrain, doneState);
   try {
     const f = await readState(dir);
@@ -92,7 +92,7 @@ test("brain+state completos (tudo done)", async () => {
   }
 });
 
-test("brain ausente → estado 1 (absent)", async () => {
+test("missing brain → state 1 (absent)", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-rs-"));
   try {
     const f = await readState(dir);
@@ -103,7 +103,7 @@ test("brain ausente → estado 1 (absent)", async () => {
   }
 });
 
-test("state parcial (workspace pending) reflete as fases", async () => {
+test("partial state (workspace pending) reflects the phases", async () => {
   const dir = await ws(fullBrain, { phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" } });
   try {
     const f = await readState(dir);
@@ -114,7 +114,7 @@ test("state parcial (workspace pending) reflete as fases", async () => {
   }
 });
 
-test("state ausente com brain presente → fases não-brain = pending", async () => {
+test("missing state with brain present → non-brain phases = pending", async () => {
   const dir = await ws(fullBrain);
   try {
     const f = await readState(dir);
@@ -127,8 +127,8 @@ test("state ausente com brain presente → fases não-brain = pending", async ()
   }
 });
 
-test("brain editado à mão (aspas + comentário) ainda extrai", async () => {
-  const raw = `# contexto do time\ncontext:\n  name: "opvibes"\n  coordinator: 'Nicolas'\nrepos:\n  - name: embark\n    url: git@github.com:opvibes/embark.git\n    path: ./embark\n`;
+test("hand-edited brain (quotes + comment) still extracts", async () => {
+  const raw = `# team context\ncontext:\n  name: "opvibes"\n  coordinator: 'Nicolas'\nrepos:\n  - name: embark\n    url: git@github.com:opvibes/embark.git\n    path: ./embark\n`;
   const dir = await ws(undefined, undefined, raw);
   try {
     const f = await readState(dir);
@@ -141,8 +141,8 @@ test("brain editado à mão (aspas + comentário) ainda extrai", async () => {
   }
 });
 
-test("brain malformado (YAML inválido) degrada para absent, sem lançar", async () => {
-  const dir = await ws(undefined, undefined, ": : não é : yaml :");
+test("malformed brain (invalid YAML) degrades to absent, without throwing", async () => {
+  const dir = await ws(undefined, undefined, ": : not : yaml :");
   try {
     const f = await readState(dir);
     expect(f.brain).toBe("absent");
@@ -151,7 +151,7 @@ test("brain malformado (YAML inválido) degrada para absent, sem lançar", async
   }
 });
 
-test("formatFields sanea quebras de linha e serializa CHAVE=valor", async () => {
+test("formatFields sanitizes newlines and serializes KEY=value", async () => {
   const dir = await ws({ context: { name: "op\nvibes", coordinator: "Nic" }, repos: [{ name: "a", url: "u", path: "./a" }] }, doneState);
   try {
     const out = formatFields(await readState(dir));
@@ -165,12 +165,12 @@ test("formatFields sanea quebras de linha e serializa CHAVE=valor", async () => 
 });
 ```
 
-- [ ] **Step 2: Rodar o teste e ver falhar**
+- [ ] **Step 2: Run the test and watch it fail**
 
 Run: `cd ~/aipe && bun test src/session-hook/__tests__/read-state.test.ts`
 Expected: FAIL — `Cannot find module "../read-state"`.
 
-- [ ] **Step 3: Implementar `read-state.ts`**
+- [ ] **Step 3: Implement `read-state.ts`**
 
 Create `src/session-hook/read-state.ts`:
 
@@ -213,12 +213,12 @@ async function readYaml(path: string): Promise<unknown | undefined> {
   try {
     raw = await readFile(path, "utf8");
   } catch {
-    return undefined; // ausente
+    return undefined; // missing
   }
   try {
     return parse(raw);
   } catch {
-    return undefined; // malformado
+    return undefined; // malformed
   }
 }
 
@@ -286,26 +286,26 @@ if (import.meta.main) {
 }
 ```
 
-- [ ] **Step 4: Rodar o teste e ver passar**
+- [ ] **Step 4: Run the test and watch it pass**
 
 Run: `cd ~/aipe && bun test src/session-hook/__tests__/read-state.test.ts`
-Expected: PASS (7 testes).
+Expected: PASS (7 tests).
 
 - [ ] **Step 5: Type-check**
 
 Run: `cd ~/aipe && bunx tsc --noEmit -p tsconfig.json`
-Expected: 0 erros. (Se acusar em arquivos novos, corrija minimamente e re-rode.)
+Expected: 0 errors. (If it flags new files, fix minimally and re-run.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
 cd ~/aipe && git add src/session-hook/read-state.ts src/session-hook/__tests__/read-state.test.ts
-git commit -m "feat: read-state do hook (parse robusto do brain/state)"
+git commit -m "feat: hook read-state (robust brain/state parsing)"
 ```
 
 ---
 
-## Task 2: Hook bash + registro + teste de fumaça
+## Task 2: Bash hook + registration + smoke test
 
 **Files:**
 - Create: `hooks/hooks.json`
@@ -313,10 +313,10 @@ git commit -m "feat: read-state do hook (parse robusto do brain/state)"
 - Test: `src/session-hook/__tests__/session-start.test.ts`
 
 **Interfaces:**
-- Consumes: `src/session-hook/read-state.ts` (via `bun`, saída `CHAVE=valor`); env `$CLAUDE_PROJECT_DIR`, `$CLAUDE_PLUGIN_ROOT`.
-- Produces: JSON em stdout com `hookSpecificOutput.additionalContext`, ou `{}`.
+- Consumes: `src/session-hook/read-state.ts` (via `bun`, `KEY=value` output); env `$CLAUDE_PROJECT_DIR`, `$CLAUDE_PLUGIN_ROOT`.
+- Produces: JSON on stdout with `hookSpecificOutput.additionalContext`, or `{}`.
 
-- [ ] **Step 1: Escrever o teste de fumaça que falha**
+- [ ] **Step 1: Write the failing smoke test**
 
 Create `src/session-hook/__tests__/session-start.test.ts`:
 
@@ -356,7 +356,7 @@ async function makeWs(state?: unknown, withBrain = true): Promise<string> {
   return dir;
 }
 
-test("estado 1: sem brain → orienta /context-brain, JSON válido", async () => {
+test("state 1: no brain → points to /context-brain, valid JSON", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-ss-"));
   try {
     const out = await runHook(dir);
@@ -368,11 +368,11 @@ test("estado 1: sem brain → orienta /context-brain, JSON válido", async () =>
   }
 });
 
-test("estado 2: onboarding incompleto → próximo passo /make-workspace", async () => {
+test("state 2: onboarding incomplete → next step /make-workspace", async () => {
   const dir = await makeWs({ phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
-    expect(ctx).toContain("configuração");
+    expect(ctx).toContain("being configured");
     expect(ctx).toContain("/make-workspace");
     expect(ctx).toContain("Nicolas");
   } finally {
@@ -380,46 +380,46 @@ test("estado 2: onboarding incompleto → próximo passo /make-workspace", async
   }
 });
 
-test("estado 3: tudo done → coordenador pleno com repos", async () => {
+test("state 3: all done → full coordinator with repos", async () => {
   const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
-    expect(ctx).toContain("Você É Nicolas");
+    expect(ctx).toContain("You ARE Nicolas");
     expect(ctx).toContain("embark");
-    expect(ctx).toContain("Pronto para receber demandas");
+    expect(ctx).toContain("Ready to receive demands");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("opt-out presente em todos os estados", async () => {
+test("opt-out present in all states", async () => {
   const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
-    expect(ctx).toContain("sair do modo AIPe");
+    expect(ctx).toContain("leave AIPe mode");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("CLAUDE_PROJECT_DIR vazio → {} (defesa)", async () => {
+test("CLAUDE_PROJECT_DIR empty → {} (defense)", async () => {
   const out = await runHook("");
   expect(out).toBe("{}");
 });
 ```
 
-- [ ] **Step 2: Rodar o teste e ver falhar**
+- [ ] **Step 2: Run the test and watch it fail**
 
 Run: `cd ~/aipe && bun test src/session-hook/__tests__/session-start.test.ts`
-Expected: FAIL — o hook `hooks/session-start` não existe (spawn falha / stdout vazio).
+Expected: FAIL — the `hooks/session-start` hook doesn't exist (spawn fails / empty stdout).
 
-- [ ] **Step 3: Implementar `hooks/session-start`**
+- [ ] **Step 3: Implement `hooks/session-start`**
 
 Create `hooks/session-start`:
 
 ```bash
 #!/usr/bin/env bash
-# SessionStart hook do plugin AIPe — injeta a "consciência" do coordenador.
+# AIPe plugin's SessionStart hook — injects the coordinator's "awareness".
 set -euo pipefail
 
 WORKSPACE="${CLAUDE_PROJECT_DIR:-}"
@@ -431,7 +431,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 
-# Parse robusto via bun; qualquer falha → campos vazios → estado 1.
+# Robust parsing via bun; any failure → empty fields → state 1.
 fields="$(bun "${PLUGIN_ROOT}/src/session-hook/read-state.ts" --workspace "${WORKSPACE}" 2>/dev/null || true)"
 
 get() { printf '%s\n' "$fields" | grep -m1 "^$1=" | cut -d= -f2- || true; }
@@ -443,17 +443,17 @@ PHASE_RELATIONSHIP="$(get PHASE_RELATIONSHIP)"
 PHASE_GENERATOR="$(get PHASE_GENERATOR)"
 REPOS="$(get REPOS)"
 
-OPTOUT="Modo AIPe ativo por padrão. Se o PE pedir explicitamente para sair do modo AIPe, pare de seguir estas instruções nesta sessão."
+OPTOUT="AIPe mode active by default. If the PE explicitly asks to leave AIPe mode, stop following these instructions for this session."
 
 if [ "$BRAIN" != "present" ]; then
-  body="Workspace AIPe detectado, mas ainda sem brain.yaml. Rode /context-brain para mapear o contexto e começar. ${OPTOUT}"
+  body="AIPe workspace detected, but no brain.yaml yet. Run /context-brain to map the context and get started. ${OPTOUT}"
 elif [ "$PHASE_WORKSPACE" = "done" ] && [ "$PHASE_RELATIONSHIP" = "done" ] && [ "$PHASE_GENERATOR" = "done" ]; then
-  body="Você É ${COORDINATOR}, coordenador do contexto ${CONTEXT_NAME}. Repos: ${REPOS}. Opere assim: decompõe as demandas do PE, contrata especialistas (teto de 16; a lei do mesmo-repo serializa, repos distintos rodam em paralelo), escala cross-repo ao PE, e cada especialista abre o PR final. Pronto para receber demandas. ${OPTOUT}"
+  body="You ARE ${COORDINATOR}, coordinator of the ${CONTEXT_NAME} context. Repos: ${REPOS}. Operate like this: decompose the PE's demands, hire specialists (cap of 16; the same-repo law serializes, distinct repos run in parallel), escalate cross-repo issues to the PE, and each specialist opens the final PR. Ready to receive demands. ${OPTOUT}"
 else
   if [ "$PHASE_WORKSPACE" != "done" ]; then next="/make-workspace";
   elif [ "$PHASE_RELATIONSHIP" != "done" ]; then next="/relationship";
   else next="/context-brain-generator"; fi
-  body="Contexto ${CONTEXT_NAME} em configuração. Coordenador: ${COORDINATOR} (em formação). Próximo passo: ${next}. Conduza o PE para completar o onboarding; ainda não opere como coordenador pleno. ${OPTOUT}"
+  body="Context ${CONTEXT_NAME} being configured. Coordinator: ${COORDINATOR} (in formation). Next step: ${next}. Guide the PE to complete onboarding; do not yet operate as a full coordinator. ${OPTOUT}"
 fi
 
 escape_for_json() {
@@ -477,9 +477,9 @@ Then make it executable:
 chmod +x hooks/session-start
 ```
 
-- [ ] **Step 4: Implementar `hooks/hooks.json`**
+- [ ] **Step 4: Implement `hooks/hooks.json`**
 
-Create `hooks/hooks.json` (auto-descoberto pelo Claude Code no plugin root):
+Create `hooks/hooks.json` (auto-discovered by Claude Code at the plugin root):
 
 ```json
 {
@@ -500,17 +500,17 @@ Create `hooks/hooks.json` (auto-descoberto pelo Claude Code no plugin root):
 }
 ```
 
-- [ ] **Step 5: Rodar o teste de fumaça e ver passar**
+- [ ] **Step 5: Run the smoke test and watch it pass**
 
 Run: `cd ~/aipe && bun test src/session-hook/__tests__/session-start.test.ts`
-Expected: PASS (5 testes).
+Expected: PASS (5 tests).
 
-- [ ] **Step 6: Rodar a suíte inteira + type-check**
+- [ ] **Step 6: Run the full suite + type-check**
 
 Run: `cd ~/aipe && bun test && bunx tsc --noEmit -p tsconfig.json`
-Expected: todos passam; `tsc` 0 erros.
+Expected: all pass; `tsc` 0 errors.
 
-- [ ] **Step 7: Verificação manual do JSON emitido**
+- [ ] **Step 7: Manual verification of the emitted JSON**
 
 ```bash
 cd ~/aipe && MW=$(mktemp -d) && mkdir -p "$MW/.aipe" && cat > "$MW/.aipe/brain.yaml" <<'YAML'
@@ -529,30 +529,30 @@ phase:
   relationship: done
   generator: done
 YAML
-CLAUDE_PROJECT_DIR="$MW" CLAUDE_PLUGIN_ROOT="$PWD" bash hooks/session-start | bun -e 'const t=await Bun.stdin.text(); JSON.parse(t); console.log("JSON válido:\n"+t)'
+CLAUDE_PROJECT_DIR="$MW" CLAUDE_PLUGIN_ROOT="$PWD" bash hooks/session-start | bun -e 'const t=await Bun.stdin.text(); JSON.parse(t); console.log("Valid JSON:\n"+t)'
 rm -rf "$MW"
 ```
-Expected: imprime "JSON válido" seguido do objeto com `additionalContext` do coordenador pleno (contém "Você É Nicolas" e "embark").
+Expected: prints "Valid JSON" followed by the object with the full coordinator's `additionalContext` (contains "You ARE Nicolas" and "embark").
 
 - [ ] **Step 8: Commit**
 
 ```bash
 cd ~/aipe && git add hooks/hooks.json hooks/session-start src/session-hook/__tests__/session-start.test.ts
-git commit -m "feat: hook SessionStart que injeta o contexto do coordenador"
+git commit -m "feat: SessionStart hook that injects the coordinator's context"
 ```
 
 ---
 
-## Self-Review (autor do plano)
+## Self-Review (plan's author)
 
 **Spec coverage:**
-- §1 propósito/passivo → Tasks 1+2 (hook injeta, não decide).
-- §2 ativação/detecção (raiz, `$CLAUDE_PROJECT_DIR`) + matcher → Task 2 (`hooks.json` matcher `startup|resume|clear|compact`; bash usa `$CLAUDE_PROJECT_DIR`).
-- §3 bloco único em 3 estados + opt-out → Task 2 bash (switch BRAIN/fases; `OPTOUT` em todos) + testes de fumaça por estado.
-- §4 componentes/contrato de saída `CHAVE=valor` → Task 1 (`formatFields`) + Task 2 (bash `get`).
-- §5 robustez (sem brain→estado 1; malformado→degrada; state ausente→pending; `$CLAUDE_PROJECT_DIR` vazio→`{}`) → Task 1 (degradação testada) + Task 2 (teste `{}`).
-- §6 testes → `read-state.test.ts` (7) + `session-start.test.ts` (5) + verificação manual.
+- §1 purpose/passive → Tasks 1+2 (hook injects, doesn't decide).
+- §2 activation/detection (root, `$CLAUDE_PROJECT_DIR`) + matcher → Task 2 (`hooks.json` matcher `startup|resume|clear|compact`; bash uses `$CLAUDE_PROJECT_DIR`).
+- §3 single block in 3 states + opt-out → Task 2 bash (switch BRAIN/phases; `OPTOUT` in all) + smoke tests per state.
+- §4 components/`KEY=value` output contract → Task 1 (`formatFields`) + Task 2 (bash `get`).
+- §5 robustness (no brain→state 1; malformed→degrades; missing state→pending; empty `$CLAUDE_PROJECT_DIR`→`{}`) → Task 1 (degradation tested) + Task 2 (`{}` test).
+- §6 tests → `read-state.test.ts` (7) + `session-start.test.ts` (5) + manual verification.
 
-**Placeholder scan:** sem TBD/TODO; todo passo traz código completo.
+**Placeholder scan:** no TBD/TODO; every step brings complete code.
 
-**Type consistency:** `Fields`/`readState`/`formatFields` definidos na Task 1 e consumidos pelo bash da Task 2 via contrato `CHAVE=valor`; `Phase` reusado de context-brain; chaves emitidas (`BRAIN`, `CONTEXT_NAME`, `COORDINATOR`, `PHASE_*`, `REPOS`) idênticas entre `formatFields` (Task 1) e os `get` do bash (Task 2).
+**Type consistency:** `Fields`/`readState`/`formatFields` defined in Task 1 and consumed by the Task 2 bash via the `KEY=value` contract; `Phase` reused from context-brain; emitted keys (`BRAIN`, `CONTEXT_NAME`, `COORDINATOR`, `PHASE_*`, `REPOS`) identical between `formatFields` (Task 1) and the bash `get` (Task 2).
