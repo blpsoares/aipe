@@ -2,6 +2,13 @@ import type { ContextInput, ValidationError, ValidationResult } from "./types";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const GIT_URL = /^(git@[\w.-]+:[\w./-]+\.git|https?:\/\/[\w.-]+\/[\w./-]+?(?:\.git)?)$/;
+const RELATIVE_PATH = /^\.\/[^/]+(?:\/[^/]+)*$/;
+
+function isValidRelativePath(path: string): boolean {
+  if (!RELATIVE_PATH.test(path)) return false;
+  const segments = path.slice(2).split("/");
+  return segments.every((segment) => segment !== "..");
+}
 
 export function validateContext(input: ContextInput): ValidationResult {
   const errors: ValidationError[] = [];
@@ -45,8 +52,11 @@ export function validateContext(input: ContextInput): ValidationResult {
     const path = repo.path?.trim() ?? "";
     if (!path) {
       errors.push({ field: `${at}.path`, message: "path é obrigatório" });
-    } else if (!path.startsWith("./")) {
-      errors.push({ field: `${at}.path`, message: "path deve ser relativo ao workspace (começar com ./)" });
+    } else if (!isValidRelativePath(path)) {
+      errors.push({
+        field: `${at}.path`,
+        message: "path deve ser relativo ao workspace (começar com ./ e sem segmentos vazios ou ..)",
+      });
     } else if (seenPaths.has(path)) {
       errors.push({ field: `${at}.path`, message: `path duplicado: ${path}` });
     } else {

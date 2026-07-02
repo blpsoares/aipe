@@ -4,7 +4,14 @@ import type { ContextInput } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
-  return i >= 0 ? args[i + 1] : undefined;
+  if (i < 0) return undefined;
+  const value = args[i + 1];
+  if (value === undefined || value.startsWith("--")) return undefined;
+  return value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function main(): Promise<number> {
@@ -12,8 +19,21 @@ async function main(): Promise<number> {
   const inputPath = getFlag(args, "--input");
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
 
-  const raw = inputPath ? await Bun.file(inputPath).text() : await Bun.stdin.text();
-  const input = JSON.parse(raw) as ContextInput;
+  let parsed: unknown;
+  try {
+    const raw = inputPath ? await Bun.file(inputPath).text() : await Bun.stdin.text();
+    parsed = JSON.parse(raw);
+  } catch {
+    console.log("ERRO input: JSON inválido");
+    return 1;
+  }
+
+  if (!isPlainObject(parsed)) {
+    console.log("ERRO input: esperado um objeto ContextInput");
+    return 1;
+  }
+
+  const input = parsed as unknown as ContextInput;
 
   const result = await initContextBrain(input, workspace);
   if (!result.ok) {
@@ -27,4 +47,9 @@ async function main(): Promise<number> {
   return 0;
 }
 
-main().then((code) => process.exit(code));
+main()
+  .then((code) => process.exit(code))
+  .catch((err) => {
+    console.log(`ERRO ${err}`);
+    process.exit(1);
+  });

@@ -62,3 +62,23 @@ test("aceita url https com .git", () => {
   const r = validateContext({ ...base, repos: [{ name: "x", url: "https://github.com/o/x.git", path: "./x" }] });
   expect(r.ok).toBe(true);
 });
+
+test("rejeita path './' (sem segmento)", () => {
+  const r = validateContext({ ...base, repos: [{ name: "x", url: "git@github.com:o/x.git", path: "./" }] });
+  expect(r.ok).toBe(false);
+});
+
+test("rejeita path './/x' (segmento vazio)", () => {
+  const r = validateContext({ ...base, repos: [{ name: "x", url: "git@github.com:o/x.git", path: ".//x" }] });
+  expect(r.ok).toBe(false);
+});
+
+test("rejeita path './../foo' (traversal)", () => {
+  const r = validateContext({ ...base, repos: [{ name: "x", url: "git@github.com:o/x.git", path: "./../foo" }] });
+  expect(r.ok).toBe(false);
+});
+
+test("aceita path './sub/dir'", () => {
+  const r = validateContext({ ...base, repos: [{ name: "x", url: "git@github.com:o/x.git", path: "./sub/dir" }] });
+  expect(r.ok).toBe(true);
+});

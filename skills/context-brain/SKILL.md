@@ -18,7 +18,8 @@ gravação ao CLI tipado, que valida e serializa.
 2. **Colete os dados, uma pergunta por vez:**
    - Nome do **contexto** (slug: minúsculas, números, hífens — vira `aipe-<nome>`).
    - Nome do **coordenador** (como o PE quer te chamar).
-   - Os **repositórios**: para cada um, `name`, `url` (git@ ou https .git) e `path`
+   - Os **repositórios**: para cada um, `name`, `url` (git@, ou https com `.git`
+     opcional) e `path`
      relativo (começando com `./`). `stack` é opcional — só preencha se o PE souber;
      senão deixe de fora (será preenchido em fases posteriores). O PE pode colar uma
      lista de uma vez.
