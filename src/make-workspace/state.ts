@@ -16,7 +16,7 @@ export async function updateWorkspacePhase(workspaceDir: string, phase: Phase): 
       state = { phase: { ...state.phase, ...parsed.phase } };
     }
   } catch {
-    // sem state prévio: parte do default
+    // no previous state: start from default
   }
 
   state.phase.workspace = phase;

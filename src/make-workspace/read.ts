@@ -12,11 +12,11 @@ function isNonEmptyString(v: unknown): v is string {
 }
 
 function validateRepo(repo: unknown, index: number): string | null {
-  if (typeof repo !== "object" || repo === null) return `repos[${index}]: esperado objeto`;
+  if (typeof repo !== "object" || repo === null) return `repos[${index}]: expected object`;
   const r = repo as Record<string, unknown>;
-  if (!isNonEmptyString(r.name)) return `repos[${index}].name: obrigatório`;
-  if (!isNonEmptyString(r.url)) return `repos[${index}].url: obrigatório`;
-  if (!isNonEmptyString(r.path)) return `repos[${index}].path: obrigatório`;
+  if (!isNonEmptyString(r.name)) return `repos[${index}].name: required`;
+  if (!isNonEmptyString(r.url)) return `repos[${index}].url: required`;
+  if (!isNonEmptyString(r.path)) return `repos[${index}].path: required`;
   return null;
 }
 
@@ -26,28 +26,28 @@ export async function readBrain(workspaceDir: string): Promise<ReadBrainResult> 
   try {
     raw = await readFile(brainPath, "utf8");
   } catch {
-    return { ok: false, error: `brain.yaml não encontrado em ${brainPath}. Rode /context-brain primeiro.` };
+    return { ok: false, error: `brain.yaml not found at ${brainPath}. Run /context-brain first.` };
   }
 
   let parsed: unknown;
   try {
     parsed = parse(raw);
   } catch {
-    return { ok: false, error: "brain.yaml: YAML inválido" };
+    return { ok: false, error: "brain.yaml: invalid YAML" };
   }
 
   if (typeof parsed !== "object" || parsed === null) {
-    return { ok: false, error: "brain.yaml: esperado um objeto" };
+    return { ok: false, error: "brain.yaml: expected an object" };
   }
   const obj = parsed as Record<string, unknown>;
 
   const context = obj.context as Record<string, unknown> | undefined;
   if (!context || !isNonEmptyString(context.name) || !isNonEmptyString(context.coordinator)) {
-    return { ok: false, error: "brain.yaml: context.name/context.coordinator obrigatórios" };
+    return { ok: false, error: "brain.yaml: context.name/context.coordinator required" };
   }
 
   if (!Array.isArray(obj.repos) || obj.repos.length === 0) {
-    return { ok: false, error: "brain.yaml: repos ausente ou vazio" };
+    return { ok: false, error: "brain.yaml: repos missing or empty" };
   }
   for (let i = 0; i < obj.repos.length; i++) {
     const err = validateRepo(obj.repos[i], i);

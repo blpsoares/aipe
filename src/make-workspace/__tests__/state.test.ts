@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { parse, stringify } from "yaml";
 import { updateWorkspacePhase } from "../state";
 
-test("atualiza workspace preservando as outras fases", async () => {
+test("updates workspace while preserving the other phases", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-st-"));
   try {
     await mkdir(join(dir, ".aipe"), { recursive: true });
@@ -25,7 +25,7 @@ test("atualiza workspace preservando as outras fases", async () => {
   }
 });
 
-test("cria state a partir do default se ausente", async () => {
+test("creates state from the default when missing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-st-"));
   try {
     const statePath = await updateWorkspacePhase(dir, "pending");
