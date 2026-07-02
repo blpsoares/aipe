@@ -33,7 +33,7 @@ async function makeWs(state?: unknown, withBrain = true): Promise<string> {
   return dir;
 }
 
-test("estado 1: sem brain → orienta /context-brain, JSON válido", async () => {
+test("state 1: no brain → points to /context-brain, valid JSON", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-ss-"));
   try {
     const out = await runHook(dir);
@@ -45,11 +45,11 @@ test("estado 1: sem brain → orienta /context-brain, JSON válido", async () =>
   }
 });
 
-test("estado 2: onboarding incompleto → próximo passo /make-workspace", async () => {
+test("state 2: incomplete onboarding → next step /make-workspace", async () => {
   const dir = await makeWs({ phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
-    expect(ctx).toContain("configuração");
+    expect(ctx).toContain("being configured");
     expect(ctx).toContain("/make-workspace");
     expect(ctx).toContain("Nicolas");
   } finally {
@@ -57,34 +57,34 @@ test("estado 2: onboarding incompleto → próximo passo /make-workspace", async
   }
 });
 
-test("estado 3: tudo done → coordenador pleno com repos", async () => {
+test("state 3: everything done → full coordinator with repos", async () => {
   const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
-    expect(ctx).toContain("Você É Nicolas");
+    expect(ctx).toContain("You ARE Nicolas");
     expect(ctx).toContain("embark");
-    expect(ctx).toContain("Pronto para receber demandas");
+    expect(ctx).toContain("Ready to receive requests");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("opt-out presente em todos os estados", async () => {
+test("opt-out present in every state", async () => {
   const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
-    expect(ctx).toContain("sair do modo AIPe");
+    expect(ctx).toContain("exit AIPe mode");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("CLAUDE_PROJECT_DIR vazio → {} (defesa)", async () => {
+test("CLAUDE_PROJECT_DIR empty → {} (defensive)", async () => {
   const out = await runHook("");
   expect(out).toBe("{}");
 });
 
-test("brain.yaml com caractere de controle C0 embutido → JSON emitido ainda é válido", async () => {
+test("brain.yaml with embedded C0 control character → emitted JSON is still valid", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-ss-"));
   try {
     await mkdir(join(dir, ".aipe"), { recursive: true });
