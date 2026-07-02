@@ -168,11 +168,14 @@ Registradas aqui para não se perderem — cada uma vira spec própria no seu ci
 2. **`/make-workspace`** — **clone-only:** materializa os repos do brain na máquina.
    Ver spec próprio `2026-07-01-make-workspace-design.md`. O setup de worktree por
    jornada **saiu do escopo** desta skill (virou o sub-projeto 3 abaixo).
-3. **Hook de injeção de contexto (`SessionStart`)** — sub-projeto **fundacional**. Ao
-   abrir sessão num `aipe-<contexto>/` (plugin em escopo de pasta), lê `.aipe/`
-   (`brain.yaml` + `state.yaml`) e injeta a "consciência" do coordenador: nome,
-   contexto, repos, fase do pipeline, próximo passo. **Ativo por padrão** (opt-out
-   explícito). É o que faz o AIPe "ser" um contexto, não só executáveis.
+3. **Hook de injeção de contexto (`SessionStart`)** — sub-projeto **fundacional**. Ver
+   spec próprio `2026-07-02-session-hook-design.md`. Ao abrir sessão num
+   `aipe-<contexto>/` (plugin em escopo de pasta, dispara só na raiz), lê `.aipe/` e
+   injeta **um único bloco** com a "consciência" do coordenador, em 3 estados dirigidos
+   pelo `state.yaml` (sem brain → `/context-brain`; onboarding incompleto → guia de
+   setup; tudo done → coordenador pleno). **Ativo por padrão**, opt-out só conversacional
+   (por sessão). Bash orquestra + emite; Bun parseia o YAML. É o que faz o AIPe "ser" um
+   contexto, não só executáveis.
 4. **Worktree-por-jornada** — sub-projeto fundacional: isolamento por worktree para
    jornadas paralelas (convenção `<repo>/.worktrees/<jornada-id>-<especialista>/`).
 5. **`/relationship`** — fan-out de agentes read-only descobrindo relações entre repos;
