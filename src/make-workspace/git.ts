@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import type { Cloner, Inspector, RepoInspection } from "./clone";
 
 async function run(cmd: string[], cwd?: string): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -17,8 +17,15 @@ export const realInspect: Inspector = async (absPath: string): Promise<RepoInspe
   } catch {
     return { exists: false, isGitRepo: false };
   }
-  const inside = await run(["git", "-C", absPath, "rev-parse", "--is-inside-work-tree"]);
-  if (inside.code !== 0 || inside.stdout !== "true") {
+  const toplevel = await run(["git", "-C", absPath, "rev-parse", "--show-toplevel"]);
+  if (toplevel.code !== 0) {
+    return { exists: true, isGitRepo: false };
+  }
+  const [normalizedAbsPath, normalizedToplevel] = await Promise.all([
+    realpath(absPath),
+    realpath(toplevel.stdout),
+  ]);
+  if (normalizedToplevel !== normalizedAbsPath) {
     return { exists: true, isGitRepo: false };
   }
   const remote = await run(["git", "-C", absPath, "remote", "get-url", "origin"]);
