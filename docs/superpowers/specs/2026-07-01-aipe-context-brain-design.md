@@ -164,14 +164,23 @@ Registradas aqui para não se perderem — cada uma vira spec própria no seu ci
 
 ## 7. Roadmap (sub-projetos, cada um com seu próprio ciclo spec → plano → impl.)
 
-1. **`/context-brain`** — *(este spec)* fundação factual.
-2. **`/make-workspace`** — clone inicial + setup de worktree por jornada (possíveis
-   dois modos).
-3. **`/relationship`** — fan-out de agentes read-only descobrindo relações entre repos;
-   coordenador sintetiza e documenta. É um caso legítimo de workflow.
-4. **`/context-brain-generator`** — gera as skills-persona (formato dois-modos),
+1. **`/context-brain`** — fundação factual. **(FEITO, mergeado em main 2026-07-01.)**
+2. **`/make-workspace`** — **clone-only:** materializa os repos do brain na máquina.
+   Ver spec próprio `2026-07-01-make-workspace-design.md`. O setup de worktree por
+   jornada **saiu do escopo** desta skill (virou o sub-projeto 3 abaixo).
+3. **Hook de injeção de contexto (`SessionStart`)** — sub-projeto **fundacional**. Ao
+   abrir sessão num `aipe-<contexto>/` (plugin em escopo de pasta), lê `.aipe/`
+   (`brain.yaml` + `state.yaml`) e injeta a "consciência" do coordenador: nome,
+   contexto, repos, fase do pipeline, próximo passo. **Ativo por padrão** (opt-out
+   explícito). É o que faz o AIPe "ser" um contexto, não só executáveis.
+4. **Worktree-por-jornada** — sub-projeto fundacional: isolamento por worktree para
+   jornadas paralelas (convenção `<repo>/.worktrees/<jornada-id>-<especialista>/`).
+5. **`/relationship`** — fan-out de agentes read-only descobrindo relações entre repos;
+   coordenador sintetiza e documenta. É um caso legítimo de workflow. Também **preenche
+   `stack`** de volta no brain (resolve a 1ª questão em aberto §8).
+6. **`/context-brain-generator`** — gera as skills-persona (formato dois-modos),
    incluindo especialista-stack e qa-dedicado.
-5. **`/aipe-add-repo`** (incremental) — adiciona um repo novo, remapeia só as relações
+7. **`/aipe-add-repo`** (incremental) — adiciona um repo novo, remapeia só as relações
    afetadas e gera/atualiza o especialista, sem reescrever o brain na mão. Empresas só
    crescem; escrever à mão não escala.
 
@@ -179,8 +188,9 @@ Registradas aqui para não se perderem — cada uma vira spec própria no seu ci
 
 ## 8. Questões em aberto
 
-- Detecção automática de `stack` (quando o código estiver presente): quem preenche o
-  brain de volta — `/make-workspace` ou `/relationship`?
+- ~~Detecção automática de `stack`: quem preenche o brain de volta?~~ **Resolvido:** a
+  `/relationship` preenche (ela já lê o código a fundo). A `/make-workspace` fica
+  clone-only.
 - Formato exato de `personas.yaml` e do "brief de contratação" (o objeto que o
   coordenador entrega ao especialista): será desenhado no ciclo do
   `/context-brain-generator`.
