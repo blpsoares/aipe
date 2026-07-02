@@ -1,0 +1,43 @@
+# AIPe Dossier
+
+A durable, version-controlled record of **how AIPe was built** — every sub-project,
+step by step. Specs describe *what* to build and plans describe *how*; this dossier
+captures the **narrative of execution and review**: the decisions taken (and why), what
+each implementation step delivered, what code review caught, how it was fixed, and the
+final verified state. It exists so the whole journey can later feed a documentation
+site, an architecture overview, and onboarding material.
+
+## Convention (applies to every session, including future ones)
+
+When a sub-project (or a distinct phase) is completed, add or update a dossier entry
+before the working ledger is discarded. Each entry records, in order:
+
+1. **Decisions** — the questions raised during brainstorming and the choices made,
+   with the reasoning.
+2. **Plan** — the task breakdown.
+3. **Execution** — what each task delivered.
+4. **Review** — findings from task reviews and the final whole-branch review:
+   Important/Critical issues fixed, and Minor issues consciously accepted (with why).
+5. **Final state** — merge commit and test/type-check evidence.
+
+Every artifact in this repository — code, comments, strings, specs, plans, skills, the
+hook, docs, and commit messages — is written in **English**. (Interaction with the PE
+may happen in another language, but the repository is English-only.)
+
+## Index
+
+| # | Sub-project | Status | Entry |
+|---|---|---|---|
+| 1 | `/context-brain` — factual map of a context | Merged | [01-context-brain.md](01-context-brain.md) |
+| 2 | `/make-workspace` — clone the repos | Merged | [02-make-workspace.md](02-make-workspace.md) |
+| 3 | `SessionStart` hook — coordinator context injection | Merged | [03-session-hook.md](03-session-hook.md) |
+
+### Roadmap (not yet built)
+
+- Worktree-per-journey (foundational)
+- `/relationship` — cross-repo relationship discovery (also backfills `stack`)
+- `/context-brain-generator` — persona skills
+- `/aipe-add-repo` — incremental repo addition
+
+See the foundation design at
+`docs/superpowers/specs/2026-07-01-aipe-context-brain-design.md`.
