@@ -97,6 +97,23 @@ test("brain malformado (YAML inválido) degrada para absent, sem lançar", async
   }
 });
 
+test("formatFields sanea caracteres de controle C0 arbitrários (não só CR/LF/TAB)", async () => {
+  const raw = 'context:\n  name: "op\\u000Bvibes"\n  coordinator: "Nic\\u000Bolas"\nrepos: []\n';
+  const dir = await ws(undefined, undefined, raw);
+  try {
+    const f = await readState(dir);
+    // biome-ignore lint: precisa testar caracteres de controle C0 explicitamente
+    expect(/[\x00-\x1f]/.test(f.contextName)).toBe(false);
+    // biome-ignore lint: precisa testar caracteres de controle C0 explicitamente
+    expect(/[\x00-\x1f]/.test(f.coordinator)).toBe(false);
+    const out = formatFields(f);
+    expect(out).toContain("CONTEXT_NAME=op vibes");
+    expect(out).toContain("COORDINATOR=Nic olas");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("formatFields sanea quebras de linha e serializa CHAVE=valor", async () => {
   const dir = await ws({ context: { name: "op\nvibes", coordinator: "Nic" }, repos: [{ name: "a", url: "u", path: "./a" }] }, doneState);
   try {

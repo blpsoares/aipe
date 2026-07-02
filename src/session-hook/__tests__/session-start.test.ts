@@ -83,3 +83,23 @@ test("CLAUDE_PROJECT_DIR vazio → {} (defesa)", async () => {
   const out = await runHook("");
   expect(out).toBe("{}");
 });
+
+test("brain.yaml com caractere de controle C0 embutido → JSON emitido ainda é válido", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-ss-"));
+  try {
+    await mkdir(join(dir, ".aipe"), { recursive: true });
+    const raw = 'context:\n  name: "opvibes"\n  coordinator: "Nic\\u000Bolas"\nrepos:\n  - name: embark\n    url: git@github.com:opvibes/embark.git\n    path: ./embark\n';
+    await writeFile(join(dir, ".aipe", "brain.yaml"), raw, "utf8");
+    await writeFile(
+      join(dir, ".aipe", "state.yaml"),
+      stringify({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } }),
+      "utf8",
+    );
+    const out = await runHook(dir);
+    expect(() => JSON.parse(out)).not.toThrow();
+    const ctx = JSON.parse(out).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain("Nic olas");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

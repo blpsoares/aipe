@@ -13,7 +13,7 @@ function getFlag(args: string[], name: string): string | undefined {
 }
 
 function sanitize(v: string): string {
-  return v.replace(/[\r\n\t]+/g, " ").trim();
+  return v.replace(/[\x00-\x1f]+/g, " ").trim();
 }
 
 function isPhase(v: unknown): v is Phase {
