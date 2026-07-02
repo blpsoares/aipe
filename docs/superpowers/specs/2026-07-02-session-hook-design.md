@@ -81,8 +81,12 @@ O "próximo passo" é derivado da **primeira** fase `pending` na ordem do pipeli
 > Modo AIPe ativo por padrão. Se o PE pedir explicitamente para sair do modo AIPe,
 > pare de seguir estas instruções nesta sessão.
 
-**Sem `.aipe/` nenhum** (não deveria ocorrer com plugin em escopo de pasta, mas por
-robustez): o hook sai limpo sem injetar (`{}`).
+**Nota sobre o estado 1 (bootstrap):** o disparo do hook já significa que a pasta é um
+workspace AIPe (o plugin em escopo de pasta só dispara onde foi habilitado). Logo, a
+**ausência de `brain.yaml` — com ou sem a pasta `.aipe/`** — é o estado 1: a primeira
+sessão, antes do `/context-brain`. O hook injeta o estado 1 nesse caso; não fica em
+silêncio. O no-op `{}` fica reservado apenas para a defesa em que o workspace é
+indeterminável (`$CLAUDE_PROJECT_DIR` vazio).
 
 ---
 
@@ -104,10 +108,13 @@ src/session-hook/
 - **`hooks/hooks.json`** — aponta `SessionStart` para `session-start` via
   `$CLAUDE_PLUGIN_ROOT`.
 - **`hooks/session-start`** (bash) — o entrypoint. Passos:
-  1. Se `$CLAUDE_PROJECT_DIR/.aipe/` não existe → emite `{}` e sai 0.
+  1. Determina o workspace: `$CLAUDE_PROJECT_DIR` (fallback `$PWD`). Se indeterminável
+     (vazio) → emite `{}` e sai 0 (defesa).
   2. Chama `bun $CLAUDE_PLUGIN_ROOT/src/session-hook/read-state.ts --workspace
-     $CLAUDE_PROJECT_DIR`, que devolve campos shell-friendly (ver abaixo).
-  3. Decide o estado (1/2/3) a partir dos campos.
+     $CLAUDE_PROJECT_DIR`, que devolve campos shell-friendly (ver abaixo). Se o bun
+     falhar, os campos vêm vazios → tratado como estado 1.
+  3. Decide o estado (1/2/3) a partir dos campos: `BRAIN=absent` → estado 1; presente com
+     alguma fase ≠ `done` → estado 2; todas `done` → estado 3.
   4. Monta o texto do bloco e o emite como `hookSpecificOutput.additionalContext`,
      com escaping de JSON (mesma técnica do `session-start` do superpowers:
      substituições de barra/aspas/quebras via parameter expansion).
@@ -139,8 +146,9 @@ parsing em bash.
 
 ## 5. Erros & robustez
 
-- **Sem `.aipe/`:** saída vazia (`{}`), zero ruído.
-- **`brain.yaml` ausente:** estado 1 ("rode `/context-brain`").
+- **`$CLAUDE_PROJECT_DIR` vazio/indeterminável:** saída vazia (`{}`), defesa.
+- **`brain.yaml` ausente (com ou sem `.aipe/`):** estado 1 ("rode `/context-brain`") —
+  é o bootstrap normal da primeira sessão.
 - **`brain.yaml` editado à mão com aspas/comentários/estilo flow:** o parse via pacote
   `yaml` (no Bun) absorve — é justamente por isso que o parse não é feito em bash.
 - **`brain.yaml`/`state.yaml` malformado a ponto de não parsear:** `read-state.ts`
