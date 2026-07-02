@@ -73,6 +73,52 @@ test("brain ausente → ok:false, state não é tocado", async () => {
   }
 });
 
+test("falha de inspeção em um repo não aborta o batch → status error para ele, phase pending", async () => {
+  const dir = await ws();
+  try {
+    const inspect: Inspector = async (absPath) => {
+      if (absPath.includes("prontuario")) throw new Error("realpath falhou");
+      return { exists: false, isGitRepo: false };
+    };
+    const clone: Cloner = async () => ({ ok: true });
+    const result = await makeWorkspace(dir, { inspect, clone });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.results.map((r) => r.name)).toEqual(["embark", "prontuario"]);
+      const prontuario = result.results.find((r) => r.name === "prontuario");
+      const embark = result.results.find((r) => r.name === "embark");
+      expect(prontuario?.status).toBe("error");
+      expect(embark?.status).toBe("cloned");
+      expect(result.phase).toBe("pending");
+    }
+    const state = parse(await readFile(join(dir, ".aipe", "state.yaml"), "utf8"));
+    expect(state.phase.workspace).toBe("pending");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("skipped conta como sucesso → phase done com mix cloned/skipped", async () => {
+  const dir = await ws();
+  try {
+    const inspect: Inspector = async (absPath) => {
+      if (absPath.includes("prontuario")) {
+        return { exists: true, isGitRepo: true, remote: "git@github.com:opvibes/prontuario.git" };
+      }
+      return { exists: false, isGitRepo: false };
+    };
+    const clone: Cloner = async () => ({ ok: true });
+    const result = await makeWorkspace(dir, { inspect, clone });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.phase).toBe("done");
+      expect(result.results.map((r) => r.status)).toEqual(["cloned", "skipped"]);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("brain.yaml não é modificado pela execução", async () => {
   const dir = await ws();
   try {

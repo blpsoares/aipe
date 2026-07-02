@@ -16,7 +16,11 @@ export async function makeWorkspace(
 
   const results: RepoResult[] = [];
   for (const repo of brainResult.brain.repos) {
-    results.push(await materializeRepo(repo, workspaceDir, deps.inspect, deps.clone));
+    try {
+      results.push(await materializeRepo(repo, workspaceDir, deps.inspect, deps.clone));
+    } catch (err) {
+      results.push({ name: repo.name, status: "error", message: String(err) });
+    }
   }
 
   const phase: WorkspacePhase = results.every((r) => r.status !== "error") ? "done" : "pending";
