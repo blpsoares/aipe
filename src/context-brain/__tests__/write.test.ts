@@ -11,13 +11,13 @@ const brain: BrainFile = {
   repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark", stack: ["typescript", "bun"] }],
 };
 
-test("initialState marca brain como done e o resto pending", () => {
+test("initialState marks brain as done and the rest as pending", () => {
   expect(initialState()).toEqual({
     phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" },
   });
 });
 
-test("grava brain.yaml e state.yaml em .aipe e são YAML válidos", async () => {
+test("writes brain.yaml and state.yaml in .aipe and they are valid YAML", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const { brainPath, statePath } = await writeBrainFiles(dir, brain);

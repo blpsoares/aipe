@@ -24,12 +24,12 @@ async function main(): Promise<number> {
     const raw = inputPath ? await Bun.file(inputPath).text() : await Bun.stdin.text();
     parsed = JSON.parse(raw);
   } catch {
-    console.log("ERRO input: JSON inválido");
+    console.log("ERROR input: invalid JSON");
     return 1;
   }
 
   if (!isPlainObject(parsed)) {
-    console.log("ERRO input: esperado um objeto ContextInput");
+    console.log("ERROR input: expected a ContextInput object");
     return 1;
   }
 
@@ -38,7 +38,7 @@ async function main(): Promise<number> {
   const result = await initContextBrain(input, workspace);
   if (!result.ok) {
     for (const e of result.errors) {
-      console.log(`ERRO ${e.field}: ${e.message}`);
+      console.log(`ERROR ${e.field}: ${e.message}`);
     }
     return 1;
   }
@@ -50,6 +50,6 @@ async function main(): Promise<number> {
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    console.log(`ERRO ${err}`);
+    console.log(`ERROR ${err}`);
     process.exit(1);
   });

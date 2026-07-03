@@ -1,200 +1,201 @@
 # AIPe — AI Product Engineer
 
-**Data:** 2026-07-01
-**Status:** Design aprovado (fundação) — spec focado na `/context-brain`
+**Date:** 2026-07-01
+**Status:** Design approved (foundation) — spec focused on `/context-brain`
 
 ---
 
-## 1. Visão
+## 1. Vision
 
-AIPe é um framework (distribuído como **plugin** do Claude Code) que transforma o
-Claude num **coordenador geral** de engenharia e o usuário num **Product Engineer
-(PE)**. O PE traz demandas (bugs, features, tarefas de escopos e repos diferentes);
-o coordenador decompõe, distribui para **especialistas** que trabalham em paralelo,
-e devolve entregas (PRs) — sempre respeitando as relações entre os repos.
+AIPe is a framework (distributed as a Claude Code **plugin**) that turns
+Claude into a **general engineering coordinator** and the user into a **Product Engineer
+(PE)**. The PE brings demands (bugs, features, tasks spanning different scopes and repos);
+the coordinator decomposes them, distributes them to **specialists** who work in parallel,
+and returns deliverables (PRs) — always respecting the relationships between the repos.
 
-A analogia central é a de uma **empresa**:
+The central analogy is that of a **company**:
 
-| Papel | Quem é | Mecânica real |
+| Role | Who it is | Real mechanics |
 |---|---|---|
-| **PE** | O usuário. CEO/Product: define missão, prioridade, aprova orçamento, decide cross-repo. | Usuário no comando, aprovando entre fases |
-| **Coordenador** | O Claude principal. Gerente/Head: recebe demanda, decompõe, contrata, revisa, escala. Tem **nome** definido pelo PE. | Workflow + o loop principal lendo resultados |
-| **RH** | Trava de contratação: valida vaga contra teto e disponibilidade. | Função de política aplicada antes de abrir agente |
-| **Especialistas (PJ)** | Devs contratados por tarefa. Escopo isolado, não tocam outro repo, escalam pra cima. Têm **nomes**. | Subagentes (`agent()`) disparados pelo coordenador |
+| **PE** | The user. CEO/Product: defines mission, priority, approves budget, decides cross-repo matters. | User in command, approving between phases |
+| **Coordinator** | The main Claude. Manager/Head: receives demand, decomposes it, hires, reviews, escalates. Has a **name** set by the PE. | Workflow + the main loop reading results |
+| **HR** | Hiring gate: validates a job opening against the ceiling and availability. | Policy function applied before spinning up an agent |
+| **Specialists (contractors)** | Devs hired per task. Isolated scope, don't touch other repos, escalate upward. Have **names**. | Subagents (`agent()`) dispatched by the coordinator |
 
 ---
 
-## 2. Terminologia
+## 2. Terminology
 
-- **Contexto / time** — um agrupamento de repos que pertencem ao mesmo time/empresa.
-- **Workspace** — a pasta-guarda-chuva de um contexto, na raiz do usuário, nomeada
-  `aipe-<contexto>` (ex: `aipe-opvibes`). É onde a sessão é aberta com o plugin AIPe
-  instalado no **escopo de pasta**, e onde vivem os artefatos de contexto e os repos.
-- **Jornada** — uma sessão de expediente do PE com um coordenador. Pode haver várias
-  jornadas em paralelo; por isso o trabalho roda em **worktrees** isolados.
-- **Brain file** — o mapa factual do contexto (repos, URLs, paths, stacks).
-- **Especialista / persona** — um "dev" com nome, materializado como skill instalada
-  **dentro do repo** que ele domina.
+- **Context / team** — a grouping of repos that belong to the same team/company.
+- **Workspace** — the umbrella folder of a context, in the user's home directory, named
+  `aipe-<context>` (e.g. `aipe-opvibes`). It's where the session is opened with the AIPe
+  plugin installed at **folder scope**, and where the context artifacts and repos live.
+- **Journey** — a work session between the PE and a coordinator. There can be several
+  journeys in parallel; that's why work runs in isolated **worktrees**.
+- **Brain file** — the factual map of the context (repos, URLs, paths, stacks).
+- **Specialist / persona** — a "dev" with a name, materialized as a skill installed
+  **inside the repo** it owns.
 
 ---
 
-## 3. Modelo de persistência (híbrido)
+## 3. Persistence model (hybrid)
 
-Artefatos têm naturezas diferentes e moram em lugares diferentes:
+Artifacts have different natures and live in different places:
 
 ```
-aipe-<contexto>/                    ← workspace (raiz do usuário, plugin em escopo de pasta)
+aipe-<context>/                     ← workspace (user's home dir, plugin at folder scope)
   ├── .aipe/
-  │    ├── brain.yaml               ← mapa (URLs, paths, stacks)      [cross-repo]
-  │    ├── relations/               ← saída da /relationship          [cross-repo]
-  │    ├── personas.yaml            ← registro (coordenador + PJs)     [cross-repo]
-  │    └── state.yaml               ← fase do onboarding
-  ├── <repo-a>/                     ← clonado pelo /make-workspace
-  │    └── .claude/skills/<joaquim>/  ← skill-persona instalada NO repo
+  │    ├── brain.yaml               ← map (URLs, paths, stacks)         [cross-repo]
+  │    ├── relations/               ← output of /relationship           [cross-repo]
+  │    ├── personas.yaml            ← registry (coordinator + contractors) [cross-repo]
+  │    └── state.yaml               ← onboarding phase
+  ├── <repo-a>/                     ← cloned by /make-workspace
+  │    └── .claude/skills/<joaquim>/  ← persona skill installed IN the repo
   └── <repo-b>/
        └── .claude/skills/<maria>/
 ```
 
-- **Artefatos de contexto** (brain, relations, personas, state) → `.aipe/` no workspace.
-- **Skills-persona** → dentro de cada repo, para que abrir uma sessão direto no repo
-  carregue automaticamente a persona daquele especialista.
-- **O plugin AIPe** (as skills `/context-brain`, `/make-workspace`, etc.) é a
-  *ferramenta*; os artefatos acima são os *dados* que ela produz.
+- **Context artifacts** (brain, relations, personas, state) → `.aipe/` in the workspace.
+- **Persona skills** → inside each repo, so that opening a session directly in the repo
+  automatically loads that specialist's persona.
+- **The AIPe plugin** (the `/context-brain`, `/make-workspace`, etc. skills) is the
+  *tool*; the artifacts above are the *data* it produces.
 
 ---
 
-## 4. Pipeline de onboarding (ordem por dependência de dados)
+## 4. Onboarding pipeline (ordered by data dependency)
 
 ```
-1. /context-brain          → URLs + paths + stacks (sem clonar)      [não precisa de código]
-2. /make-workspace (clone) → materializa os repos na máquina          [precisa das URLs do brain]
-3. /relationship           → dispara N agentes que LEEM o código,
-                             cada um descobre relações do seu repo,
-                             coordenador SINTETIZA e documenta         [precisa dos repos presentes]
-4. /context-brain-generator → gera skills-persona                     [precisa de stacks + relações]
+1. /context-brain          → URLs + paths + stacks (no cloning)       [no code needed]
+2. /make-workspace (clone) → materializes the repos on the machine     [needs the brain's URLs]
+3. /relationship           → fans out N agents that READ the code,
+                             each discovers relations for its repo,
+                             coordinator SYNTHESIZES and documents      [needs the repos present]
+4. /context-brain-generator → generates persona skills                 [needs stacks + relations]
 ```
 
-Concluídas as 4 etapas, o "onboarding do coordenador" está completo e começa o
-**expediente** (jornadas / sessões N).
+Once the 4 steps are complete, the "coordinator onboarding" is done and the
+**work sessions** (journeys / sessions N) begin.
 
 ---
 
-## 5. `/context-brain` — spec detalhado (sub-projeto atual)
+## 5. `/context-brain` — detailed spec (current sub-project)
 
-### Propósito
-Produzir o **brain file**: o mapa factual de um contexto, gravado em
-`<workspace>/.aipe/brain.yaml`. É só conhecimento — **não clona, não analisa código**.
-É a fonte de verdade que as outras 3 skills leem.
+### Purpose
+Produce the **brain file**: the factual map of a context, written to
+`<workspace>/.aipe/brain.yaml`. It's purely knowledge — **no cloning, no code analysis**.
+It's the source of truth the other 3 skills read.
 
-### Entrada (interativa)
-A skill roda de forma conversacional e **o PE declara** os repos:
-1. Pergunta o **nome do contexto** (`context.name`).
-2. Pergunta o **nome do coordenador** (`context.coordinator`).
-3. Recebe os **repos** (URL + path pretendido). O PE pode colar uma lista.
-4. **Valida** o que dá sem clonar (URL bem formada, paths sem colisão).
-5. Grava `brain.yaml` e inicializa `state.yaml`.
+### Input (interactive)
+The skill runs conversationally and **the PE declares** the repos:
+1. Asks for the **context name** (`context.name`).
+2. Asks for the **coordinator name** (`context.coordinator`).
+3. Receives the **repos** (URL + intended path). The PE can paste a list.
+4. **Validates** whatever is possible without cloning (well-formed URL, non-colliding paths).
+5. Writes `brain.yaml` and initializes `state.yaml`.
 
-### Formato — `brain.yaml`
+### Format — `brain.yaml`
 ```yaml
 context:
-  name: opvibes          # nome do contexto/time
-  coordinator: Nicolas   # nome que o PE deu ao coordenador
+  name: opvibes          # context/team name
+  coordinator: Nicolas   # name the PE gave the coordinator
 repos:
   - name: embark
     url: git@github.com:opvibes/embark.git
-    path: ./embark         # relativo ao workspace (portátil entre máquinas)
-    stack: [typescript, bun]   # opcional aqui; preenchido depois se desconhecido
+    path: ./embark         # relative to the workspace (portable across machines)
+    stack: [typescript, bun]   # optional at this stage; filled in later if unknown
   - name: prontuario
     url: git@github.com:opvibes/prontuario.git
     path: ./prontuario
 ```
 
-**Escolha de formato: YAML** — porque o PE vai querer abrir e editar na mão
-(adicionar repo, corrigir path). `stack` é opcional nesta fase: detecção real de stack
-exige o código presente, então pode ser declarada pelo PE ou preenchida no
-clone/relationship.
+**Format choice: YAML** — because the PE will want to open and edit it by hand
+(add a repo, fix a path). `stack` is optional at this phase: real stack detection
+requires the code to be present, so it can either be declared by the PE or filled in
+during clone/relationship.
 
-### Estado — `state.yaml`
+### State — `state.yaml`
 ```yaml
 phase:
   brain: done
-  workspace: pending      # clone ainda não rodou
+  workspace: pending      # clone hasn't run yet
   relationship: pending
   generator: pending
 ```
-Qualquer sessão futura lê isso e sabe "onde o coordenador parou". O disparo de cada
-fase continua sendo um ato deliberado do PE (controle + custo).
+Any future session reads this and knows "where the coordinator left off." Triggering
+each phase remains a deliberate act by the PE (control + cost).
 
-### Convenção de nome do workspace
-`aipe-<context.name>` (ex: `aipe-opvibes`). Amarra ao framework, herda o nome do
-contexto, é curto e ordenável.
-
----
-
-## 6. Decisões de design já fechadas (para as fases seguintes)
-
-Registradas aqui para não se perderem — cada uma vira spec própria no seu ciclo.
-
-- **Isolamento por worktree:** toda jornada trabalha em worktrees; jornadas paralelas
-  não colidem. Convenção sugerida:
-  `<repo>/.worktrees/<jornada-id>-<especialista>/`.
-- **Conflito de mesmo repo = trava física:** tasks no mesmo repo **serializam** (ou
-  worktrees separados); repos diferentes rodam em paralelo à vontade. É a única lei
-  que o coordenador não pode quebrar.
-- **Pool de especialistas (modelo "PJ"):** teto de **16 simultâneos** (limite real de
-  concorrência da ferramenta). O especialista **solicita** mais PJs ao coordenador; o
-  coordenador **analisa** se a demanda justifica (5? 2? nenhum?) e o **RH** valida
-  contra o teto e o custo. Contratação cara sobe pro PE.
-- **Persona em dois modos:** a skill-persona precisa funcionar como (A) **subagente**
-  disparado pelo coordenador e (B) **persona interativa** — o Claude principal
-  "vestindo" a persona ao abrir sessão no repo, para pair direto com o PE.
-- **Arquivo de progresso por task:** pasta-padrão de scratchpad por task/especialista,
-  contexto de trabalho **descartável**, deletado na resolução final. **Regra de
-  guardrail:** nada irreversível vive só nele — a entrega real é o **PR + histórico
-  git**.
-- **Entrega:** o especialista **sempre abre o PR final**.
-- **Registro de personas:** guarda nome do coordenador + nomes dos especialistas por
-  área/repo. Na criação, o PE informa quantos nomes quiser; os que faltarem são
-  gerados aleatoriamente e salvos.
-- **Persona + skills de terceiros (SDD/PDD/superpowers):** carga por ordem — a
-  skill-persona carrega primeiro (estabelece o contexto), depois a skill de terceiro
-  (ex: `/speckit-specify`) opera dentro desse contexto. **A validar em protótipo.**
+### Workspace naming convention
+`aipe-<context.name>` (e.g. `aipe-opvibes`). Ties it to the framework, inherits the
+context's name, is short and sortable.
 
 ---
 
-## 7. Roadmap (sub-projetos, cada um com seu próprio ciclo spec → plano → impl.)
+## 6. Design decisions already settled (for the next phases)
 
-1. **`/context-brain`** — fundação factual. **(FEITO, mergeado em main 2026-07-01.)**
-2. **`/make-workspace`** — **clone-only:** materializa os repos do brain na máquina.
-   Ver spec próprio `2026-07-01-make-workspace-design.md`. O setup de worktree por
-   jornada **saiu do escopo** desta skill (virou o sub-projeto 3 abaixo).
-3. **Hook de injeção de contexto (`SessionStart`)** — sub-projeto **fundacional**. Ver
-   spec próprio `2026-07-02-session-hook-design.md`. Ao abrir sessão num
-   `aipe-<contexto>/` (plugin em escopo de pasta, dispara só na raiz), lê `.aipe/` e
-   injeta **um único bloco** com a "consciência" do coordenador, em 3 estados dirigidos
-   pelo `state.yaml` (sem brain → `/context-brain`; onboarding incompleto → guia de
-   setup; tudo done → coordenador pleno). **Ativo por padrão**, opt-out só conversacional
-   (por sessão). Bash orquestra + emite; Bun parseia o YAML. É o que faz o AIPe "ser" um
-   contexto, não só executáveis.
-4. **Worktree-por-jornada** — sub-projeto fundacional: isolamento por worktree para
-   jornadas paralelas (convenção `<repo>/.worktrees/<jornada-id>-<especialista>/`).
-5. **`/relationship`** — fan-out de agentes read-only descobrindo relações entre repos;
-   coordenador sintetiza e documenta. É um caso legítimo de workflow. Também **preenche
-   `stack`** de volta no brain (resolve a 1ª questão em aberto §8).
-6. **`/context-brain-generator`** — gera as skills-persona (formato dois-modos),
-   incluindo especialista-stack e qa-dedicado.
-7. **`/aipe-add-repo`** (incremental) — adiciona um repo novo, remapeia só as relações
-   afetadas e gera/atualiza o especialista, sem reescrever o brain na mão. Empresas só
-   crescem; escrever à mão não escala.
+Recorded here so they don't get lost — each one becomes its own spec in its cycle.
+
+- **Isolation by worktree:** every journey works in worktrees; parallel journeys
+  don't collide. Suggested convention:
+  `<repo>/.worktrees/<journey-id>-<specialist>/`.
+- **Same-repo conflict = physical lock:** tasks in the same repo **serialize** (or
+  use separate worktrees); different repos run in parallel freely. It's the one law
+  the coordinator can't break.
+- **Specialist pool (contractor model):** ceiling of **16 concurrent** (the tool's real
+  concurrency limit). The specialist **requests** more contractors from the coordinator;
+  the coordinator **analyzes** whether the demand justifies it (5? 2? none?) and **HR**
+  validates against the ceiling and the cost. Expensive hires escalate to the PE.
+- **Persona in two modes:** the persona skill needs to work both as (A) a **subagent**
+  dispatched by the coordinator and (B) an **interactive persona** — the main Claude
+  "wearing" the persona when opening a session in the repo, to pair directly with the PE.
+- **Per-task progress file:** a standard scratchpad folder per task/specialist,
+  **disposable** working context, deleted once resolved. **Guardrail rule:**
+  nothing irreversible lives only there — the real deliverable is the **PR + git
+  history**.
+- **Delivery:** the specialist **always opens the final PR**.
+- **Persona registry:** stores the coordinator's name + specialists' names by
+  area/repo. On creation, the PE provides as many names as they want; the missing
+  ones are generated randomly and saved.
+- **Persona + third-party skills (SDD/PDD/superpowers):** load order — the
+  persona skill loads first (establishes the context), then the third-party skill
+  (e.g. `/speckit-specify`) operates within that context. **To be validated in a
+  prototype.**
 
 ---
 
-## 8. Questões em aberto
+## 7. Roadmap (sub-projects, each with its own spec → plan → impl. cycle)
 
-- ~~Detecção automática de `stack`: quem preenche o brain de volta?~~ **Resolvido:** a
-  `/relationship` preenche (ela já lê o código a fundo). A `/make-workspace` fica
-  clone-only.
-- Formato exato de `personas.yaml` e do "brief de contratação" (o objeto que o
-  coordenador entrega ao especialista): será desenhado no ciclo do
-  `/context-brain-generator`.
-- Protótipo da carga persona + skill de terceiro (ordem de carregamento).
+1. **`/context-brain`** — factual foundation. **(DONE, merged into main 2026-07-01.)**
+2. **`/make-workspace`** — **clone-only:** materializes the brain's repos on the
+   machine. See its own spec `2026-07-01-make-workspace-design.md`. Per-journey
+   worktree setup is **out of scope** for this skill (became sub-project 3 below).
+3. **Context-injection hook (`SessionStart`)** — **foundational** sub-project. See
+   its own spec `2026-07-02-session-hook-design.md`. When opening a session in an
+   `aipe-<context>/` (plugin at folder scope, only triggers at the root), it reads
+   `.aipe/` and injects **a single block** with the coordinator's "awareness," in 3
+   states driven by `state.yaml` (no brain → `/context-brain`; incomplete onboarding →
+   setup guide; everything done → full coordinator). **On by default**, opt-out is
+   conversational only (per session). Bash orchestrates + emits; Bun parses the YAML.
+   This is what makes AIPe "be" a context, not just executables.
+4. **Worktree-per-journey** — foundational sub-project: worktree isolation for
+   parallel journeys (convention `<repo>/.worktrees/<journey-id>-<specialist>/`).
+5. **`/relationship`** — fan-out of read-only agents discovering relations between
+   repos; coordinator synthesizes and documents. It's a legitimate workflow case. Also
+   **fills `stack`** back into the brain (resolves the 1st open question in §8).
+6. **`/context-brain-generator`** — generates the persona skills (two-mode format),
+   including stack-specialists and a dedicated QA.
+7. **`/aipe-add-repo`** (incremental) — adds a new repo, remaps only the affected
+   relations and generates/updates the specialist, without hand-rewriting the brain.
+   Companies only grow; hand-writing doesn't scale.
+
+---
+
+## 8. Open questions
+
+- ~~Automatic `stack` detection: who fills the brain back in?~~ **Resolved:**
+  `/relationship` fills it in (it already reads the code in depth).
+  `/make-workspace` stays clone-only.
+- Exact format of `personas.yaml` and the "hiring brief" (the object the
+  coordinator hands to the specialist): will be designed in the
+  `/context-brain-generator` cycle.
+- Prototype of the persona + third-party skill load (loading order).

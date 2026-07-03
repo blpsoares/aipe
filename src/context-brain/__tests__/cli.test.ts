@@ -29,7 +29,7 @@ async function runCliRaw(rawInput: string, workspace: string) {
   return { exitCode, stdout };
 }
 
-test("CLI grava os arquivos e sai com 0 em input válido", async () => {
+test("CLI writes the files and exits 0 on valid input", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const { exitCode, stdout } = await runCli(
@@ -47,7 +47,7 @@ test("CLI grava os arquivos e sai com 0 em input válido", async () => {
   }
 });
 
-test("CLI sai com 1 e imprime erros em input inválido", async () => {
+test("CLI exits 1 and prints errors on invalid input", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const { exitCode, stdout } = await runCli(
@@ -55,29 +55,29 @@ test("CLI sai com 1 e imprime erros em input inválido", async () => {
       dir,
     );
     expect(exitCode).toBe(1);
-    expect(stdout).toContain("ERRO repos:");
+    expect(stdout).toContain("ERROR repos:");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("CLI sai com 1 e imprime ERRO input: para JSON malformado", async () => {
+test("CLI exits 1 and prints ERROR input: for malformed JSON", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const { exitCode, stdout } = await runCliRaw("{ not json", dir);
     expect(exitCode).toBe(1);
-    expect(stdout).toContain("ERRO input:");
+    expect(stdout).toContain("ERROR input:");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("CLI sai com 1 e imprime ERRO input: para JSON top-level null", async () => {
+test("CLI exits 1 and prints ERROR input: for top-level null JSON", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const { exitCode, stdout } = await runCliRaw("null", dir);
     expect(exitCode).toBe(1);
-    expect(stdout).toContain("ERRO input:");
+    expect(stdout).toContain("ERROR input:");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
