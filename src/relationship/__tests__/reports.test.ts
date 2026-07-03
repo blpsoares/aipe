@@ -55,3 +55,39 @@ test("returns an empty list when the directory does not exist", async () => {
   const reports = await readReports("/tmp/aipe-does-not-exist-ever");
   expect(reports).toEqual([]);
 });
+
+test("rejects a report whose relations contain an out-of-enum type", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-rel-"));
+  try {
+    await writeFile(
+      join(dir, "bad-type.json"),
+      JSON.stringify({
+        repo: "x",
+        stack: [],
+        relations: [{ to: "x", type: "depends-on", detail: "d", evidence: "e" }],
+      }),
+    );
+    const reports = await readReports(dir);
+    expect(reports).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("rejects a report whose relations element is missing a required field", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-rel-"));
+  try {
+    await writeFile(
+      join(dir, "bad-shape.json"),
+      JSON.stringify({
+        repo: "x",
+        stack: [],
+        relations: [{ to: "x", type: "imports", detail: "d" }],
+      }),
+    );
+    const reports = await readReports(dir);
+    expect(reports).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
