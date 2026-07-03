@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { BrainFile } from "../types";
 
-test("BrainFile aceita um contexto bem-formado", () => {
+test("BrainFile accepts a well-formed context", () => {
   const brain: BrainFile = {
     context: { name: "opvibes", coordinator: "Nicolas" },
     repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark" }],

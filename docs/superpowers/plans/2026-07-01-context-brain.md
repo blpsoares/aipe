@@ -2,20 +2,20 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Construir a skill `/context-brain` do AIPe: coleta interativa do contexto (repos de um time) e gravação determinística de `.aipe/brain.yaml` + `.aipe/state.yaml`.
+**Goal:** Build AIPe's `/context-brain` skill: interactive collection of context (a team's repos) and deterministic writing of `.aipe/brain.yaml` + `.aipe/state.yaml`.
 
-**Architecture:** A skill separa duas responsabilidades. A **camada conversacional** (`SKILL.md`) coleta os dados do PE (nome do contexto, nome do coordenador, lista de repos). A **camada determinística** é um CLI em Bun/TypeScript que recebe os dados coletados como JSON, **valida** (URLs, paths, duplicidade) e **serializa** para YAML bem-formado. O modelo nunca escreve YAML à mão — isso elimina alucinação de formato.
+**Architecture:** The skill separates two responsibilities. The **conversational layer** (`SKILL.md`) collects data from the PE (context name, coordinator name, list of repos). The **deterministic layer** is a Bun/TypeScript CLI that receives the collected data as JSON, **validates** it (URLs, paths, duplicates) and **serializes** it to well-formed YAML. The model never writes YAML by hand — this eliminates format hallucination.
 
-**Tech Stack:** Bun, TypeScript (strict), pacote `yaml` para serialização, `bun test` para testes.
+**Tech Stack:** Bun, TypeScript (strict), the `yaml` package for serialization, `bun test` for tests.
 
 ## Global Constraints
 
-- **Runtime:** Bun. Todos os scripts rodam com `bun`; testes com `bun test`.
-- **TypeScript strict:** `strict: true` no tsconfig. Sem `any` implícito.
-- **Idioma:** mensagens ao usuário (validação, prompts da skill) em **português**. Commits em português, Conventional Commits.
-- **Formato de saída:** YAML, gravado em `<workspace>/.aipe/`. `brain.yaml` e `state.yaml`.
-- **Convenção de workspace:** a pasta do contexto chama-se `aipe-<context.name>`; `context.name` é um slug (minúsculas, números, hífens).
-- **Paths dos repos:** relativos ao workspace, começando com `./`.
+- **Runtime:** Bun. All scripts run with `bun`; tests with `bun test`.
+- **TypeScript strict:** `strict: true` in tsconfig. No implicit `any`.
+- **Language:** user-facing messages (validation, skill prompts) in **English**. Commits in English, Conventional Commits.
+- **Output format:** YAML, written to `<workspace>/.aipe/`. `brain.yaml` and `state.yaml`.
+- **Workspace naming convention:** the context folder is named `aipe-<context.name>`; `context.name` is a slug (lowercase, numbers, hyphens).
+- **Repo paths:** relative to the workspace, starting with `./`.
 
 ---
 
@@ -23,16 +23,16 @@
 
 ```
 ~/aipe/
-  package.json                              # projeto Bun + deps (yaml, @types/bun)
+  package.json                              # Bun project + deps (yaml, @types/bun)
   tsconfig.json                             # TS strict
-  .claude-plugin/plugin.json                # manifesto do plugin AIPe
-  skills/context-brain/SKILL.md             # skill interativa (camada conversacional)
+  .claude-plugin/plugin.json                # AIPe plugin manifest
+  skills/context-brain/SKILL.md             # interactive skill (conversational layer)
   src/context-brain/
-    types.ts                                # tipos: BrainFile, RepoEntry, StateFile, ContextInput, ValidationResult
+    types.ts                                # types: BrainFile, RepoEntry, StateFile, ContextInput, ValidationResult
     validate.ts                             # validateContext(input): ValidationResult
     write.ts                                # writeBrainFiles(dir, brain), initialState()
-    init.ts                                 # initContextBrain(input, dir): InitResult  (valida + grava)
-    cli.ts                                  # entry: lê JSON (arquivo/stdin) → initContextBrain → imprime resultado
+    init.ts                                 # initContextBrain(input, dir): InitResult  (validates + writes)
+    cli.ts                                  # entry point: reads JSON (file/stdin) → initContextBrain → prints result
     __tests__/
       validate.test.ts
       write.test.ts
@@ -40,17 +40,17 @@
       cli.test.ts
 ```
 
-Responsabilidade por arquivo:
-- `types.ts` — contrato único de tipos, importado por todos os outros.
-- `validate.ts` — regras puras, sem I/O. Fácil de testar.
-- `write.ts` — I/O de disco (mkdir + serialização YAML). Sem regras de negócio.
-- `init.ts` — orquestra validate → write. É a API pública do módulo.
-- `cli.ts` — parsing de argumentos/stdin. Fino; delega a `init.ts`.
-- `SKILL.md` — conversa com o PE, monta o JSON, chama o CLI, trata erros de validação.
+Responsibility per file:
+- `types.ts` — single type contract, imported by everything else.
+- `validate.ts` — pure rules, no I/O. Easy to test.
+- `write.ts` — disk I/O (mkdir + YAML serialization). No business rules.
+- `init.ts` — orchestrates validate → write. It's the module's public API.
+- `cli.ts` — argument/stdin parsing. Thin; delegates to `init.ts`.
+- `SKILL.md` — talks to the PE, assembles the JSON, calls the CLI, handles validation errors.
 
 ---
 
-## Task 1: Scaffold do projeto + tipos
+## Task 1: Project scaffold + types
 
 **Files:**
 - Create: `package.json`, `tsconfig.json`
@@ -58,16 +58,16 @@ Responsabilidade por arquivo:
 - Test: `src/context-brain/__tests__/types.test.ts`
 
 **Interfaces:**
-- Produces: os tipos `RepoEntry`, `ContextMeta`, `BrainFile`, `StateFile`, `ContextInput`, `ValidationError`, `ValidationResult` — consumidos por todas as tasks seguintes.
+- Produces: the types `RepoEntry`, `ContextMeta`, `BrainFile`, `StateFile`, `ContextInput`, `ValidationError`, `ValidationResult` — consumed by every following task.
 
-- [ ] **Step 1: Inicializar o projeto Bun e dependências**
+- [ ] **Step 1: Initialize the Bun project and dependencies**
 
 Run:
 ```bash
 cd ~/aipe && bun init -y && bun add yaml && bun add -d @types/bun
 ```
 
-- [ ] **Step 2: Escrever `tsconfig.json`**
+- [ ] **Step 2: Write `tsconfig.json`**
 
 ```json
 {
@@ -85,7 +85,7 @@ cd ~/aipe && bun init -y && bun add yaml && bun add -d @types/bun
 }
 ```
 
-- [ ] **Step 3: Escrever os tipos em `src/context-brain/types.ts`**
+- [ ] **Step 3: Write the types in `src/context-brain/types.ts`**
 
 ```typescript
 export interface RepoEntry {
@@ -131,13 +131,13 @@ export type ValidationResult =
   | { ok: false; errors: ValidationError[] };
 ```
 
-- [ ] **Step 4: Escrever um teste de sanidade em `src/context-brain/__tests__/types.test.ts`**
+- [ ] **Step 4: Write a sanity test in `src/context-brain/__tests__/types.test.ts`**
 
 ```typescript
 import { expect, test } from "bun:test";
 import type { BrainFile } from "../types";
 
-test("BrainFile aceita um contexto bem-formado", () => {
+test("BrainFile accepts a well-formed context", () => {
   const brain: BrainFile = {
     context: { name: "opvibes", coordinator: "Nicolas" },
     repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark" }],
@@ -146,7 +146,7 @@ test("BrainFile aceita um contexto bem-formado", () => {
 });
 ```
 
-- [ ] **Step 5: Rodar o teste**
+- [ ] **Step 5: Run the test**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/types.test.ts`
 Expected: PASS (1 test)
@@ -154,22 +154,22 @@ Expected: PASS (1 test)
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/aipe && git add -A && git commit -m "chore: scaffold do projeto bun e tipos da context-brain"
+cd ~/aipe && git add -A && git commit -m "chore: scaffold bun project and context-brain types"
 ```
 
 ---
 
-## Task 2: Validação
+## Task 2: Validation
 
 **Files:**
 - Create: `src/context-brain/validate.ts`
 - Test: `src/context-brain/__tests__/validate.test.ts`
 
 **Interfaces:**
-- Consumes: `ContextInput`, `ValidationResult`, `ValidationError` de `types.ts`.
+- Consumes: `ContextInput`, `ValidationResult`, `ValidationError` from `types.ts`.
 - Produces: `validateContext(input: ContextInput): ValidationResult`.
 
-- [ ] **Step 1: Escrever os testes que falham em `src/context-brain/__tests__/validate.test.ts`**
+- [ ] **Step 1: Write the failing tests in `src/context-brain/__tests__/validate.test.ts`**
 
 ```typescript
 import { expect, test } from "bun:test";
@@ -181,36 +181,36 @@ const base: ContextInput = {
   repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark" }],
 };
 
-test("aceita um input válido", () => {
+test("accepts a valid input", () => {
   expect(validateContext(base)).toEqual({ ok: true });
 });
 
-test("rejeita nome de contexto que não é slug", () => {
+test("rejects a context name that is not a slug", () => {
   const r = validateContext({ ...base, context: { name: "Op Vibes", coordinator: "Nicolas" } });
   expect(r.ok).toBe(false);
 });
 
-test("rejeita coordenador vazio", () => {
+test("rejects an empty coordinator", () => {
   const r = validateContext({ ...base, context: { name: "opvibes", coordinator: "" } });
   expect(r.ok).toBe(false);
 });
 
-test("rejeita lista de repos vazia", () => {
+test("rejects an empty repo list", () => {
   const r = validateContext({ ...base, repos: [] });
   expect(r.ok).toBe(false);
 });
 
-test("rejeita url de repo inválida", () => {
+test("rejects an invalid repo url", () => {
   const r = validateContext({ ...base, repos: [{ name: "x", url: "not-a-url", path: "./x" }] });
   expect(r.ok).toBe(false);
 });
 
-test("rejeita path que não começa com ./", () => {
+test("rejects a path that does not start with ./", () => {
   const r = validateContext({ ...base, repos: [{ name: "x", url: "git@github.com:o/x.git", path: "x" }] });
   expect(r.ok).toBe(false);
 });
 
-test("rejeita nomes de repo duplicados", () => {
+test("rejects duplicate repo names", () => {
   const r = validateContext({
     ...base,
     repos: [
@@ -221,7 +221,7 @@ test("rejeita nomes de repo duplicados", () => {
   expect(r.ok).toBe(false);
 });
 
-test("rejeita paths duplicados", () => {
+test("rejects duplicate paths", () => {
   const r = validateContext({
     ...base,
     repos: [
@@ -232,18 +232,18 @@ test("rejeita paths duplicados", () => {
   expect(r.ok).toBe(false);
 });
 
-test("aceita url https com .git", () => {
+test("accepts an https url with .git", () => {
   const r = validateContext({ ...base, repos: [{ name: "x", url: "https://github.com/o/x.git", path: "./x" }] });
   expect(r.ok).toBe(true);
 });
 ```
 
-- [ ] **Step 2: Rodar os testes para confirmar que falham**
+- [ ] **Step 2: Run the tests to confirm they fail**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/validate.test.ts`
 Expected: FAIL ("Cannot find module '../validate'")
 
-- [ ] **Step 3: Implementar `src/context-brain/validate.ts`**
+- [ ] **Step 3: Implement `src/context-brain/validate.ts`**
 
 ```typescript
 import type { ContextInput, ValidationError, ValidationResult } from "./types";
@@ -256,18 +256,18 @@ export function validateContext(input: ContextInput): ValidationResult {
 
   const name = input.context?.name?.trim() ?? "";
   if (!name) {
-    errors.push({ field: "context.name", message: "nome do contexto é obrigatório" });
+    errors.push({ field: "context.name", message: "context name is required" });
   } else if (!SLUG.test(name)) {
-    errors.push({ field: "context.name", message: "use minúsculas, números e hífens (vira aipe-<nome>)" });
+    errors.push({ field: "context.name", message: "use lowercase letters, numbers and hyphens (becomes aipe-<name>)" });
   }
 
   if (!input.context?.coordinator?.trim()) {
-    errors.push({ field: "context.coordinator", message: "nome do coordenador é obrigatório" });
+    errors.push({ field: "context.coordinator", message: "coordinator name is required" });
   }
 
   const repos = input.repos ?? [];
   if (repos.length === 0) {
-    errors.push({ field: "repos", message: "informe ao menos um repositório" });
+    errors.push({ field: "repos", message: "provide at least one repository" });
   }
 
   const seenNames = new Set<string>();
@@ -276,27 +276,27 @@ export function validateContext(input: ContextInput): ValidationResult {
     const at = `repos[${i}]`;
     const rName = repo.name?.trim() ?? "";
     if (!rName) {
-      errors.push({ field: `${at}.name`, message: "nome do repo é obrigatório" });
+      errors.push({ field: `${at}.name`, message: "repo name is required" });
     } else if (seenNames.has(rName)) {
-      errors.push({ field: `${at}.name`, message: `nome duplicado: ${rName}` });
+      errors.push({ field: `${at}.name`, message: `duplicate name: ${rName}` });
     } else {
       seenNames.add(rName);
     }
 
     const url = repo.url?.trim() ?? "";
     if (!url) {
-      errors.push({ field: `${at}.url`, message: "url é obrigatória" });
+      errors.push({ field: `${at}.url`, message: "url is required" });
     } else if (!GIT_URL.test(url)) {
-      errors.push({ field: `${at}.url`, message: `url inválida: ${url}` });
+      errors.push({ field: `${at}.url`, message: `invalid url: ${url}` });
     }
 
     const path = repo.path?.trim() ?? "";
     if (!path) {
-      errors.push({ field: `${at}.path`, message: "path é obrigatório" });
+      errors.push({ field: `${at}.path`, message: "path is required" });
     } else if (!path.startsWith("./")) {
-      errors.push({ field: `${at}.path`, message: "path deve ser relativo ao workspace (começar com ./)" });
+      errors.push({ field: `${at}.path`, message: "path must be relative to the workspace (start with ./)" });
     } else if (seenPaths.has(path)) {
-      errors.push({ field: `${at}.path`, message: `path duplicado: ${path}` });
+      errors.push({ field: `${at}.path`, message: `duplicate path: ${path}` });
     } else {
       seenPaths.add(path);
     }
@@ -306,7 +306,7 @@ export function validateContext(input: ContextInput): ValidationResult {
 }
 ```
 
-- [ ] **Step 4: Rodar os testes para confirmar que passam**
+- [ ] **Step 4: Run the tests to confirm they pass**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/validate.test.ts`
 Expected: PASS (9 tests)
@@ -314,22 +314,22 @@ Expected: PASS (9 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe && git add -A && git commit -m "feat: validação do input da context-brain"
+cd ~/aipe && git add -A && git commit -m "feat: validate context-brain input"
 ```
 
 ---
 
-## Task 3: Gravação dos arquivos YAML
+## Task 3: Writing the YAML files
 
 **Files:**
 - Create: `src/context-brain/write.ts`
 - Test: `src/context-brain/__tests__/write.test.ts`
 
 **Interfaces:**
-- Consumes: `BrainFile`, `StateFile` de `types.ts`; `stringify` de `yaml`.
-- Produces: `initialState(): StateFile` e `writeBrainFiles(workspaceDir: string, brain: BrainFile): Promise<{ brainPath: string; statePath: string }>`.
+- Consumes: `BrainFile`, `StateFile` from `types.ts`; `stringify` from `yaml`.
+- Produces: `initialState(): StateFile` and `writeBrainFiles(workspaceDir: string, brain: BrainFile): Promise<{ brainPath: string; statePath: string }>`.
 
-- [ ] **Step 1: Escrever os testes que falham em `src/context-brain/__tests__/write.test.ts`**
+- [ ] **Step 1: Write the failing tests in `src/context-brain/__tests__/write.test.ts`**
 
 ```typescript
 import { expect, test } from "bun:test";
@@ -345,13 +345,13 @@ const brain: BrainFile = {
   repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark", stack: ["typescript", "bun"] }],
 };
 
-test("initialState marca brain como done e o resto pending", () => {
+test("initialState marks brain as done and the rest as pending", () => {
   expect(initialState()).toEqual({
     phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" },
   });
 });
 
-test("grava brain.yaml e state.yaml em .aipe e são YAML válidos", async () => {
+test("writes brain.yaml and state.yaml in .aipe and they are valid YAML", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const { brainPath, statePath } = await writeBrainFiles(dir, brain);
@@ -370,12 +370,12 @@ test("grava brain.yaml e state.yaml em .aipe e são YAML válidos", async () => 
 });
 ```
 
-- [ ] **Step 2: Rodar os testes para confirmar que falham**
+- [ ] **Step 2: Run the tests to confirm they fail**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/write.test.ts`
 Expected: FAIL ("Cannot find module '../write'")
 
-- [ ] **Step 3: Implementar `src/context-brain/write.ts`**
+- [ ] **Step 3: Implement `src/context-brain/write.ts`**
 
 ```typescript
 import { mkdir, writeFile } from "node:fs/promises";
@@ -403,7 +403,7 @@ export async function writeBrainFiles(
 }
 ```
 
-- [ ] **Step 4: Rodar os testes para confirmar que passam**
+- [ ] **Step 4: Run the tests to confirm they pass**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/write.test.ts`
 Expected: PASS (2 tests)
@@ -411,23 +411,23 @@ Expected: PASS (2 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe && git add -A && git commit -m "feat: gravação de brain.yaml e state.yaml"
+cd ~/aipe && git add -A && git commit -m "feat: write brain.yaml and state.yaml"
 ```
 
 ---
 
-## Task 4: Orquestração (validate + write)
+## Task 4: Orchestration (validate + write)
 
 **Files:**
 - Create: `src/context-brain/init.ts`
 - Test: `src/context-brain/__tests__/init.test.ts`
 
 **Interfaces:**
-- Consumes: `validateContext` de `validate.ts`; `writeBrainFiles` de `write.ts`; `ContextInput` de `types.ts`.
-- Produces: `initContextBrain(input: ContextInput, workspaceDir: string): Promise<InitResult>` onde
+- Consumes: `validateContext` from `validate.ts`; `writeBrainFiles` from `write.ts`; `ContextInput` from `types.ts`.
+- Produces: `initContextBrain(input: ContextInput, workspaceDir: string): Promise<InitResult>` where
   `InitResult = { ok: true; brainPath: string; statePath: string } | { ok: false; errors: ValidationError[] }`.
 
-- [ ] **Step 1: Escrever os testes que falham em `src/context-brain/__tests__/init.test.ts`**
+- [ ] **Step 1: Write the failing tests in `src/context-brain/__tests__/init.test.ts`**
 
 ```typescript
 import { expect, test } from "bun:test";
@@ -442,7 +442,7 @@ const valid: ContextInput = {
   repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark" }],
 };
 
-test("input inválido retorna erros e não grava nada", async () => {
+test("invalid input returns errors and writes nothing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const r = await initContextBrain({ ...valid, repos: [] }, dir);
@@ -453,7 +453,7 @@ test("input inválido retorna erros e não grava nada", async () => {
   }
 });
 
-test("input válido grava os arquivos e retorna os paths", async () => {
+test("valid input writes the files and returns the paths", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const r = await initContextBrain(valid, dir);
@@ -468,12 +468,12 @@ test("input válido grava os arquivos e retorna os paths", async () => {
 });
 ```
 
-- [ ] **Step 2: Rodar os testes para confirmar que falham**
+- [ ] **Step 2: Run the tests to confirm they fail**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/init.test.ts`
 Expected: FAIL ("Cannot find module '../init'")
 
-- [ ] **Step 3: Implementar `src/context-brain/init.ts`**
+- [ ] **Step 3: Implement `src/context-brain/init.ts`**
 
 ```typescript
 import type { ContextInput, ValidationError } from "./types";
@@ -500,7 +500,7 @@ export async function initContextBrain(
 }
 ```
 
-- [ ] **Step 4: Rodar os testes para confirmar que passam**
+- [ ] **Step 4: Run the tests to confirm they pass**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/init.test.ts`
 Expected: PASS (2 tests)
@@ -508,7 +508,7 @@ Expected: PASS (2 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe && git add -A && git commit -m "feat: orquestração initContextBrain (valida + grava)"
+cd ~/aipe && git add -A && git commit -m "feat: initContextBrain orchestration (validate + write)"
 ```
 
 ---
@@ -520,10 +520,10 @@ cd ~/aipe && git add -A && git commit -m "feat: orquestração initContextBrain 
 - Test: `src/context-brain/__tests__/cli.test.ts`
 
 **Interfaces:**
-- Consumes: `initContextBrain` de `init.ts`; `ContextInput` de `types.ts`.
-- Comportamento: `bun src/context-brain/cli.ts --input <arquivo.json> --workspace <dir>`. Se `--workspace` for omitido, usa `process.cwd()`. Lê o JSON do arquivo (`--input`) ou de stdin se `--input` ausente. Em sucesso, imprime linhas `OK brain=<path>` e `OK state=<path>` e sai com código 0. Em erro de validação, imprime cada erro como `ERRO <field>: <message>` e sai com código 1.
+- Consumes: `initContextBrain` from `init.ts`; `ContextInput` from `types.ts`.
+- Behavior: `bun src/context-brain/cli.ts --input <file.json> --workspace <dir>`. If `--workspace` is omitted, uses `process.cwd()`. Reads the JSON from the file (`--input`) or from stdin if `--input` is absent. On success, prints lines `OK brain=<path>` and `OK state=<path>` and exits with code 0. On validation error, prints each error as `ERROR <field>: <message>` and exits with code 1.
 
-- [ ] **Step 1: Escrever o teste que falha em `src/context-brain/__tests__/cli.test.ts`**
+- [ ] **Step 1: Write the failing test in `src/context-brain/__tests__/cli.test.ts`**
 
 ```typescript
 import { expect, test } from "bun:test";
@@ -545,7 +545,7 @@ async function runCli(inputJson: unknown, workspace: string) {
   return { exitCode, stdout };
 }
 
-test("CLI grava os arquivos e sai com 0 em input válido", async () => {
+test("CLI writes the files and exits 0 on valid input", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const { exitCode, stdout } = await runCli(
@@ -563,7 +563,7 @@ test("CLI grava os arquivos e sai com 0 em input válido", async () => {
   }
 });
 
-test("CLI sai com 1 e imprime erros em input inválido", async () => {
+test("CLI exits 1 and prints errors on invalid input", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const { exitCode, stdout } = await runCli(
@@ -571,19 +571,19 @@ test("CLI sai com 1 e imprime erros em input inválido", async () => {
       dir,
     );
     expect(exitCode).toBe(1);
-    expect(stdout).toContain("ERRO repos:");
+    expect(stdout).toContain("ERROR repos:");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 ```
 
-- [ ] **Step 2: Rodar o teste para confirmar que falha**
+- [ ] **Step 2: Run the test to confirm it fails**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/cli.test.ts`
-Expected: FAIL ("Cannot find module '../cli'" ou processo sem saída esperada)
+Expected: FAIL ("Cannot find module '../cli'" or process without the expected output)
 
-- [ ] **Step 3: Implementar `src/context-brain/cli.ts`**
+- [ ] **Step 3: Implement `src/context-brain/cli.ts`**
 
 ```typescript
 #!/usr/bin/env bun
@@ -606,7 +606,7 @@ async function main(): Promise<number> {
   const result = await initContextBrain(input, workspace);
   if (!result.ok) {
     for (const e of result.errors) {
-      console.log(`ERRO ${e.field}: ${e.message}`);
+      console.log(`ERROR ${e.field}: ${e.message}`);
     }
     return 1;
   }
@@ -618,100 +618,100 @@ async function main(): Promise<number> {
 main().then((code) => process.exit(code));
 ```
 
-- [ ] **Step 4: Rodar o teste para confirmar que passa**
+- [ ] **Step 4: Run the test to confirm it passes**
 
 Run: `cd ~/aipe && bun test src/context-brain/__tests__/cli.test.ts`
 Expected: PASS (2 tests)
 
-- [ ] **Step 5: Rodar a suíte inteira**
+- [ ] **Step 5: Run the full suite**
 
 Run: `cd ~/aipe && bun test`
-Expected: PASS (todos os testes das tasks 1-5)
+Expected: PASS (all tests from tasks 1-5)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/aipe && git add -A && git commit -m "feat: cli da context-brain"
+cd ~/aipe && git add -A && git commit -m "feat: context-brain cli"
 ```
 
 ---
 
-## Task 6: Skill interativa + manifesto do plugin
+## Task 6: Interactive skill + plugin manifest
 
 **Files:**
 - Create: `skills/context-brain/SKILL.md`
 - Create: `.claude-plugin/plugin.json`
 
 **Interfaces:**
-- Consumes: o CLI `src/context-brain/cli.ts` (contrato da Task 5).
-- Produces: a skill invocável `/context-brain` e o manifesto do plugin AIPe.
+- Consumes: the CLI `src/context-brain/cli.ts` (Task 5's contract).
+- Produces: the invocable `/context-brain` skill and the AIPe plugin manifest.
 
-- [ ] **Step 1: Escrever o manifesto `.claude-plugin/plugin.json`**
+- [ ] **Step 1: Write the manifest `.claude-plugin/plugin.json`**
 
 ```json
 {
   "name": "aipe",
   "version": "0.1.0",
-  "description": "AI Product Engineer — coordenador geral de engenharia multi-repo"
+  "description": "AI Product Engineer — general multi-repo engineering coordinator"
 }
 ```
 
-- [ ] **Step 2: Escrever a skill `skills/context-brain/SKILL.md`**
+- [ ] **Step 2: Write the skill `skills/context-brain/SKILL.md`**
 
 ````markdown
 ---
 name: context-brain
-description: Use no onboarding de um contexto/time AIPe para mapear os repositórios (URLs, paths, stacks) e gravar .aipe/brain.yaml + .aipe/state.yaml. Não clona nem analisa código — só registra o conhecimento factual.
+description: Use during onboarding of an AIPe context/team to map the repositories (URLs, paths, stacks) and write .aipe/brain.yaml + .aipe/state.yaml. Does not clone or analyze code — only records factual knowledge.
 ---
 
 # /context-brain
 
-Coleta interativa do contexto de um time e gravação determinística do brain file.
-Você (coordenador) NÃO escreve o YAML à mão — coleta os dados do PE e delega a
-gravação ao CLI tipado, que valida e serializa.
+Interactive collection of a team's context and deterministic writing of the brain file.
+You (coordinator) do NOT write the YAML by hand — collect the data from the PE and delegate
+the writing to the typed CLI, which validates and serializes it.
 
-## Fluxo
+## Flow
 
-1. **Confirme o workspace.** O brain é gravado em `<workspace>/.aipe/`. Por padrão o
-   workspace é o diretório atual. Confirme com o PE se é aqui (deve ser uma pasta
-   `aipe-<contexto>`).
+1. **Confirm the workspace.** The brain is written to `<workspace>/.aipe/`. By default the
+   workspace is the current directory. Confirm with the PE whether this is the right place
+   (it should be an `aipe-<context>` folder).
 
-2. **Colete os dados, uma pergunta por vez:**
-   - Nome do **contexto** (slug: minúsculas, números, hífens — vira `aipe-<nome>`).
-   - Nome do **coordenador** (como o PE quer te chamar).
-   - Os **repositórios**: para cada um, `name`, `url` (git@ ou https .git) e `path`
-     relativo (começando com `./`). `stack` é opcional — só preencha se o PE souber;
-     senão deixe de fora (será preenchido em fases posteriores). O PE pode colar uma
-     lista de uma vez.
+2. **Collect the data, one question at a time:**
+   - **Context** name (slug: lowercase, numbers, hyphens — becomes `aipe-<name>`).
+   - **Coordinator** name (how the PE wants to be addressed).
+   - The **repositories**: for each one, `name`, `url` (git@ or https .git) and a
+     relative `path` (starting with `./`). `stack` is optional — only fill it in if the
+     PE knows it; otherwise leave it out (it will be filled in during later phases). The
+     PE may paste a whole list at once.
 
-3. **Monte o JSON** no formato `ContextInput`:
+3. **Assemble the JSON** in `ContextInput` format:
    ```json
    {
-     "context": { "name": "<slug>", "coordinator": "<nome>" },
+     "context": { "name": "<slug>", "coordinator": "<name>" },
      "repos": [ { "name": "...", "url": "...", "path": "./...", "stack": ["..."] } ]
    }
    ```
 
-4. **Grave via CLI.** Escreva o JSON em um arquivo temporário e rode:
+4. **Write via the CLI.** Write the JSON to a temporary file and run:
    ```bash
-   bun <caminho-do-plugin>/src/context-brain/cli.ts --input <arquivo.json> --workspace <workspace>
+   bun <plugin-path>/src/context-brain/cli.ts --input <file.json> --workspace <workspace>
    ```
 
-5. **Trate o resultado:**
-   - Saída `OK brain=... / OK state=...` → confirme ao PE os arquivos gravados.
-   - Linhas `ERRO <campo>: <mensagem>` → mostre ao PE, corrija o dado apontado e
-     rode de novo. Não grave nada à mão.
+5. **Handle the result:**
+   - Output `OK brain=... / OK state=...` → confirm to the PE that the files were written.
+   - Lines `ERROR <field>: <message>` → show them to the PE, fix the flagged data and
+     run it again. Never write anything by hand.
 
-## Regras
+## Rules
 
-- Nunca edite `brain.yaml`/`state.yaml` diretamente aqui — sempre pelo CLI, para
-  garantir formato válido.
-- Uma pergunta por vez; não despeje todas de uma vez.
-- Se o workspace não existir ou não parecer um `aipe-<contexto>`, pergunte antes de
-  gravar.
+- Never edit `brain.yaml`/`state.yaml` directly here — always go through the CLI, to
+  guarantee a valid format.
+- One question at a time; don't dump them all at once.
+- If the workspace doesn't exist or doesn't look like an `aipe-<context>`, ask before
+  writing.
 ````
 
-- [ ] **Step 3: Verificação manual da skill**
+- [ ] **Step 3: Manual verification of the skill**
 
 Run:
 ```bash
@@ -720,22 +720,22 @@ cd /tmp && rm -rf aipe-teste && mkdir aipe-teste && cd aipe-teste \
   && bun ~/aipe/src/context-brain/cli.ts --input input.json --workspace . \
   && echo "--- brain.yaml ---" && cat .aipe/brain.yaml && echo "--- state.yaml ---" && cat .aipe/state.yaml
 ```
-Expected: imprime `OK brain=... / OK state=...` seguido do conteúdo YAML dos dois arquivos, com `phase.brain: done`.
+Expected: prints `OK brain=... / OK state=...` followed by the YAML content of both files, with `phase.brain: done`.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd ~/aipe && git add -A && git commit -m "feat: skill /context-brain e manifesto do plugin aipe"
+cd ~/aipe && git add -A && git commit -m "feat: /context-brain skill and aipe plugin manifest"
 ```
 
 ---
 
-## Notas de execução
+## Execution notes
 
-- **`import.meta.dir`** (usado no teste do CLI) é uma API do Bun que resolve o diretório
-  do arquivo de teste; combina com o caminho `../cli.ts`.
-- **Detecção de stack** fica fora deste plano (é responsabilidade de uma fase posterior,
-  quando o código estiver clonado). `stack` é opcional no brain.
-- **Distribuição do plugin** (publicar, instalar por escopo global/projeto) é uma
-  preocupação separada do roadmap; aqui o manifesto mínimo já torna o plugin carregável
-  localmente.
+- **`import.meta.dir`** (used in the CLI test) is a Bun API that resolves the directory
+  of the test file; combines with the `../cli.ts` path.
+- **Stack detection** is out of scope for this plan (it's the responsibility of a later
+  phase, once the code has been cloned). `stack` is optional in the brain.
+- **Plugin distribution** (publishing, installing at global/project scope) is a separate
+  concern from the roadmap; here the minimal manifest already makes the plugin loadable
+  locally.

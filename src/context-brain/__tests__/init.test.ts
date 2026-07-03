@@ -10,7 +10,7 @@ const valid: ContextInput = {
   repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark" }],
 };
 
-test("input inválido retorna erros e não grava nada", async () => {
+test("invalid input returns errors and writes nothing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const r = await initContextBrain({ ...valid, repos: [] }, dir);
@@ -21,7 +21,7 @@ test("input inválido retorna erros e não grava nada", async () => {
   }
 });
 
-test("input válido grava os arquivos e retorna os paths", async () => {
+test("valid input writes the files and returns the paths", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-"));
   try {
     const r = await initContextBrain(valid, dir);

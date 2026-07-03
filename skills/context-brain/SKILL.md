@@ -1,51 +1,51 @@
 ---
 name: context-brain
-description: Use no onboarding de um contexto/time AIPe para mapear os repositórios (URLs, paths, stacks) e gravar .aipe/brain.yaml + .aipe/state.yaml. Não clona nem analisa código — só registra o conhecimento factual.
+description: Use during onboarding of an AIPe context/team to map the repositories (URLs, paths, stacks) and write .aipe/brain.yaml + .aipe/state.yaml. Does not clone or analyze code — only records factual knowledge.
 ---
 
 # /context-brain
 
-Coleta interativa do contexto de um time e gravação determinística do brain file.
-Você (coordenador) NÃO escreve o YAML à mão — coleta os dados do PE e delega a
-gravação ao CLI tipado, que valida e serializa.
+Interactive collection of a team's context and deterministic writing of the brain file.
+You (coordinator) do NOT write the YAML by hand — collect the data from the PE and delegate
+the writing to the typed CLI, which validates and serializes it.
 
-## Fluxo
+## Flow
 
-1. **Confirme o workspace.** O brain é gravado em `<workspace>/.aipe/`. Por padrão o
-   workspace é o diretório atual. Confirme com o PE se é aqui (deve ser uma pasta
-   `aipe-<contexto>`).
+1. **Confirm the workspace.** The brain is written to `<workspace>/.aipe/`. By default the
+   workspace is the current directory. Confirm with the PE whether this is the right place
+   (it should be an `aipe-<context>` folder).
 
-2. **Colete os dados, uma pergunta por vez:**
-   - Nome do **contexto** (slug: minúsculas, números, hífens — vira `aipe-<nome>`).
-   - Nome do **coordenador** (como o PE quer te chamar).
-   - Os **repositórios**: para cada um, `name`, `url` (git@, ou https com `.git`
-     opcional) e `path`
-     relativo (começando com `./`). `stack` é opcional — só preencha se o PE souber;
-     senão deixe de fora (será preenchido em fases posteriores). O PE pode colar uma
-     lista de uma vez.
+2. **Collect the data, one question at a time:**
+   - **Context** name (slug: lowercase, numbers, hyphens — becomes `aipe-<name>`).
+   - **Coordinator** name (how the PE wants to be addressed).
+   - The **repositories**: for each one, `name`, `url` (git@, or https with `.git`
+     optional) and a relative `path`
+     (starting with `./`). `stack` is optional — only fill it in if the PE knows it;
+     otherwise leave it out (it will be filled in during later phases). The PE may paste a
+     whole list at once.
 
-3. **Monte o JSON** no formato `ContextInput`:
+3. **Assemble the JSON** in `ContextInput` format:
    ```json
    {
-     "context": { "name": "<slug>", "coordinator": "<nome>" },
+     "context": { "name": "<slug>", "coordinator": "<name>" },
      "repos": [ { "name": "...", "url": "...", "path": "./...", "stack": ["..."] } ]
    }
    ```
 
-4. **Grave via CLI.** Escreva o JSON em um arquivo temporário e rode:
+4. **Write via the CLI.** Write the JSON to a temporary file and run:
    ```bash
-   bun <caminho-do-plugin>/src/context-brain/cli.ts --input <arquivo.json> --workspace <workspace>
+   bun <plugin-path>/src/context-brain/cli.ts --input <file.json> --workspace <workspace>
    ```
 
-5. **Trate o resultado:**
-   - Saída `OK brain=... / OK state=...` → confirme ao PE os arquivos gravados.
-   - Linhas `ERRO <campo>: <mensagem>` → mostre ao PE, corrija o dado apontado e
-     rode de novo. Não grave nada à mão.
+5. **Handle the result:**
+   - Output `OK brain=... / OK state=...` → confirm to the PE that the files were written.
+   - Lines `ERROR <field>: <message>` → show them to the PE, fix the flagged data and
+     run it again. Never write anything by hand.
 
-## Regras
+## Rules
 
-- Nunca edite `brain.yaml`/`state.yaml` diretamente aqui — sempre pelo CLI, para
-  garantir formato válido.
-- Uma pergunta por vez; não despeje todas de uma vez.
-- Se o workspace não existir ou não parecer um `aipe-<contexto>`, pergunte antes de
-  gravar.
+- Never edit `brain.yaml`/`state.yaml` directly here — always go through the CLI, to
+  guarantee a valid format.
+- One question at a time; don't dump them all at once.
+- If the workspace doesn't exist or doesn't look like an `aipe-<context>`, ask before
+  writing.

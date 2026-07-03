@@ -15,18 +15,18 @@ export function validateContext(input: ContextInput): ValidationResult {
 
   const name = input.context?.name?.trim() ?? "";
   if (!name) {
-    errors.push({ field: "context.name", message: "nome do contexto é obrigatório" });
+    errors.push({ field: "context.name", message: "context name is required" });
   } else if (!SLUG.test(name)) {
-    errors.push({ field: "context.name", message: "use minúsculas, números e hífens (vira aipe-<nome>)" });
+    errors.push({ field: "context.name", message: "use lowercase letters, numbers and hyphens (becomes aipe-<name>)" });
   }
 
   if (!input.context?.coordinator?.trim()) {
-    errors.push({ field: "context.coordinator", message: "nome do coordenador é obrigatório" });
+    errors.push({ field: "context.coordinator", message: "coordinator name is required" });
   }
 
   const repos = input.repos ?? [];
   if (repos.length === 0) {
-    errors.push({ field: "repos", message: "informe ao menos um repositório" });
+    errors.push({ field: "repos", message: "provide at least one repository" });
   }
 
   const seenNames = new Set<string>();
@@ -35,30 +35,30 @@ export function validateContext(input: ContextInput): ValidationResult {
     const at = `repos[${i}]`;
     const rName = repo.name?.trim() ?? "";
     if (!rName) {
-      errors.push({ field: `${at}.name`, message: "nome do repo é obrigatório" });
+      errors.push({ field: `${at}.name`, message: "repo name is required" });
     } else if (seenNames.has(rName)) {
-      errors.push({ field: `${at}.name`, message: `nome duplicado: ${rName}` });
+      errors.push({ field: `${at}.name`, message: `duplicate name: ${rName}` });
     } else {
       seenNames.add(rName);
     }
 
     const url = repo.url?.trim() ?? "";
     if (!url) {
-      errors.push({ field: `${at}.url`, message: "url é obrigatória" });
+      errors.push({ field: `${at}.url`, message: "url is required" });
     } else if (!GIT_URL.test(url)) {
-      errors.push({ field: `${at}.url`, message: `url inválida: ${url}` });
+      errors.push({ field: `${at}.url`, message: `invalid url: ${url}` });
     }
 
     const path = repo.path?.trim() ?? "";
     if (!path) {
-      errors.push({ field: `${at}.path`, message: "path é obrigatório" });
+      errors.push({ field: `${at}.path`, message: "path is required" });
     } else if (!isValidRelativePath(path)) {
       errors.push({
         field: `${at}.path`,
-        message: "path deve ser relativo ao workspace (começar com ./ e sem segmentos vazios ou ..)",
+        message: "path must be relative to the workspace (start with ./ and have no empty segments or ..)",
       });
     } else if (seenPaths.has(path)) {
-      errors.push({ field: `${at}.path`, message: `path duplicado: ${path}` });
+      errors.push({ field: `${at}.path`, message: `duplicate path: ${path}` });
     } else {
       seenPaths.add(path);
     }
