@@ -31,11 +31,11 @@ may happen in another language, but the repository is English-only.)
 | 1 | `/context-brain` — factual map of a context | Merged | [01-context-brain.md](01-context-brain.md) |
 | 2 | `/make-workspace` — clone the repos | Merged | [02-make-workspace.md](02-make-workspace.md) |
 | 3 | `SessionStart` hook — coordinator context injection | Merged | [03-session-hook.md](03-session-hook.md) |
+| 4 | `/relationship` — cross-repo relationship discovery (also backfills `stack`) | Ready to merge | [04-relationship.md](04-relationship.md) |
 
 ### Roadmap (not yet built)
 
 - Worktree-per-journey (foundational)
-- `/relationship` — cross-repo relationship discovery (also backfills `stack`)
 - `/context-brain-generator` — persona skills
 - `/aipe-add-repo` — incremental repo addition
 
