@@ -58,7 +58,7 @@ the earlier onboarding steps.
 
 6. **Run the CLI:**
    ```bash
-   <plugin-path>/bin/aipe relationship --workspace <workspace>
+   aipe relationship --workspace <workspace>
    ```
 
 7. **Translate the output to the PE:**

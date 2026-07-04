@@ -12,18 +12,21 @@ import { run as contextBrain } from "./context-brain/cli";
 import { run as makeWorkspace } from "./make-workspace/cli";
 import { run as hireSpecialists } from "./hire-specialists/cli";
 import { run as relationship } from "./relationship/cli";
-import { run as readState } from "./session-hook/read-state";
+import { run as readState, runSessionContext } from "./session-hook/read-state";
+import { run as start } from "./start/cli";
 
 export const VERSION = "0.1.0";
 
 type Subcommand = (args: string[]) => Promise<number>;
 
 const SUBCOMMANDS: Record<string, Subcommand> = {
+  start: start,
   "context-brain": contextBrain,
   "make-workspace": makeWorkspace,
   relationship: relationship,
   "hire-specialists": hireSpecialists,
   "read-state": readState,
+  "session-context": runSessionContext,
 };
 
 const HELP = [
@@ -32,11 +35,13 @@ const HELP = [
   "Usage: aipe <command> [options]",
   "",
   "Commands:",
+  "  start              Set up an AIPe workspace in this folder (pick your harness)",
   "  context-brain      Declare the context's repos → .aipe/brain.yaml",
   "  make-workspace     Clone the declared repos on disk",
   "  relationship       Discover cross-repo relations + backfill stack",
   "  hire-specialists   Generate the per-repo persona skills + personas.yaml",
   "  read-state         Print the coordinator awareness fields (used by hooks)",
+  "  session-context    Emit the SessionStart hook JSON (coordinator awareness)",
   "",
   "Common options:",
   "  --workspace <dir>  Workspace directory (defaults to the current directory)",

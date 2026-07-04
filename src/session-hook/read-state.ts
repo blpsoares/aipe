@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
 import type { BrainFile, Phase, StateFile } from "../context-brain/types";
+import { renderSessionContext } from "./awareness";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -106,6 +107,16 @@ export function formatFields(f: Fields): string {
 export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   console.log(formatFields(await readState(workspace)));
+  return 0;
+}
+
+export async function runSessionContext(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  if (!workspace) {
+    console.log("{}");
+    return 0;
+  }
+  console.log(renderSessionContext(await readState(workspace)));
   return 0;
 }
 

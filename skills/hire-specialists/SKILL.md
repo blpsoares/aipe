@@ -38,7 +38,7 @@ CLI, same as the earlier onboarding steps.
 
 5. **Resolve final names.** Write that JSON to a temp file and run:
    ```bash
-   <plugin-path>/bin/aipe hire-specialists --resolve-names --input <file.json> --workspace <workspace>
+   aipe hire-specialists --resolve-names --input <file.json> --workspace <workspace>
    ```
    The CLI prints one JSON line: `{"coordinator":"Nicolas","personas":[{"repo":"embark","role":"dev-fullstack","name":"Joaquim"}, ...]}`.
    Every name here is final and unique across the whole context (including
@@ -77,7 +77,7 @@ CLI, same as the earlier onboarding steps.
 
 8. **Run the CLI:**
    ```bash
-   <plugin-path>/bin/aipe hire-specialists --workspace <workspace>
+   aipe hire-specialists --workspace <workspace>
    ```
 
 9. **Translate the output to the PE:**
