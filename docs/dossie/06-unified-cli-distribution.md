@@ -55,10 +55,33 @@ published. Cross-compiling non-host targets was not exercised in the sandbox
 (each downloads a ~90 MB target runtime); the host target (`linux-x64`) builds
 and runs, and the script/targets are otherwise standard.
 
+## Follow-up (same branch): install UX + project-scoped setup
+
+After the initial unification, the PE clarified the target UX: install with no
+runtime, then just open a folder and talk. Implemented:
+
+- **`aipe start`** — interactive harness picker that installs a **project-scoped**
+  Claude Code integration into the current folder: `.claude/settings.json`
+  (`SessionStart` → `aipe session-context`) + the onboarding skills embedded in
+  the binary (text imports, verified to survive `--compile` and run from a
+  different directory). Idempotent; unit + e2e tested through the compiled
+  binary.
+- **`aipe session-context`** — the coordinator-awareness logic ported from the
+  bash hook into the binary (single source of truth). The plugin bash hook and
+  the installed settings.json hook both delegate to it. Pure `buildAwareness`
+  branch logic is unit-tested.
+- **Coordinator-driven onboarding** — the hook now instructs the coordinator to
+  begin each step itself and, on completion, ask the PE to open a new session
+  for the next step (no slash commands after the first greeting).
+- **Custom-domain delivery** — launcher + `install.sh`/`install.ps1` fetch from
+  `AIPE_DOWNLOAD_BASE` (default `https://aipe.blpsoares.dev/cli`), verified
+  end-to-end against a local base server.
+
 ## Final state
 
 Branch `claude/project-understanding-review-66rt1w`. Commits `4fa9088`
 (unify CLI), `5ec0194` (compile + launcher), `b7f1ae6` (hook/skills rewire),
-`3281c38` (release workflow). Repo-wide: **116 pass / 1 fail** (the same
-environment-only git-remote test noted in dossier 05), `bunx tsc --noEmit`
-clean.
+`3281c38` (release workflow), `b263718` (coordinator-driven onboarding),
+`f991f22` (custom-domain install), `1298ec2` (`aipe start` + project-scoped
+integration). Repo-wide: **125 pass / 1 fail** (the same environment-only
+git-remote test noted in dossier 05), `bunx tsc --noEmit` clean.

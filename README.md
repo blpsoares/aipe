@@ -49,12 +49,31 @@ what's missing.
 With sub-project 5 done, the full onboarding pipeline (steps 1-4 above) is
 complete; sub-projects 6-7 are future work beyond onboarding.
 
+## Install & use
+
+```sh
+# 1. Install the aipe binary (no Bun/Node/npm needed)
+curl -fsSL https://aipe.blpsoares.dev/cli | sh
+
+# 2. Inside your project folder, set up the workspace + harness integration
+aipe start            # interactive: pick your harness (Claude Code today)
+
+# 3. Open that folder in your harness and just say hi.
+#    The coordinator starts onboarding, and after each step tells you to
+#    open a NEW session to continue — no slash commands to memorize.
+```
+
+`aipe start` writes a **project-scoped** Claude Code integration into the
+folder — `.claude/settings.json` (a `SessionStart` hook that calls
+`aipe session-context`) plus the onboarding skills — so nothing is installed
+globally and no marketplace/plugin step is required.
+
 ## Requirements & distribution
 
 AIPe is meant to run for **anyone, in any agent harness, on any OS**. The
 portable core is a single CLI (`aipe`) with one subcommand per onboarding
-step (`aipe context-brain | make-workspace | relationship | hire-specialists
-| read-state`).
+step (`aipe start | context-brain | make-workspace | relationship |
+hire-specialists | read-state | session-context`).
 
 - **End users need no runtime.** The CLI compiles to a standalone executable
   per OS/arch (`bun build --compile`), so there's **no Bun, Node, or npm**

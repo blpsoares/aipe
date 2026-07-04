@@ -47,9 +47,27 @@ can't assume Claude Code.
    call the `aipe` binary and read its `OK/MISSING/STATE` / `read-state`
    output.
 
-6. **Delivery = GitHub Releases.** `.github/workflows/release.yml` builds every
-   target on a `v*` tag, writes `SHA256SUMS`, and attaches them to the
-   release — the source the launcher downloads from.
+6. **Delivery via a custom domain.** `AIPE_DOWNLOAD_BASE` defaults to
+   `https://aipe.blpsoares.dev/cli` (a Cloudflare redirect to the release
+   assets built by `.github/workflows/release.yml`). `scripts/install.sh`
+   (`curl … | sh`) and `install.ps1` fetch the right binary onto `$PATH`.
+
+7. **`aipe start` — project-scoped, per-harness install.** An interactive
+   command (run inside the project folder) that installs the harness
+   integration into the **workspace**, not globally. For Claude Code it writes
+   a purely project-scoped setup: `.claude/settings.json` with a `SessionStart`
+   hook that calls the on-PATH `aipe session-context`, plus the onboarding
+   skills. The skill contents are embedded in the binary as text imports (they
+   survive `--compile`), so no marketplace/global plugin and no source checkout
+   are needed. Cursor/generic harnesses are scaffolded as "coming soon".
+
+8. **Awareness lives in the binary.** The coordinator-awareness logic moved out
+   of the bash hook into `aipe session-context` (single source of truth, pure +
+   unit-tested). Both the plugin's bash hook and the installed
+   `.claude/settings.json` hook delegate to it, and any other harness can reuse
+   it. Onboarding is coordinator-driven: the hook tells the coordinator to start
+   each step itself and, on completion, to ask the PE to open a new session for
+   the next step.
 
 ## 3. Out of scope / open
 
