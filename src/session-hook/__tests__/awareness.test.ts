@@ -19,7 +19,8 @@ function fields(over: Partial<Fields>): Fields {
 test("no brain → proactive onboarding via /context-brain", () => {
   const body = buildAwareness(fields({ brain: "absent" }));
   expect(body).toContain("/context-brain");
-  expect(body).toContain("aipe-<name>");
+  expect(body).toContain("coordinator name");
+  expect(body).toContain("aipe- prefix");
   expect(body).toContain("exit AIPe mode");
 });
 

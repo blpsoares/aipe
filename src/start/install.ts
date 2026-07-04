@@ -71,8 +71,5 @@ export async function installClaudeCode(workspace: string): Promise<number> {
   console.log(`aipe: installed the Claude Code integration into ${claudeDir}`);
   console.log("aipe:  - .claude/settings.json (SessionStart hook → aipe session-context)");
   console.log(`aipe:  - .claude/skills/ (${Object.keys(SKILLS).length} onboarding skills)`);
-  console.log("");
-  console.log("Next: open THIS folder in Claude Code and just say hi — the coordinator");
-  console.log("will start onboarding (it will ask for your workspace name and repos).");
   return 0;
 }

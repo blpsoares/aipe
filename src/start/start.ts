@@ -42,6 +42,29 @@ export function findHarness(id: string): Harness | undefined {
   return HARNESSES.find((h) => h.id === id);
 }
 
+/** Workspace name → folder-safe slug (lowercase, hyphenated). */
+export function slugify(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-+|-+$)/g, "");
+}
+
+export function renderNextSteps(folder: string): string[] {
+  return [
+    "",
+    `✓ Created ${folder}/ with the AIPe integration inside.`,
+    "",
+    "Next:",
+    `  cd ${folder}`,
+    "  open this folder in your harness and just say hi —",
+    "  the coordinator will ask for your repos and drive onboarding.",
+  ];
+}
+
 export function renderNonInteractiveHelp(): string[] {
   return [
     ...renderIntro(),

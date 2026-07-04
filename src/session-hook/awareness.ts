@@ -18,11 +18,11 @@ function nextStep(f: Fields): string {
 export function buildAwareness(f: Fields): string {
   if (f.brain !== "present") {
     return (
-      "AIPe is installed here but this workspace is not initialized yet. As soon as the PE greets you, " +
-      "begin onboarding proactively — do not wait for a slash command: invoke the /context-brain skill, " +
-      "ask the PE for the workspace name and the repos, and create the aipe-<name> workspace. When it " +
-      "finishes, tell the PE the step is done and to open a NEW session inside the aipe-<name> folder to " +
-      `continue. ${OPTOUT}`
+      "This is an AIPe workspace but its brain is not filled in yet. As soon as the PE greets you, begin " +
+      "onboarding proactively — do not wait for a slash command: invoke the /context-brain skill. The " +
+      "workspace name is already the folder name (drop the aipe- prefix); only ask the PE for their " +
+      "coordinator name and the repos. When it finishes, tell the PE the step is done and to open a NEW " +
+      `session in this same folder to continue. ${OPTOUT}`
     );
   }
 
