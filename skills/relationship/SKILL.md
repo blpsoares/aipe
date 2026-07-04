@@ -74,8 +74,10 @@ the earlier onboarding steps.
    `.aipe/relations/README.md` (human-readable summary), and mention that
    `brain.yaml` may now have `stack` filled in for repos that didn't declare one.
 
-9. **Next step:** once `relationship=done`, the context is ready for
-   `/hire-specialists`.
+9. **Next step:** once `relationship=done`, tell the PE this step is complete
+   and to open a **new session** in this workspace to continue with
+   `/hire-specialists` (a fresh session keeps the coordinator's context clean;
+   the SessionStart hook resumes onboarding automatically).
 
 ## Rules
 

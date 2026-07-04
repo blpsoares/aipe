@@ -11,9 +11,13 @@ the writing to the typed CLI, which validates and serializes it.
 
 ## Flow
 
-1. **Confirm the workspace.** The brain is written to `<workspace>/.aipe/`. By default the
-   workspace is the current directory. Confirm with the PE whether this is the right place
-   (it should be an `aipe-<context>` folder).
+1. **Name and create the workspace.** This is the entry step of onboarding —
+   the PE hasn't got an `aipe-<name>` folder yet. Ask the PE for the workspace
+   name first (it becomes the context slug), then use `aipe-<name>` as the
+   workspace directory for every command below. Writing the brain (step 4)
+   creates that folder automatically (`.aipe/` is made recursively), so the
+   whole context lives under `aipe-<name>/` and later sessions are opened
+   inside it.
 
 2. **Collect the data, one question at a time:**
    - **Context** name (slug: lowercase, numbers, hyphens — becomes `aipe-<name>`).
@@ -38,7 +42,10 @@ the writing to the typed CLI, which validates and serializes it.
    ```
 
 5. **Handle the result:**
-   - Output `OK brain=... / OK state=...` → confirm to the PE that the files were written.
+   - Output `OK brain=... / OK state=...` → confirm to the PE that the
+     `aipe-<name>/` workspace was created, then tell them this step is done and
+     to open a **new session inside `aipe-<name>/`** to continue — the next
+     step (`/make-workspace`) starts automatically there.
    - Lines `ERROR <field>: <message>` → show them to the PE, fix the flagged data and
      run it again. Never write anything by hand.
 
