@@ -9,7 +9,10 @@
 set -eu
 
 AIPE_VERSION="0.1.0"
-REPO="blpsoares/aipe"
+# Where standalone binaries are fetched from. Defaults to the AIPe download
+# domain (a Cloudflare redirect to the GitHub release assets); override with
+# AIPE_DOWNLOAD_BASE for a mirror or a local server.
+AIPE_DOWNLOAD_BASE="${AIPE_DOWNLOAD_BASE:-https://aipe.blpsoares.dev/cli}"
 
 # --- locate the plugin root (this script lives in <root>/bin/aipe) ----------
 self="$0"
@@ -64,7 +67,7 @@ fi
 
 # --- 5. best-effort download from the GitHub release ------------------------
 if [ "$os" != "unknown" ] && [ "$arch" != "unknown" ]; then
-  url="https://github.com/$REPO/releases/download/v$AIPE_VERSION/aipe-$label"
+  url="$AIPE_DOWNLOAD_BASE/aipe-$label"
   mkdir -p "$cache_dir"
   if command -v curl >/dev/null 2>&1; then
     if curl -fsSL "$url" -o "$cached"; then chmod +x "$cached"; exec "$cached" "$@"; fi

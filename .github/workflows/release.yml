@@ -50,5 +50,7 @@ jobs:
           files: |
             dist/aipe-*
             dist/SHA256SUMS.txt
+            scripts/install.sh
+            scripts/install.ps1
           fail_on_unmatched_files: true
           generate_release_notes: true
