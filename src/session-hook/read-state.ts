@@ -103,7 +103,12 @@ export function formatFields(f: Fields): string {
   ].join("\n");
 }
 
-if (import.meta.main) {
-  const workspace = getFlag(process.argv.slice(2), "--workspace") ?? process.cwd();
+export async function run(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
   console.log(formatFields(await readState(workspace)));
+  return 0;
+}
+
+if (import.meta.main) {
+  run(process.argv.slice(2)).then((code) => process.exit(code));
 }
