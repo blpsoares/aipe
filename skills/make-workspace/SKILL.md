@@ -20,7 +20,7 @@ error), never overwrites anything, and updates `state.yaml`.
 
 3. **Run the CLI:**
    ```bash
-   bun <plugin-path>/src/make-workspace/cli.ts --workspace <workspace>
+   <plugin-path>/bin/aipe make-workspace --workspace <workspace>
    ```
 
 4. **Translate the output to the PE** (one line per repo):

@@ -11,8 +11,9 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 
-# Robust parsing via bun; any failure → empty fields → state 1.
-fields="$(bun "${PLUGIN_ROOT}/src/session-hook/read-state.ts" --workspace "${WORKSPACE}" 2>/dev/null || true)"
+# Robust parsing via the aipe launcher (standalone binary, or Bun dev
+# fallback); any failure → empty fields → state 1.
+fields="$("${PLUGIN_ROOT}/bin/aipe" read-state --workspace "${WORKSPACE}" 2>/dev/null || true)"
 
 get() { printf '%s\n' "$fields" | grep -m1 "^$1=" | cut -d= -f2- || true; }
 BRAIN="$(get BRAIN)"

@@ -34,7 +34,7 @@ the writing to the typed CLI, which validates and serializes it.
 
 4. **Write via the CLI.** Write the JSON to a temporary file and run:
    ```bash
-   bun <plugin-path>/src/context-brain/cli.ts --input <file.json> --workspace <workspace>
+   <plugin-path>/bin/aipe context-brain --input <file.json> --workspace <workspace>
    ```
 
 5. **Handle the result:**
