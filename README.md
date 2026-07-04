@@ -55,18 +55,28 @@ complete; sub-projects 6-7 are future work beyond onboarding.
 # 1. Install the aipe binary (no Bun/Node/npm needed)
 curl -fsSL https://aipe.blpsoares.dev/cli | sh
 
-# 2. Inside your project folder, set up the workspace + harness integration
-aipe start            # interactive: pick your harness (Claude Code today)
+# 2. Create a workspace. aipe start is a plain terminal program (no AI):
+#    it shows an arrow-key list of harnesses, asks the workspace name,
+#    and creates aipe-<name>/ with the integration inside.
+aipe start
+#    ? Choose your agent harness:  ❯ Claude Code
+#    ? Workspace name:  eletromidia
+#    ✓ Created aipe-eletromidia/
 
 # 3. Open that folder in your harness and just say hi.
-#    The coordinator starts onboarding, and after each step tells you to
-#    open a NEW session to continue — no slash commands to memorize.
+cd aipe-eletromidia && claude
+#    The coordinator (the AI) asks for your repos and drives onboarding;
+#    after each step it tells you to open a NEW session to continue —
+#    no slash commands to memorize.
 ```
 
-`aipe start` writes a **project-scoped** Claude Code integration into the
-folder — `.claude/settings.json` (a `SessionStart` hook that calls
-`aipe session-context`) plus the onboarding skills — so nothing is installed
-globally and no marketplace/plugin step is required.
+Two surfaces: **`aipe start`** (terminal, deterministic) picks the harness and
+creates the self-contained `aipe-<name>/` workspace; the **coordinator** (the
+LLM, inside the harness) collects the repos and runs the four onboarding steps.
+The install is **project-scoped** — `.claude/settings.json` (a `SessionStart`
+hook calling `aipe session-context`) plus the onboarding skills live in the
+folder, so nothing is installed globally and no marketplace/plugin step is
+required.
 
 ## Requirements & distribution
 

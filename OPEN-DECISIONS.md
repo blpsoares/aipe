@@ -31,15 +31,12 @@ project/workspace folder"). Claude Code is the only wired target; Cursor and
   installed as a global Claude Code plugin? (a) is more portable across
   harnesses; confirm.
 
-### 2. Division of labor: `aipe start` vs. the initial skill
+### 2. Division of labor — RESOLVED
 
-You said the initial **skill** asks the workspace name and creates the
-`aipe-<name>` folder. But `aipe start` (terminal) also "installs into the
-workspace folder". So which creates the folder?
-- My current assumption: `aipe start` installs the harness integration into the
-  **current** project folder; then, in-harness, the `/context-brain` skill asks
-  the workspace **name** and creates `aipe-<name>/` (writing the brain there).
-  Confirm, or tell me if `aipe start` itself should create `aipe-<name>/`.
+`aipe start` (terminal, no AI) asks the harness + workspace name and creates
+`aipe-<name>/` with the integration inside it (one self-contained folder). The
+`/context-brain` skill no longer asks the name or creates a folder — it only
+collects the coordinator name + repos. Done.
 
 ### 3. What "pegar infra" means in the initial skill
 
