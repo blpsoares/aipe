@@ -47,7 +47,9 @@ what's missing.
 | 7 | `/aipe-add-repo` — incremental repo addition | Not started | — |
 
 With sub-project 5 done, the full onboarding pipeline (steps 1-4 above) is
-complete; sub-projects 6-7 are future work beyond onboarding.
+complete; sub-projects 6-7 (Phase B — Operation) are future work beyond
+onboarding. See [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md) for the handoff
+prompt that starts Phase B.
 
 ## Install & use
 
