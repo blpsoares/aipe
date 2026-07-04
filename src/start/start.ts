@@ -13,8 +13,12 @@ export interface Harness {
 
 export const HARNESSES: Harness[] = [
   { id: "claude-code", label: "Claude Code", status: "supported" },
+  { id: "codex", label: "OpenAI Codex CLI", status: "coming-soon" },
+  { id: "gemini", label: "Gemini CLI", status: "coming-soon" },
+  { id: "copilot", label: "GitHub Copilot", status: "coming-soon" },
+  { id: "antigravity", label: "Antigravity", status: "coming-soon" },
   { id: "cursor", label: "Cursor", status: "coming-soon" },
-  { id: "generic", label: "Generic / other harness (manual)", status: "coming-soon" },
+  { id: "generic", label: "Generic / any other harness", status: "coming-soon" },
 ];
 
 const WORKSPACE_RULE =
