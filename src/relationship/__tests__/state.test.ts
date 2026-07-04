@@ -11,7 +11,7 @@ test("updates relationship preserving the other phases", async () => {
     await mkdir(join(dir, ".aipe"), { recursive: true });
     await writeFile(
       join(dir, ".aipe", "state.yaml"),
-      stringify({ phase: { brain: "done", workspace: "done", relationship: "pending", generator: "pending" } }),
+      stringify({ phase: { brain: "done", workspace: "done", relationship: "pending", specialists: "pending" } }),
       "utf8",
     );
 
@@ -19,7 +19,7 @@ test("updates relationship preserving the other phases", async () => {
     const parsed = parse(await readFile(statePath, "utf8"));
     expect(parsed.phase.relationship).toBe("done");
     expect(parsed.phase.workspace).toBe("done");
-    expect(parsed.phase.generator).toBe("pending");
+    expect(parsed.phase.specialists).toBe("pending");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

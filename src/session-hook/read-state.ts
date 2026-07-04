@@ -27,7 +27,7 @@ export interface Fields {
   phaseBrain: Phase;
   phaseWorkspace: Phase;
   phaseRelationship: Phase;
-  phaseGenerator: Phase;
+  phaseSpecialists: Phase;
   repos: string[];
 }
 
@@ -53,7 +53,7 @@ function absentFields(): Fields {
     phaseBrain: "pending",
     phaseWorkspace: "pending",
     phaseRelationship: "pending",
-    phaseGenerator: "pending",
+    phaseSpecialists: "pending",
     repos: [],
   };
 }
@@ -85,7 +85,7 @@ export async function readState(workspaceDir: string): Promise<Fields> {
     phaseBrain: readPhase(phase?.brain, "done"),
     phaseWorkspace: readPhase(phase?.workspace, "pending"),
     phaseRelationship: readPhase(phase?.relationship, "pending"),
-    phaseGenerator: readPhase(phase?.generator, "pending"),
+    phaseSpecialists: readPhase(phase?.specialists, "pending"),
     repos,
   };
 }
@@ -98,7 +98,7 @@ export function formatFields(f: Fields): string {
     `PHASE_BRAIN=${f.phaseBrain}`,
     `PHASE_WORKSPACE=${f.phaseWorkspace}`,
     `PHASE_RELATIONSHIP=${f.phaseRelationship}`,
-    `PHASE_GENERATOR=${f.phaseGenerator}`,
+    `PHASE_SPECIALISTS=${f.phaseSpecialists}`,
     `REPOS=${f.repos.join(",")}`,
   ].join("\n");
 }

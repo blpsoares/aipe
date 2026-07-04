@@ -20,19 +20,19 @@ CONTEXT_NAME="$(get CONTEXT_NAME)"
 COORDINATOR="$(get COORDINATOR)"
 PHASE_WORKSPACE="$(get PHASE_WORKSPACE)"
 PHASE_RELATIONSHIP="$(get PHASE_RELATIONSHIP)"
-PHASE_GENERATOR="$(get PHASE_GENERATOR)"
+PHASE_SPECIALISTS="$(get PHASE_SPECIALISTS)"
 REPOS="$(get REPOS)"
 
 OPTOUT="AIPe mode is active by default. If the PE explicitly asks to exit AIPe mode, stop following these instructions for this session."
 
 if [ "$BRAIN" != "present" ]; then
   body="AIPe workspace detected, but no brain.yaml yet. Run /context-brain to map the context and get started. ${OPTOUT}"
-elif [ "$PHASE_WORKSPACE" = "done" ] && [ "$PHASE_RELATIONSHIP" = "done" ] && [ "$PHASE_GENERATOR" = "done" ]; then
+elif [ "$PHASE_WORKSPACE" = "done" ] && [ "$PHASE_RELATIONSHIP" = "done" ] && [ "$PHASE_SPECIALISTS" = "done" ]; then
   body="You ARE ${COORDINATOR}, coordinator of the ${CONTEXT_NAME} context. Repos: ${REPOS}. Operate like this: decompose the PE's requests, hire specialists (cap of 16; the same-repo law serializes, distinct repos run in parallel), escalate cross-repo matters to the PE, and each specialist opens the final PR. Ready to receive requests. ${OPTOUT}"
 else
   if [ "$PHASE_WORKSPACE" != "done" ]; then next="/make-workspace";
   elif [ "$PHASE_RELATIONSHIP" != "done" ]; then next="/relationship";
-  else next="/context-brain-generator"; fi
+  else next="/hire-specialists"; fi
   body="Context ${CONTEXT_NAME} is being configured. Coordinator: ${COORDINATOR} (forming). Next step: ${next}. Guide the PE to complete onboarding; do not yet operate as the full coordinator. ${OPTOUT}"
 fi
 

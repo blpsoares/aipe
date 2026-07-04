@@ -13,7 +13,7 @@ const brain: BrainFile = {
 
 test("initialState marks brain as done and the rest as pending", () => {
   expect(initialState()).toEqual({
-    phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" },
+    phase: { brain: "done", workspace: "pending", relationship: "pending", specialists: "pending" },
   });
 });
 

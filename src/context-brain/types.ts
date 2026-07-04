@@ -22,7 +22,7 @@ export interface StateFile {
     brain: Phase;
     workspace: Phase;
     relationship: Phase;
-    generator: Phase;
+    specialists: Phase;
   };
 }
 
