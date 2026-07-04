@@ -1,0 +1,78 @@
+#!/bin/sh
+# AIPe launcher (POSIX). Resolves the right standalone binary for this host
+# and execs it — no Bun/Node required at runtime. Resolution order:
+#   1. $AIPE_BIN, if set and executable.
+#   2. A prebuilt binary in <plugin>/dist/ matching this OS/arch.
+#   3. A cached binary previously downloaded to $XDG_CACHE_HOME/aipe/.
+#   4. Dev fallback: `bun <plugin>/src/cli.ts` when Bun is available.
+#   5. Best-effort download of the matching binary from the GitHub release.
+set -eu
+
+AIPE_VERSION="0.1.0"
+REPO="blpsoares/aipe"
+
+# --- locate the plugin root (this script lives in <root>/bin/aipe) ----------
+self="$0"
+# resolve symlinks without relying on `realpath` (not universal)
+while [ -h "$self" ]; do
+  link=$(readlink "$self")
+  case "$link" in
+    /*) self="$link" ;;
+    *) self="$(dirname "$self")/$link" ;;
+  esac
+done
+BIN_DIR="$(cd "$(dirname "$self")" && pwd)"
+ROOT="$(cd "$BIN_DIR/.." && pwd)"
+
+# --- 1. explicit override ---------------------------------------------------
+if [ "${AIPE_BIN:-}" != "" ] && [ -x "${AIPE_BIN:-}" ]; then
+  exec "$AIPE_BIN" "$@"
+fi
+
+# --- detect OS/arch → dist label -------------------------------------------
+os="$(uname -s 2>/dev/null || echo unknown)"
+arch="$(uname -m 2>/dev/null || echo unknown)"
+case "$os" in
+  Linux) os="linux" ;;
+  Darwin) os="darwin" ;;
+  *) os="unknown" ;;
+esac
+case "$arch" in
+  x86_64 | amd64) arch="x64" ;;
+  arm64 | aarch64) arch="arm64" ;;
+  *) arch="unknown" ;;
+esac
+label="${os}-${arch}"
+
+# --- 2. prebuilt binary shipped in dist/ ------------------------------------
+candidate="$ROOT/dist/aipe-$label"
+if [ -x "$candidate" ]; then
+  exec "$candidate" "$@"
+fi
+
+# --- 3. previously cached download ------------------------------------------
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/aipe/$AIPE_VERSION"
+cached="$cache_dir/aipe-$label"
+if [ -x "$cached" ]; then
+  exec "$cached" "$@"
+fi
+
+# --- 4. dev fallback: run from source with Bun ------------------------------
+if [ -f "$ROOT/src/cli.ts" ] && command -v bun >/dev/null 2>&1; then
+  exec bun "$ROOT/src/cli.ts" "$@"
+fi
+
+# --- 5. best-effort download from the GitHub release ------------------------
+if [ "$os" != "unknown" ] && [ "$arch" != "unknown" ]; then
+  url="https://github.com/$REPO/releases/download/v$AIPE_VERSION/aipe-$label"
+  mkdir -p "$cache_dir"
+  if command -v curl >/dev/null 2>&1; then
+    if curl -fsSL "$url" -o "$cached"; then chmod +x "$cached"; exec "$cached" "$@"; fi
+  elif command -v wget >/dev/null 2>&1; then
+    if wget -q "$url" -O "$cached"; then chmod +x "$cached"; exec "$cached" "$@"; fi
+  fi
+fi
+
+echo "aipe: no runnable binary for $label and no Bun on PATH." >&2
+echo "      Build one with 'bun run scripts/build.ts host', or install Bun (https://bun.sh)." >&2
+exit 127
