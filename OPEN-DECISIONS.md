@@ -9,8 +9,8 @@ direction. Updated after your install/onboarding clarifications.
 - **Binary delivery = a custom domain.** The launcher and installers fetch from
   `AIPE_DOWNLOAD_BASE`, default `https://aipe.blpsoares.dev/cli` (your
   Cloudflare redirect). Install via `curl -fsSL https://aipe.blpsoares.dev/cli | sh`.
-  → **You still need to create the Cloudflare rules** (see "Cloudflare setup"
-  below) and cut a `v0.1.0` release so the redirect targets exist.
+  → The release + Cloudflare wiring is intentionally **deferred to near the end**
+  — see "Deferred debt" below.
 - **Onboarding is coordinator-driven, one step per session.** Implemented in
   the SessionStart hook: the coordinator starts each step itself when the PE
   greets it, then announces completion and asks the PE to open a new session
@@ -55,15 +55,31 @@ autonomously. Want to run it together, or accept the format as-is?
 `0.1.0` is hardcoded in the launcher, installers, `src/cli.ts`, and
 `plugin.json`. Minor; I can wire it from one place at build time if you want.
 
-## Cloudflare setup (for the download domain to work)
+## Deferred debt — release + Cloudflare (do near the end, PE's call)
 
-Once a GitHub release exists with the built assets, point the redirects at it:
-- `aipe.blpsoares.dev/cli` (exact) → the raw `install.sh`
-  (e.g. the release asset or `raw.githubusercontent.com/.../scripts/install.sh`).
-- `aipe.blpsoares.dev/cli/install.ps1` → the raw `install.ps1`.
-- `aipe.blpsoares.dev/cli/aipe-<os>-<arch>[.exe]` → the matching release asset
-  (labels: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
-  `windows-x64.exe`).
+The PE will do this as one of the **last** steps, once most features are in.
+Order matters: **publish the release first, then create the rules** — the rules
+are just redirects to release assets, so they 404 until the assets exist.
+
+1. **Merge to `main`** (so `scripts/install.sh` is reachable via the raw GitHub
+   URL — this one does NOT need a release).
+2. **Cut the release:** `git tag v0.1.0 && git push --tags`. CI
+   (`release.yml`) builds every target and attaches the binaries +
+   `install.sh`/`install.ps1` + `SHA256SUMS`.
+3. **Create the Cloudflare rules** (use `latest/download` so they never need
+   updating on future releases):
+   - `aipe.blpsoares.dev/cli` (exact) → raw `install.sh`
+     (`raw.githubusercontent.com/blpsoares/aipe/main/scripts/install.sh`).
+   - `aipe.blpsoares.dev/cli/install.ps1` → raw `install.ps1`.
+   - `aipe.blpsoares.dev/cli/aipe-<os>-<arch>[.exe]` →
+     `github.com/blpsoares/aipe/releases/latest/download/aipe-<os>-<arch>[.exe]`
+     (labels: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
+     `windows-x64.exe`).
+4. **Test:** `curl -fsSL https://aipe.blpsoares.dev/cli | sh`.
+
+Optional prep I can do before then: switch the installer to the
+`latest/download` pattern and write the exact rule values, so step 3 is
+copy-paste.
 
 ---
 
