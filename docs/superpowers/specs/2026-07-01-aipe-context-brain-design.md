@@ -71,7 +71,7 @@ aipe-<context>/                     ← workspace (user's home dir, plugin at fo
 3. /relationship           → fans out N agents that READ the code,
                              each discovers relations for its repo,
                              coordinator SYNTHESIZES and documents      [needs the repos present]
-4. /context-brain-generator → generates persona skills                 [needs stacks + relations]
+4. /hire-specialists → generates persona skills                 [needs stacks + relations]
 ```
 
 Once the 4 steps are complete, the "coordinator onboarding" is done and the
@@ -120,7 +120,7 @@ phase:
   brain: done
   workspace: pending      # clone hasn't run yet
   relationship: pending
-  generator: pending
+  specialists: pending
 ```
 Any future session reads this and knows "where the coordinator left off." Triggering
 each phase remains a deliberate act by the PE (control + cost).
@@ -182,7 +182,7 @@ Recorded here so they don't get lost — each one becomes its own spec in its cy
 5. **`/relationship`** — fan-out of read-only agents discovering relations between
    repos; coordinator synthesizes and documents. It's a legitimate workflow case. Also
    **fills `stack`** back into the brain (resolves the 1st open question in §8).
-6. **`/context-brain-generator`** — generates the persona skills (two-mode format),
+6. **`/hire-specialists`** — generates the persona skills (two-mode format),
    including stack-specialists and a dedicated QA.
 7. **`/aipe-add-repo`** (incremental) — adds a new repo, remaps only the affected
    relations and generates/updates the specialist, without hand-rewriting the brain.
@@ -197,5 +197,5 @@ Recorded here so they don't get lost — each one becomes its own spec in its cy
   `/make-workspace` stays clone-only.
 - Exact format of `personas.yaml` and the "hiring brief" (the object the
   coordinator hands to the specialist): will be designed in the
-  `/context-brain-generator` cycle.
+  `/hire-specialists` cycle.
 - Prototype of the persona + third-party skill load (loading order).

@@ -452,7 +452,7 @@ elif [ "$PHASE_WORKSPACE" = "done" ] && [ "$PHASE_RELATIONSHIP" = "done" ] && [ 
 else
   if [ "$PHASE_WORKSPACE" != "done" ]; then next="/make-workspace";
   elif [ "$PHASE_RELATIONSHIP" != "done" ]; then next="/relationship";
-  else next="/context-brain-generator"; fi
+  else next="/hire-specialists"; fi
   body="Context ${CONTEXT_NAME} being configured. Coordinator: ${COORDINATOR} (in formation). Next step: ${next}. Guide the PE to complete onboarding; do not yet operate as a full coordinator. ${OPTOUT}"
 fi
 

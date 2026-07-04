@@ -158,7 +158,7 @@ Two decisions from this session that update the foundation spec:
 
 Suggested order for the next cycles: **`/make-workspace`** (this one) → **context
 hook (`SessionStart`)** → **worktree-per-journey** → **`/relationship`** →
-**`/context-brain-generator`** → **`/aipe-add-repo`**.
+**`/hire-specialists`** → **`/aipe-add-repo`**.
 
 ---
 

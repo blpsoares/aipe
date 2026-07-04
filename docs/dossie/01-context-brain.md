@@ -30,7 +30,7 @@ It is knowledge only — it does **not** clone or analyze code.
 6. **Workspace naming `aipe-<context.name>`.** Ties the folder to the framework, inherits
    the declared context name, and is short and sortable. The workspace is simply the folder
    where the session is opened with the plugin installed at folder scope.
-7. **`state.yaml` for phase tracking.** Records `brain/workspace/relationship/generator`
+7. **`state.yaml` for phase tracking.** Records `brain/workspace/relationship/specialists`
    so any future session reads where the coordinator left off. Firing each phase stays a
    deliberate PE act (control + cost).
 8. **`stack` optional at this stage.** Real stack detection needs the code present, so it is

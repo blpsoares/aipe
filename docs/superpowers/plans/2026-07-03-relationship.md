@@ -1175,7 +1175,7 @@ the earlier onboarding steps.
    `brain.yaml` may now have `stack` filled in for repos that didn't declare one.
 
 9. **Next step:** once `relationship=done`, the context is ready for
-   `/context-brain-generator`.
+   `/hire-specialists`.
 
 ## Rules
 

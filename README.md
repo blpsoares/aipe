@@ -23,10 +23,10 @@ A context (a team's group of repos) is set up in four ordered steps, each a
 skill in this plugin:
 
 ```
-1. /context-brain            → declare repos (URLs, paths) → .aipe/brain.yaml
-2. /make-workspace            → clone the repos on disk
-3. /relationship               → discover cross-repo relations + backfill stack
-4. /context-brain-generator    → generate persona skills (1 dev-fullstack + 1 QA per repo)
+1. /context-brain      → declare repos (URLs, paths) → .aipe/brain.yaml
+2. /make-workspace     → clone the repos on disk
+3. /relationship       → discover cross-repo relations + backfill stack
+4. /hire-specialists   → hire persona skills (1 dev-fullstack + 1 QA per repo)
 ```
 
 Each step's precondition is the previous step's `state.yaml` phase being
@@ -41,19 +41,48 @@ what's missing.
 | 2 | `/make-workspace` — clone the repos | Merged | [docs/dossie/02-make-workspace.md](docs/dossie/02-make-workspace.md) |
 | 3 | `SessionStart` hook — coordinator context injection | Merged | [docs/dossie/03-session-hook.md](docs/dossie/03-session-hook.md) |
 | 4 | `/relationship` — cross-repo relationship discovery | Merged | [docs/dossie/04-relationship.md](docs/dossie/04-relationship.md) |
-| 5 | `/context-brain-generator` — persona skills | In progress (branch `feat/context-brain-generator`) | [docs/dossie/05-context-brain-generator.md](docs/dossie/05-context-brain-generator.md) (pending) |
+| 5 | `/hire-specialists` — persona skills | Implemented (branch `claude/project-understanding-review-66rt1w`) | [docs/dossie/05-hire-specialists.md](docs/dossie/05-hire-specialists.md) |
+| — | Unified `aipe` CLI + zero-dependency distribution | Implemented (same branch) | [docs/dossie/06-unified-cli-distribution.md](docs/dossie/06-unified-cli-distribution.md) |
 | 6 | Worktree-per-journey (foundational) | Not started | — |
 | 7 | `/aipe-add-repo` — incremental repo addition | Not started | — |
 
-Once sub-project 5 merges, the full onboarding pipeline (steps 1-4 above) is
+With sub-project 5 done, the full onboarding pipeline (steps 1-4 above) is
 complete; sub-projects 6-7 are future work beyond onboarding.
+
+## Requirements & distribution
+
+AIPe is meant to run for **anyone, in any agent harness, on any OS**. The
+portable core is a single CLI (`aipe`) with one subcommand per onboarding
+step (`aipe context-brain | make-workspace | relationship | hire-specialists
+| read-state`).
+
+- **End users need no runtime.** The CLI compiles to a standalone executable
+  per OS/arch (`bun build --compile`), so there's **no Bun, Node, or npm**
+  requirement on the host. The `bin/aipe` launcher (and `bin/aipe.cmd` on
+  Windows) resolves the right binary for the machine: `$AIPE_BIN` →
+  `dist/<host>` → cached download → **Bun dev fallback** (only when developing
+  in this repo) → best-effort download from the GitHub release.
+- **Any harness.** Claude Code integration (the slash-command skills + the
+  `SessionStart` hook) is just one adapter over that CLI; another harness only
+  needs to call the `aipe` binary. The generated persona files are plain
+  Markdown skills.
+- **Building the binaries:** `bun run build` (all targets) or `bun run
+  build:host`. CI (`.github/workflows/release.yml`) builds every target on a
+  `v*` tag and attaches them to a GitHub Release, which is what the launcher
+  downloads from.
+
+Developers of AIPe itself still use Bun (see Development below).
 
 ## Repository layout
 
 ```
-skills/<name>/SKILL.md        # coordinator-facing conversational flow for each onboarding step
-src/<name>/                   # deterministic TypeScript CLI backing each skill (types, logic, cli.ts, __tests__/)
-hooks/session-start            # SessionStart hook: injects coordinator "awareness" from .aipe/ state
+src/cli.ts                    # unified `aipe` entry point: dispatches subcommands
+src/<name>/                   # deterministic TypeScript backing each step (types, logic, cli.ts run(), __tests__/)
+bin/aipe, bin/aipe.cmd        # launchers: pick the standalone binary for the host (or Bun dev fallback)
+scripts/build.ts              # cross-platform `bun build --compile` into dist/ (gitignored)
+skills/<name>/SKILL.md        # coordinator-facing conversational flow for each onboarding step (Claude Code adapter)
+hooks/session-start            # SessionStart hook: injects coordinator "awareness" via `aipe read-state`
+.github/workflows/release.yml  # builds all target binaries → GitHub Release
 docs/superpowers/specs/        # design specs (brainstorming output), one per sub-project
 docs/superpowers/plans/        # implementation plans, one per sub-project
 docs/dossie/                   # execution ledger: decisions, plan, review findings, final state per sub-project
@@ -66,9 +95,11 @@ installed at `<repo>/.claude/skills/<persona-name>/`.
 
 ## Development
 
-- Runtime: [Bun](https://bun.sh) + TypeScript strict.
+- Runtime (for developing AIPe): [Bun](https://bun.sh) + TypeScript strict.
+  End users of the plugin need no runtime — see "Requirements & distribution".
 - Tests: `bun test`.
-- Type-check: `bunx tsc --noEmit -p tsconfig.json`.
+- Type-check: `bunx tsc --noEmit -p tsconfig.json` (or `bun run typecheck`).
+- Build standalone binaries: `bun run build` (all targets) / `bun run build:host`.
 - Every sub-project is built through brainstorming → a written design spec →
   an implementation plan → subagent-driven TDD execution → task + whole-branch
   review → a dossier entry recording the decisions and findings. See
