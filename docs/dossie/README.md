@@ -35,12 +35,10 @@ may happen in another language, but the repository is English-only.)
 | 5 | `/hire-specialists` — persona skills (renamed from `/context-brain-generator`) | Implemented | [05-hire-specialists.md](05-hire-specialists.md) |
 | — | Unified `aipe` CLI + zero-dependency distribution | Implemented | [06-unified-cli-distribution.md](06-unified-cli-distribution.md) |
 | 6 | Phase B (Operation): worktree, dispatch, journey, operate, dashboard + portability, toolbox, add-repo | Merged | [07-phase-b-operation.md](07-phase-b-operation.md) |
+| 7 | AIPe Web Console (`aipe serve` — responsive org chart, pipeline, detail, embedded terminal, live over SSE) | Built | [08-web-console.md](08-web-console.md) |
 
 ### Roadmap (not yet built)
 
-- **AIPe Web Console** — responsive desktop+mobile visualization of the org
-  chart, workers, and pipeline (`specs/2026-07-05-web-console-design.md`).
-  **Build LAST**, once the pipeline data model is fully settled.
 - Persona load-order validation (needs a live session)
 - Skill/MCP uninstall; harness adapters beyond Claude Code; release + Cloudflare
 

@@ -1,9 +1,10 @@
 # AIPe Web Console — design spec (FINAL sub-project, build last)
 
 **Date:** 2026-07-05
-**Status:** Planned — **to be built LAST**, once every other sub-project is
-complete and the data model (journeys, dispatch stages, escalations, PRs,
-personas, relations, toolbox) is stable and battle-tested.
+**Status:** **Built** — see [`plans/2026-07-05-web-console.md`](../plans/2026-07-05-web-console.md)
+and [`dossie/08-web-console.md`](../../dossie/08-web-console.md). Served by
+`aipe serve`; plan decisions: live updates via SSE, additive single-source
+snapshot, and a PE-requested embedded web terminal.
 **Depends on:** everything — `brain.yaml`, `relations/graph.yaml`,
 `personas.yaml`, `.aipe/journeys/*.yaml`, `toolbox.yaml`, live `git worktree`;
 reuses the dashboard's `buildSnapshot` aggregation (`src/dashboard/snapshot.ts`).

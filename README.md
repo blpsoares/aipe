@@ -69,9 +69,8 @@ skill:
 6. On merge, tear worktrees down (`aipe worktree remove` / `prune`).
 
 `aipe dashboard` shows all of this live in the terminal (workers by status,
-the pipeline, worktrees). A responsive **web console** (`aipe serve`) is the
-planned final surface — see
-[`docs/superpowers/specs/2026-07-05-web-console-design.md`](docs/superpowers/specs/2026-07-05-web-console-design.md).
+the pipeline, worktrees). The responsive **web console** (`aipe serve`) is the
+same view in the browser — see [Web console](#web-console-aipe-serve) below.
 
 ### Portability & publishing
 
@@ -97,6 +96,37 @@ Add one repo to an already-onboarded context without redoing onboarding:
 --merge` folds its relations into the existing graph, and `aipe hire-specialists
 --merge` hires its personas — **preserving every existing persona and its name**.
 
+### Web console — `aipe serve`
+
+`aipe serve` starts a **zero-dependency** Bun HTTP server (default
+`127.0.0.1:4317`) rendering the whole company as a **responsive web app** — two
+purpose-built experiences, not one reflowed layout:
+
+- **Desktop cockpit:** the org chart as an interactive SVG graph (coordinator hub
+  → repo clusters → specialist nodes colored by state, over the relation edges),
+  a pipeline **board** (columns = stages, cards = dispatches with PRs), and a
+  detail panel for the selected worker/repo/dispatch.
+- **Mobile flow:** a tab bar over workers-by-repo, a collapsible org tree, a
+  per-journey pipeline timeline, and the terminal.
+
+It reads the **same extended `buildSnapshot`** the TUI dashboard uses, updates
+**live over SSE** (`fs.watch` on `.aipe/` + a reconcile safety net — realtime, no
+lost update), and is **theme-aware** (light/dark). The SPA is self-contained
+(HTML/CSS/JS inlined, embedded in the binary via a text import, no external CDN),
+so `--compile` keeps working. Everything stays local; nothing leaves the machine.
+
+An **embedded terminal** lets the PE drive the workspace from the browser (run
+`aipe`, `git`, tests). Under the zero-dependency rule there is no native PTY, so
+it is a persistent-shell command console (cwd/env persist across commands, ANSI
+color forced); full-screen TUIs (vim, `less`) are out of scope. It binds
+localhost by default and **refuses** a non-loopback bind unless
+`--allow-remote-terminal`.
+
+```sh
+aipe serve                       # http://127.0.0.1:4317
+aipe serve --port 8080 --workspace ../aipe-opvibes
+```
+
 ## Status
 
 | # | Sub-project | Status | Dossier |
@@ -108,12 +138,12 @@ Add one repo to an already-onboarded context without redoing onboarding:
 | 5 | `/hire-specialists` — persona skills | Merged | [05](docs/dossie/05-hire-specialists.md) |
 | — | Unified `aipe` CLI + zero-dependency distribution | Merged | [06](docs/dossie/06-unified-cli-distribution.md) |
 | 6 | **Phase B — Operation** (worktree · dispatch · journey · `/operate` · dashboard) + portability + toolbox + `/aipe-add-repo` | Merged | [07](docs/dossie/07-phase-b-operation.md) |
+| 7 | **AIPe Web Console** (`aipe serve` — responsive org chart · pipeline · detail · embedded terminal, live over SSE) | Built | [08](docs/dossie/08-web-console.md) |
 
 ### Roadmap (pending)
 
 | Item | Notes |
 |---|---|
-| **AIPe Web Console** (`aipe serve`) | Responsive desktop+mobile visualization of the org chart, workers, and pipeline. **The final planned sub-project** — build last. Spec: [`web-console-design`](docs/superpowers/specs/2026-07-05-web-console-design.md). |
 | Persona load-order validation | Needs a live interactive session (persona identity surviving a third-party skill loaded on top). Can't be done autonomously. |
 | Non-Claude-Code harness adapters | The `aipe` CLI is already harness-agnostic; only the skills are Claude-Code-shaped. Deferred (Claude Code suffices for now). |
 | Skill/MCP uninstall | Toolbox supports add + list + match; removal not yet. |
@@ -186,8 +216,8 @@ portable core is a single CLI (`aipe`):
 
 - Onboarding: `start · context-brain · make-workspace · relationship ·
   hire-specialists · read-state · session-context`
-- Operation & growth: `worktree · dispatch · journey · dashboard · rehydrate ·
-  skill · mcp · add-repo` (and the planned `serve`)
+- Operation & growth: `worktree · dispatch · journey · dashboard · serve ·
+  rehydrate · skill · mcp · add-repo`
 
 - **End users need no runtime.** The CLI compiles to a standalone executable
   per OS/arch (`bun build --compile`), so there's **no Bun, Node, or npm**
@@ -211,7 +241,7 @@ Developers of AIPe itself still use Bun (see Development below).
 src/cli.ts                    # unified `aipe` entry point: dispatches every subcommand
 src/<name>/                   # deterministic TS per capability (types, logic, cli.ts run(), __tests__/)
   context-brain, make-workspace, relationship, hire-specialists, start, session-hook   # onboarding
-  worktree, dispatch, journey, rehydrate, toolbox, add-repo, dashboard                  # operation & growth
+  worktree, dispatch, journey, rehydrate, toolbox, add-repo, dashboard, serve           # operation & growth
 bin/aipe, bin/aipe.cmd        # launchers: pick the standalone binary for the host (or Bun dev fallback)
 scripts/build.ts              # cross-platform `bun build --compile` into dist/ (gitignored)
 skills/<name>/SKILL.md        # coordinator-facing flows (Claude Code adapter):
