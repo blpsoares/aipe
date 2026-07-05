@@ -42,12 +42,13 @@ async function recordCommand(args: string[]): Promise<number> {
     return 1;
   }
   const pr = getFlag(args, "--pr");
+  const module = getFlag(args, "--module");
   const statusFlag = getFlag(args, "--status");
   const status: DispatchStatus = DISPATCH_STATUSES.includes(statusFlag as DispatchStatus)
     ? (statusFlag as DispatchStatus)
     : "dispatched";
-  await recordDispatch(workspace, id, { repo, specialist, branch, worktree, ...(pr ? { pr } : {}), status });
-  console.log(`OK ${repo} ${specialist} ${status}`);
+  await recordDispatch(workspace, id, { repo, ...(module ? { module } : {}), specialist, branch, worktree, ...(pr ? { pr } : {}), status });
+  console.log(`OK ${repo}${module ? `/${module}` : ""} ${specialist} ${status}`);
   return 0;
 }
 
@@ -64,7 +65,7 @@ async function showCommand(args: string[]): Promise<number> {
     return 1;
   }
   for (const d of ledger.dispatches) {
-    console.log(`DISPATCH ${d.repo} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}`);
+    console.log(`DISPATCH ${d.repo}${d.module ? `/${d.module}` : ""} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}`);
   }
   console.log(`STATE journey=${id} dispatches=${ledger.dispatches.length}`);
   return 0;

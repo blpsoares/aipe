@@ -58,3 +58,35 @@ test("specialist match is case-insensitive", () => {
   const verdict = validateBatch([{ repo: "embark", specialist: "joaquim" }], repos, roster);
   expect(verdict.ok).toBe(true);
 });
+
+test("distinct modules of one monorepo run in parallel (module-keyed law)", () => {
+  const monoRoster: PersonaRegistryEntry[] = [
+    { name: "Ana", role: "dev-fullstack", repo: "platform", path: "p" },
+    { name: "Bruno", role: "dev-fullstack", repo: "platform", path: "p" },
+  ];
+  const verdict = validateBatch(
+    [
+      { repo: "platform", module: "core", specialist: "Ana" },
+      { repo: "platform", module: "web", specialist: "Bruno" },
+    ],
+    ["platform"],
+    monoRoster,
+  );
+  expect(verdict.ok).toBe(true);
+});
+
+test("the same module twice in one batch is rejected", () => {
+  const verdict = validateBatch(
+    [
+      { repo: "platform", module: "core", specialist: "Ana" },
+      { repo: "platform", module: "core", specialist: "Bruno" },
+    ],
+    ["platform"],
+    [
+      { name: "Ana", role: "dev-fullstack", repo: "platform", path: "p" },
+      { name: "Bruno", role: "qa", repo: "platform", path: "p" },
+    ],
+  );
+  expect(verdict.ok).toBe(false);
+  if (!verdict.ok) expect(verdict.rejects).toContain("same-module platform/core");
+});

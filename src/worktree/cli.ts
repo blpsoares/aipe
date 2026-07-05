@@ -19,14 +19,14 @@ function hasFlag(args: string[], name: string): boolean {
 }
 
 export function renderRows(rows: WorktreeRow[]): string[] {
-  return rows.map((r) => `WT ${r.repo} ${r.slug} ${r.journey} ${r.branch} ${r.path}`);
+  return rows.map((r) => `WT ${r.repo} ${r.slug} ${r.journey} ${r.branch} ${r.path}${r.module ? ` module=${r.module}` : ""}`);
 }
 
 const USAGE = [
   "Usage: aipe worktree <command> [options]",
-  "  create --repo <name> --specialist <persona> --journey <id> [--base <branch>] [--workspace <dir>]",
+  "  create --repo <name> --specialist <persona> --journey <id> [--module <name>] [--base <branch>] [--workspace <dir>]",
   "  list   [--journey <id>] [--workspace <dir>]",
-  "  remove --repo <name> --specialist <persona> --journey <id> [--force] [--workspace <dir>]",
+  "  remove --repo <name> --specialist <persona> --journey <id> [--module <name>] [--force] [--workspace <dir>]",
   "  prune  --journey <id> [--force] [--workspace <dir>]",
 ].join("\n");
 
@@ -40,7 +40,8 @@ async function createCommand(args: string[]): Promise<number> {
     return 1;
   }
   const base = getFlag(args, "--base");
-  const result = await createWorktree(workspace, { repo, specialist, journey, base });
+  const module = getFlag(args, "--module");
+  const result = await createWorktree(workspace, { repo, specialist, journey, module, base });
   if (!result.ok) {
     console.log(`ERROR ${result.error}`);
     return 1;
@@ -68,7 +69,8 @@ async function removeCommand(args: string[]): Promise<number> {
     return 1;
   }
   const force = hasFlag(args, "--force");
-  const result = await removeWorktree(workspace, { repo, specialist, journey, force });
+  const module = getFlag(args, "--module");
+  const result = await removeWorktree(workspace, { repo, specialist, journey, module, force });
   if (result.ok) {
     console.log(`OK removed ${result.path}`);
     return 0;

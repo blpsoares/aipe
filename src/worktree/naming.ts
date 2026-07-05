@@ -10,14 +10,25 @@ export function isValidJourneyId(id: string): boolean {
   return /^[a-z0-9][a-z0-9-]*$/.test(id);
 }
 
-export function deriveSpec(repo: string, journey: string, specialist: string): WorktreeSpec {
+// Encodes the module (when present) into the branch/path so two modules of one
+// monorepo get distinct worktrees on the same clone. Implicit modules (module
+// absent or equal to the repo) keep the pre-module naming exactly:
+//   implicit: aipe/<journey>/<persona>            · .worktrees/<journey>-<persona>
+//   module:   aipe/<journey>/<module>--<persona>  · .worktrees/<journey>-<module>--<persona>
+// The `<module>--<persona>` shape keeps the branch two levels deep so listing
+// stays parseable, and slugs never contain `--` (personaSlug collapses runs).
+export function deriveSpec(repo: string, journey: string, specialist: string, module?: string | null): WorktreeSpec {
   const slug = personaSlug(specialist);
+  const moduleSlug = module && module !== repo ? personaSlug(module) : null;
+  const combined = moduleSlug ? `${moduleSlug}--${slug}` : slug;
   return {
     repo,
     specialist,
+    module: module ?? undefined,
     journey,
     slug,
-    branch: `aipe/${journey}/${slug}`,
-    relPath: join(".worktrees", `${journey}-${slug}`),
+    moduleSlug,
+    branch: `aipe/${journey}/${combined}`,
+    relPath: join(".worktrees", `${journey}-${combined}`),
   };
 }

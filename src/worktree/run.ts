@@ -28,13 +28,13 @@ async function repoAbsOf(
 
 export async function createWorktree(
   workspaceDir: string,
-  opts: { repo: string; specialist: string; journey: string; base?: string },
+  opts: { repo: string; specialist: string; journey: string; module?: string; base?: string },
 ): Promise<CreateResult> {
   if (!isValidJourneyId(opts.journey)) return { ok: false, error: `invalid-journey ${opts.journey}` };
   const resolved = await repoAbsOf(workspaceDir, opts.repo);
   if (!resolved.ok) return { ok: false, error: resolved.error };
 
-  const spec = deriveSpec(opts.repo, opts.journey, opts.specialist);
+  const spec = deriveSpec(opts.repo, opts.journey, opts.specialist, opts.module);
   const wtAbs = join(resolved.abs, spec.relPath);
 
   await ensureExcluded(resolved.abs, `${WORKTREES_DIR}/`);
@@ -62,9 +62,13 @@ export async function listWorktrees(workspaceDir: string, journey?: string): Pro
       const m = /^aipe\/([^/]+)\/(.+)$/.exec(w.branch);
       if (!m) continue;
       const j = m[1] as string;
-      const slug = m[2] as string;
+      const combined = m[2] as string;
       if (journey && j !== journey) continue;
-      rows.push({ repo: repo.name, slug, journey: j, branch: w.branch, path: w.path });
+      // combined is "<module>--<persona>" for a real module, else just "<persona>"
+      const sep = combined.indexOf("--");
+      const module = sep >= 0 ? combined.slice(0, sep) : undefined;
+      const slug = sep >= 0 ? combined.slice(sep + 2) : combined;
+      rows.push({ repo: repo.name, slug, module, journey: j, branch: w.branch, path: w.path });
     }
   }
   return rows;
@@ -88,7 +92,7 @@ export async function pruneWorktrees(
   if (!isValidJourneyId(journey)) return [];
   const rows: PruneRow[] = [];
   for (const wt of await listWorktrees(workspaceDir, journey)) {
-    const result = await removeWorktree(workspaceDir, { repo: wt.repo, specialist: wt.slug, journey, force });
+    const result = await removeWorktree(workspaceDir, { repo: wt.repo, specialist: wt.slug, module: wt.module, journey, force });
     if (result.ok) rows.push({ repo: wt.repo, slug: wt.slug, status: "removed" });
     else rows.push({ repo: wt.repo, slug: wt.slug, status: result.blocked ? "blocked" : "error", detail: result.error });
   }
@@ -97,13 +101,13 @@ export async function pruneWorktrees(
 
 export async function removeWorktree(
   workspaceDir: string,
-  opts: { repo: string; specialist: string; journey: string; force?: boolean },
+  opts: { repo: string; specialist: string; journey: string; module?: string; force?: boolean },
 ): Promise<RemoveResult> {
   if (!isValidJourneyId(opts.journey)) return { ok: false, blocked: false, error: `invalid-journey ${opts.journey}` };
   const resolved = await repoAbsOf(workspaceDir, opts.repo);
   if (!resolved.ok) return { ok: false, blocked: false, error: resolved.error };
 
-  const spec = deriveSpec(opts.repo, opts.journey, opts.specialist);
+  const spec = deriveSpec(opts.repo, opts.journey, opts.specialist, opts.module);
   const wtAbs = join(resolved.abs, spec.relPath);
   try {
     await access(wtAbs);

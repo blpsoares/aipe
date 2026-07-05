@@ -17,6 +17,19 @@ function validateRepo(repo: unknown, index: number): string | null {
   if (!isNonEmptyString(r.name)) return `repos[${index}].name: required`;
   if (!isNonEmptyString(r.url)) return `repos[${index}].url: required`;
   if (!isNonEmptyString(r.path)) return `repos[${index}].path: required`;
+  if (r.modules !== undefined) {
+    if (!Array.isArray(r.modules)) return `repos[${index}].modules: expected array`;
+    const seen = new Set<string>();
+    for (let j = 0; j < r.modules.length; j++) {
+      const m = r.modules[j];
+      if (typeof m !== "object" || m === null) return `repos[${index}].modules[${j}]: expected object`;
+      const mo = m as Record<string, unknown>;
+      if (!isNonEmptyString(mo.name)) return `repos[${index}].modules[${j}].name: required`;
+      if (!isNonEmptyString(mo.path)) return `repos[${index}].modules[${j}].path: required`;
+      if (seen.has(mo.name)) return `repos[${index}].modules[${j}].name: duplicate "${mo.name}"`;
+      seen.add(mo.name);
+    }
+  }
   return null;
 }
 

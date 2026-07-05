@@ -1,8 +1,19 @@
+// A module is the unit of work below a repo (a package/service/app inside a
+// monorepo). A repo with no declared modules is exactly one implicit module
+// spanning the whole repo — so single-repo workspaces behave unchanged.
+export interface ModuleEntry {
+  name: string; // unique within its repo
+  path: string; // relative to the repo root (e.g. "packages/core")
+  stack?: string[];
+  group?: string; // optional "area": modules sharing a group share one specialist pair
+}
+
 export interface RepoEntry {
   name: string;
   url: string;
   path: string;
   stack?: string[];
+  modules?: ModuleEntry[];
 }
 
 export interface ContextMeta {

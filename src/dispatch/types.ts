@@ -8,6 +8,7 @@ export type { PersonaRegistryEntry };
 export interface DispatchEntry {
   repo: string;
   specialist: string;
+  module?: string; // the unit within the repo; absent ⇒ the implicit whole-repo module
 }
 
 export type Batch = DispatchEntry[];
