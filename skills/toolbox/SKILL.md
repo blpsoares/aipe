@@ -96,6 +96,20 @@ matched tool into the specialist's hiring brief; leave heavy frameworks out for
 tasks that don't match (e.g. a `styling` task won't match an SDD kit that lists
 `skipFor: [styling]`).
 
+## Removing a tool
+
+Uninstall closes the loop (add → list → match → remove):
+```bash
+aipe skill remove <name> --workspace <workspace>   # drops the catalog entry,
+                                                   # .aipe/skills/<name>/ and each
+                                                   # repo's .claude/skills/<name>/
+aipe mcp remove <name> --workspace <workspace>     # drops the catalog entry and
+                                                   # the server from every .mcp.json
+```
+Both refuse with `ERROR not-found …` if the name isn't catalogued, and leave
+every other skill/MCP untouched. `aipe mcp remove` preserves the other servers in
+each `.mcp.json`.
+
 ## Rules
 
 - Never hand-write `.aipe/toolbox.yaml`, a repo's `.claude/skills/<name>/`, or an

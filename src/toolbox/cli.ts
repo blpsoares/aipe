@@ -6,10 +6,18 @@
 // when to use it.
 import { readFile } from "node:fs/promises";
 import { readToolbox } from "./catalog";
-import { installMcp, type InstallMcpInput } from "./mcp";
+import { installMcp, removeMcp, type InstallMcpInput } from "./mcp";
 import { matchSkills } from "./routing";
-import { installSkill, type InstallSkillInput } from "./skills";
+import { installSkill, removeSkill, type InstallSkillInput } from "./skills";
 import type { TaskSize } from "./types";
+
+// The name for `remove`: the first positional (after the subcommand), falling
+// back to --name. Ignores flag values so `remove foo --workspace /x` works.
+function positionalName(args: string[]): string | undefined {
+  const first = args[0];
+  if (first !== undefined && !first.startsWith("--")) return first;
+  return getFlag(args, "--name");
+}
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -72,14 +80,31 @@ async function skillMatch(workspace: string, args: string[]): Promise<number> {
   return 0;
 }
 
+async function skillRemove(workspace: string, args: string[]): Promise<number> {
+  const name = positionalName(args);
+  if (!name) {
+    console.log("ERROR input: skill name required (aipe skill remove <name>)");
+    return 1;
+  }
+  const result = await removeSkill(workspace, name);
+  if (!result.ok) {
+    console.log(`ERROR ${result.error}`);
+    return 1;
+  }
+  for (const r of result.rows) console.log(`${r.status.replace("-", "_").toUpperCase()} ${r.repo}`);
+  console.log(`OK removed skill=${result.name}`);
+  return 0;
+}
+
 export async function runSkill(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const [sub, ...rest] = args;
   if (sub === "add") return skillAdd(workspace, rest);
   if (sub === "list") return skillList(workspace);
   if (sub === "match") return skillMatch(workspace, rest);
+  if (sub === "remove") return skillRemove(workspace, rest);
   console.log(`ERROR command: unknown skill command "${sub ?? ""}"`);
-  console.log("Usage: aipe skill <add --input <json> | list | match --task-type <t> [--size <s>]> [--workspace <dir>]");
+  console.log("Usage: aipe skill <add --input <json> | list | match --task-type <t> [--size <s>] | remove <name>> [--workspace <dir>]");
   return 1;
 }
 
@@ -117,12 +142,29 @@ async function mcpList(workspace: string): Promise<number> {
   return 0;
 }
 
+async function mcpRemove(workspace: string, args: string[]): Promise<number> {
+  const name = positionalName(args);
+  if (!name) {
+    console.log("ERROR input: mcp name required (aipe mcp remove <name>)");
+    return 1;
+  }
+  const result = await removeMcp(workspace, name);
+  if (!result.ok) {
+    console.log(`ERROR ${result.error}`);
+    return 1;
+  }
+  for (const r of result.rows) console.log(`${r.status.replace("-", "_").toUpperCase()} ${r.target}`);
+  console.log(`OK removed mcp=${result.name}`);
+  return 0;
+}
+
 export async function runMcp(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const [sub, ...rest] = args;
   if (sub === "add") return mcpAdd(workspace, rest);
   if (sub === "list") return mcpList(workspace);
+  if (sub === "remove") return mcpRemove(workspace, rest);
   console.log(`ERROR command: unknown mcp command "${sub ?? ""}"`);
-  console.log("Usage: aipe mcp <add --input <json> | list> [--workspace <dir>]");
+  console.log("Usage: aipe mcp <add --input <json> | list | remove <name>> [--workspace <dir>]");
   return 1;
 }

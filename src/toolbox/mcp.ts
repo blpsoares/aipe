@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
-import { readToolbox, upsertMcp, writeToolbox } from "./catalog";
+import { readToolbox, removeMcpEntry, upsertMcp, writeToolbox } from "./catalog";
 import { findSecrets } from "./secrets";
 import type { McpEntry } from "./types";
 
@@ -89,4 +89,61 @@ export async function installMcp(workspaceDir: string, input: InstallMcpInput): 
   await writeToolbox(workspaceDir, upsertMcp(await readToolbox(workspaceDir), entry));
 
   return { ok: true, rows };
+}
+
+// Remove one server from an .mcp.json, preserving every other server. Returns
+// whether the server was actually present.
+async function unmergeMcpJson(dir: string, name: string): Promise<boolean> {
+  const path = join(dir, ".mcp.json");
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8"));
+    if (parsed && typeof parsed === "object" && parsed.mcpServers && name in parsed.mcpServers) {
+      delete parsed.mcpServers[name];
+      await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+      return true;
+    }
+  } catch {
+    // missing or malformed → nothing to remove
+  }
+  return false;
+}
+
+export interface RemoveMcpRow {
+  target: string; // "workspace" or a repo name
+  status: "removed" | "not-present";
+}
+
+export type RemoveMcpResult =
+  | { ok: true; name: string; rows: RemoveMcpRow[] }
+  | { ok: false; error: string };
+
+// Uninstalls an MCP server: drops it from the catalog and from the relevant
+// .mcp.json (workspace or per-repo), leaving other servers intact. Refuses with
+// not-found if the server isn't in the catalog.
+export async function removeMcp(workspaceDir: string, name: string): Promise<RemoveMcpResult> {
+  const toolbox = await readToolbox(workspaceDir);
+  const entry = toolbox.mcps.find((m) => m.name.toLowerCase() === name.toLowerCase());
+  if (!entry) return { ok: false, error: `not-found mcp "${name}"` };
+
+  const brain = await readBrain(workspaceDir);
+  const pathByRepo = new Map(brain.ok ? brain.brain.repos.map((r) => [r.name, r.path]) : []);
+
+  const rows: RemoveMcpRow[] = [];
+  if (entry.scope === "workspace") {
+    const removed = await unmergeMcpJson(workspaceDir, entry.name);
+    rows.push({ target: "workspace", status: removed ? "removed" : "not-present" });
+  } else {
+    for (const repoName of entry.repos) {
+      const repoPath = pathByRepo.get(repoName);
+      if (!repoPath) {
+        rows.push({ target: repoName, status: "not-present" });
+        continue;
+      }
+      const removed = await unmergeMcpJson(join(workspaceDir, repoPath), entry.name);
+      rows.push({ target: repoName, status: removed ? "removed" : "not-present" });
+    }
+  }
+
+  await writeToolbox(workspaceDir, removeMcpEntry(toolbox, entry.name).toolbox);
+  return { ok: true, name: entry.name, rows };
 }

@@ -46,3 +46,17 @@ export function upsertMcp(toolbox: Toolbox, entry: McpEntry): Toolbox {
   else mcps.push(entry);
   return { ...toolbox, mcps };
 }
+
+// Remove by name (case-insensitive), returning the pruned catalog and the entry
+// that was dropped (null if there was none) so callers can clean up its files.
+export function removeSkillEntry(toolbox: Toolbox, name: string): { toolbox: Toolbox; removed: SkillEntry | null } {
+  const removed = toolbox.skills.find((s) => s.name.toLowerCase() === name.toLowerCase()) ?? null;
+  if (!removed) return { toolbox, removed: null };
+  return { toolbox: { ...toolbox, skills: toolbox.skills.filter((s) => s !== removed) }, removed };
+}
+
+export function removeMcpEntry(toolbox: Toolbox, name: string): { toolbox: Toolbox; removed: McpEntry | null } {
+  const removed = toolbox.mcps.find((m) => m.name.toLowerCase() === name.toLowerCase()) ?? null;
+  if (!removed) return { toolbox, removed: null };
+  return { toolbox: { ...toolbox, mcps: toolbox.mcps.filter((m) => m !== removed) }, removed };
+}

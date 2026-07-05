@@ -87,7 +87,10 @@ continue on another machine without redoing onboarding.
 catalogued in `.aipe/toolbox.yaml` (published). Skills install per repo; MCPs at
 workspace scope (shared by all specialist subagents) or per repo. A structured
 `routing` hint + `aipe skill match` let the coordinator pick the right tool
-mechanically (so it doesn't spawn a heavy framework for a trivial edit).
+mechanically (so it doesn't spawn a heavy framework for a trivial edit). The full
+lifecycle is add · list · match · **remove** (`aipe skill|mcp remove <name>`
+uninstalls the catalog entry and every installed copy, keeping other tools
+intact).
 
 ### Incremental growth — `/aipe-add-repo`
 
@@ -146,7 +149,6 @@ aipe serve --port 8080 --workspace ../aipe-opvibes
 |---|---|
 | Persona load-order validation | Needs a live interactive session (persona identity surviving a third-party skill loaded on top). Can't be done autonomously. |
 | Non-Claude-Code harness adapters | The `aipe` CLI is already harness-agnostic; only the skills are Claude-Code-shaped. Deferred (Claude Code suffices for now). |
-| Skill/MCP uninstall | Toolbox supports add + list + match; removal not yet. |
 | Release + Cloudflare wiring | Deferred debt — see [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md). Publish the release, then create the redirect rules. |
 
 ## Laws & conventions

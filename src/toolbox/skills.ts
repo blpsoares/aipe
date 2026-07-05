@@ -1,7 +1,7 @@
-import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
-import { readToolbox, upsertSkill, writeToolbox } from "./catalog";
+import { readToolbox, removeSkillEntry, upsertSkill, writeToolbox } from "./catalog";
 import type { SkillEntry, SkillRouting } from "./types";
 
 export interface InstallSkillInput {
@@ -97,4 +97,46 @@ export async function installSkill(
   await writeToolbox(workspaceDir, upsertSkill(await readToolbox(workspaceDir), entry));
 
   return { ok: true, rows };
+}
+
+export interface RemoveSkillRow {
+  repo: string;
+  status: "removed" | "not-present" | "unknown-repo";
+}
+
+export type RemoveSkillResult =
+  | { ok: true; name: string; rows: RemoveSkillRow[] }
+  | { ok: false; error: string };
+
+// Uninstalls a skill: drops it from the catalog, deletes the published source
+// (.aipe/skills/<name>/) and each repo's installed copy (.claude/skills/<name>/).
+// Refuses with not-found if the skill isn't in the catalog.
+export async function removeSkill(workspaceDir: string, name: string): Promise<RemoveSkillResult> {
+  const toolbox = await readToolbox(workspaceDir);
+  const entry = toolbox.skills.find((s) => s.name.toLowerCase() === name.toLowerCase());
+  if (!entry) return { ok: false, error: `not-found skill "${name}"` };
+
+  const brain = await readBrain(workspaceDir);
+  const pathByRepo = new Map(brain.ok ? brain.brain.repos.map((r) => [r.name, r.path]) : []);
+
+  // (1) published source of truth
+  await rm(join(workspaceDir, ".aipe", "skills", entry.name), { recursive: true, force: true });
+
+  // (2) each repo's installed copy
+  const rows: RemoveSkillRow[] = [];
+  for (const repoName of entry.repos) {
+    const repoPath = pathByRepo.get(repoName);
+    if (!repoPath) {
+      rows.push({ repo: repoName, status: "unknown-repo" });
+      continue;
+    }
+    const dir = join(workspaceDir, repoPath, ".claude", "skills", entry.name);
+    const existed = await exists(dir);
+    await rm(dir, { recursive: true, force: true });
+    rows.push({ repo: repoName, status: existed ? "removed" : "not-present" });
+  }
+
+  // (3) catalog
+  await writeToolbox(workspaceDir, removeSkillEntry(toolbox, entry.name).toolbox);
+  return { ok: true, name: entry.name, rows };
 }
