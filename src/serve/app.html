@@ -27,6 +27,7 @@
   --glow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), 0 8px 30px color-mix(in srgb, var(--accent) 28%, transparent);
   --ring: color-mix(in srgb, var(--accent) 60%, transparent);
   --radius: 18px; --radius-sm: 12px;
+  --side-w: 372px; --org-h: 340px; --term-h: 320px;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --mono: "SF Mono", ui-monospace, "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
 }
@@ -131,22 +132,55 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .seg button:hover { color: var(--ink-dim); }
 .seg button.on { color: #fff; background: var(--grad); box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--accent) 70%, transparent); }
 
-/* ── Layout ──────────────────────────────────────────────────────────────── */
+/* ── Layout (resizable + collapsible) ──────────────────────────────────────
+   The cockpit is a flex layout with draggable splitters (side width, org/
+   pipeline height, terminal height) and per-card collapse/maximize — so nothing
+   is a "dry cut": every seam is grabbable and every panel is yours to arrange.  */
 .shell { display: flex; flex-direction: column; height: calc(100dvh - 61px); }
-.cockpit { display: grid; grid-template-columns: minmax(0,1fr) 372px; gap: 18px; padding: 18px; overflow: hidden; flex: 1; min-height: 0; }
-.main-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; overflow: auto; padding-right: 3px; }
-.side-col { overflow: auto; min-height: 0; }
+.cockpit { display: flex; padding: 14px; overflow: hidden; flex: 1; min-height: 0; }
+.main-col { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.side-col { flex: 0 0 var(--side-w); min-width: 240px; max-width: 68vw; overflow: hidden; display: flex; flex-direction: column; }
+#cardOrg { flex: 0 0 var(--org-h); min-height: 46px; }
+#cardPipe { flex: 1 1 auto; min-height: 46px; }
+#cardDetail { flex: 1 1 auto; min-height: 46px; }
 .card {
-  position: relative; background: linear-gradient(180deg, color-mix(in srgb, var(--panel-solid) 88%, transparent), var(--panel-2));
+  position: relative; display: flex; flex-direction: column; overflow: hidden;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel-solid) 88%, transparent), var(--panel-2));
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
 }
-.card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 1px 0 var(--edge-hi) inset; pointer-events: none; }
+.card::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 1px 0 var(--edge-hi) inset; pointer-events: none; z-index: 1; }
 .card > h2 {
-  margin: 0; padding: 15px 20px; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; font-weight: 700;
+  flex: 0 0 auto; margin: 0; padding: 14px 16px 14px 20px; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; font-weight: 700;
   color: var(--ink-faint); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 9px;
 }
 .card > h2::before { content: ""; width: 4px; height: 13px; border-radius: 3px; background: var(--grad); }
 .card > h2 .count { margin-left: auto; color: var(--ink-dim); letter-spacing: 0; text-transform: none; font-weight: 600; font-size: 12px; }
+.org-wrap, .board, .detail-body { flex: 1 1 auto; min-height: 0; }
+.detail-body { overflow: auto; padding: 20px; }
+
+/* per-card header controls */
+.hctl { display: inline-flex; gap: 2px; margin-left: 10px; }
+.hbtn { width: 26px; height: 24px; display: grid; place-items: center; border: 1px solid transparent; background: transparent; border-radius: 7px; color: var(--ink-faint); font-size: 12px; transition: background .14s, color .14s, border-color .14s; }
+.hbtn:hover { background: var(--panel-3); color: var(--ink-dim); border-color: var(--line); }
+.card.collapsed { flex: 0 0 auto !important; }
+.card.collapsed > :not(h2) { display: none !important; }
+.card.collapsed > h2 { border-bottom: none; }
+.card.collapsed .hbtn[data-act="collapse"] { transform: rotate(-90deg); }
+.card.maxed { position: fixed !important; inset: 74px 18px 18px !important; z-index: 60; flex: none !important; box-shadow: var(--shadow-lg); }
+#backdrop { position: fixed; inset: 0; background: rgba(4,6,14,.5); backdrop-filter: blur(3px); z-index: 55; opacity: 0; pointer-events: none; transition: opacity .2s; }
+#backdrop.on { opacity: 1; pointer-events: auto; }
+
+/* draggable splitters */
+.split { position: relative; flex: 0 0 12px; align-self: stretch; touch-action: none; z-index: 2; }
+.split.col { cursor: col-resize; } .split.row { cursor: row-resize; }
+.split::before { content: ""; position: absolute; background: var(--line-2); border-radius: 3px; transition: background .14s, box-shadow .14s; }
+.split.col::before { top: 18px; bottom: 18px; left: 5px; width: 2px; }
+.split.row::before { left: 18px; right: 18px; top: 5px; height: 2px; }
+.split:hover::before, .split.drag::before { background: var(--accent); box-shadow: 0 0 12px -1px var(--accent); }
+.split.col::after, .split.row::after { content: ""; position: absolute; border-radius: 999px; background: var(--ink-faint); opacity: 0; transition: opacity .14s; }
+.split:hover::after { opacity: .5; }
+.split.col::after { top: 50%; left: 4.5px; width: 3px; height: 22px; transform: translateY(-50%); }
+.split.row::after { left: 50%; top: 4.5px; height: 3px; width: 22px; transform: translateX(-50%); }
 
 /* ── Org chart ───────────────────────────────────────────────────────────── */
 .org-wrap { overflow: auto; padding: 14px 8px; }
@@ -222,7 +256,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ── Terminal drawer ─────────────────────────────────────────────────────── */
 .term { border-top: 1px solid var(--line); background: color-mix(in srgb, var(--panel-solid) 88%, transparent); backdrop-filter: blur(14px); display: flex; flex-direction: column; transition: height .2s cubic-bezier(.4,0,.2,1); overflow: hidden; }
 .term.closed { height: 46px; }
-.term.open { height: 340px; }
+.term.open { height: var(--term-h); }
+.term.dragging { transition: none; }
+.tgrip { height: 9px; flex: 0 0 9px; cursor: row-resize; position: relative; touch-action: none; }
+.term.closed .tgrip { display: none; }
+.tgrip::before { content: ""; position: absolute; left: 50%; top: 3px; width: 44px; height: 3px; transform: translateX(-50%); background: var(--line-2); border-radius: 3px; transition: background .14s, box-shadow .14s; }
+.tgrip:hover::before, .tgrip.drag::before { background: var(--accent); box-shadow: 0 0 12px -1px var(--accent); }
 .term header { height: 46px; flex: 0 0 46px; display: flex; align-items: center; gap: 11px; padding: 0 18px; cursor: pointer; user-select: none; border-bottom: 1px solid transparent; }
 .term.open header { border-bottom-color: var(--line); }
 .term header .ti { width: 24px; height: 24px; border-radius: 7px; background: var(--grad); color: #fff; display: grid; place-items: center; font-family: var(--mono); font-weight: 800; font-size: 12px; }
@@ -277,6 +316,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .timeline .ev::before { content: ""; position: absolute; left: -16px; top: 15px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--bg), 0 0 10px -1px var(--accent); }
   .timeline::before { content: ""; position: absolute; left: -12px; top: 6px; bottom: 6px; width: 2px; background: var(--line-2); }
   .term.open { height: 66vh; }
+  .tgrip { display: none; }
   .m-tree ul { list-style: none; margin: 0; padding-left: 18px; }
   .m-tree > ul { padding-left: 0; }
   .m-tree li { padding: 4px 0; }
@@ -303,25 +343,38 @@ button { font: inherit; color: inherit; cursor: pointer; }
 </div>
 
 <div class="shell">
-  <div class="cockpit desktop-only">
+  <div class="cockpit desktop-only" id="cockpit">
     <div class="main-col">
-      <section class="card">
-        <h2>Organograma <span class="count" id="orgCount"></span></h2>
+      <section class="card" id="cardOrg">
+        <h2>Organograma <span class="count" id="orgCount"></span>
+          <span class="hctl"><button class="hbtn" data-act="collapse" title="Collapse">▾</button><button class="hbtn" data-act="max" title="Maximize">⤢</button></span>
+        </h2>
         <div class="org-wrap org" id="org"></div>
       </section>
-      <section class="card">
-        <h2>Pipeline <span class="count" id="pipeCount"></span></h2>
+      <div class="split row" id="vsplit" title="Drag to resize"></div>
+      <section class="card" id="cardPipe">
+        <h2>Pipeline <span class="count" id="pipeCount"></span>
+          <span class="hctl"><button class="hbtn" data-act="collapse" title="Collapse">▾</button><button class="hbtn" data-act="max" title="Maximize">⤢</button></span>
+        </h2>
         <div class="board" id="board"></div>
       </section>
     </div>
+    <div class="split col" id="xsplit" title="Drag to resize"></div>
     <aside class="side-col">
-      <section class="card detail" style="padding:20px" id="detail"></section>
+      <section class="card" id="cardDetail">
+        <h2>Detail
+          <span class="hctl"><button class="hbtn" data-act="collapse" title="Collapse">▾</button><button class="hbtn" data-act="max" title="Maximize">⤢</button></span>
+        </h2>
+        <div class="detail detail-body" id="detail"></div>
+      </section>
     </aside>
   </div>
+  <div id="backdrop"></div>
 
   <div class="mobile m-only" id="mobile"></div>
 
   <div class="term closed" id="term">
+    <div class="tgrip" id="tgrip" title="Drag to resize"></div>
     <header id="termHead">
       <span class="ti">›_</span><b>Terminal</b>
       <span class="tstate" id="termState">disconnected</span>
@@ -630,6 +683,84 @@ el("termIn").addEventListener("keydown", (e) => {
   el("termPs").textContent = "…";
   TW.send(JSON.stringify({ t: "run", d: cmd }));
 });
+
+// ── Resizable + collapsible layout ──────────────────────────────────────────
+const LAYOUT_KEY = "aipe-layout";
+const rs = document.documentElement.style;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+function pxVar(name, fb) { const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)); return isFinite(v) ? v : fb; }
+function saveLayout(patch) {
+  let l = {}; try { l = JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}; } catch {}
+  Object.assign(l, patch); localStorage.setItem(LAYOUT_KEY, JSON.stringify(l));
+}
+function loadLayout() {
+  let l = {}; try { l = JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}; } catch {}
+  if (l.sideW) rs.setProperty("--side-w", l.sideW + "px");
+  if (l.orgH) rs.setProperty("--org-h", l.orgH + "px");
+  if (l.termH) rs.setProperty("--term-h", l.termH + "px");
+  for (const [id, on] of Object.entries(l.collapsed || {})) { const c = el(id); if (c && on) c.classList.add("collapsed"); }
+}
+
+// A generic drag handle that updates a CSS length variable while pressed.
+function makeSplit(handle, opts) {
+  if (!handle) return;
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add("drag");
+    const start = opts.get();
+    const p0 = opts.axis === "x" ? e.clientX : e.clientY;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = opts.axis === "x" ? "col-resize" : "row-resize";
+    const move = (ev) => { const p = opts.axis === "x" ? ev.clientX : ev.clientY; opts.set(start + (p - p0) * opts.sign); };
+    const up = () => {
+      handle.releasePointerCapture(e.pointerId);
+      handle.classList.remove("drag");
+      document.body.style.userSelect = ""; document.body.style.cursor = "";
+      handle.removeEventListener("pointermove", move); handle.removeEventListener("pointerup", up);
+      opts.done && opts.done();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  });
+}
+makeSplit(el("xsplit"), { // side panel width — side is on the right, so drag-left widens
+  axis: "x", sign: -1, get: () => pxVar("--side-w", 372),
+  set: (v) => rs.setProperty("--side-w", clamp(v, 260, window.innerWidth * 0.66) + "px"),
+  done: () => saveLayout({ sideW: Math.round(pxVar("--side-w", 372)) }),
+});
+makeSplit(el("vsplit"), { // org height — drag-down grows the org card
+  axis: "y", sign: 1, get: () => pxVar("--org-h", 340),
+  set: (v) => rs.setProperty("--org-h", clamp(v, 60, window.innerHeight - 260) + "px"),
+  done: () => saveLayout({ orgH: Math.round(pxVar("--org-h", 340)) }),
+});
+makeSplit(el("tgrip"), { // terminal height — grip is at its top, so drag-up grows it
+  axis: "y", sign: -1, get: () => pxVar("--term-h", 320),
+  set: (v) => { el("term").classList.add("dragging"); rs.setProperty("--term-h", clamp(v, 120, window.innerHeight * 0.82) + "px"); },
+  done: () => { el("term").classList.remove("dragging"); if (!el("term").classList.contains("open")) openTerm(true); saveLayout({ termH: Math.round(pxVar("--term-h", 320)) }); },
+});
+
+// per-card collapse / maximize
+let maxed = null;
+function unmax() { if (maxed) { maxed.classList.remove("maxed"); maxed = null; el("backdrop").classList.remove("on"); } }
+el("cockpit").addEventListener("click", (e) => {
+  const btn = e.target.closest(".hbtn"); if (!btn) return;
+  const card = btn.closest(".card"); if (!card) return;
+  if (btn.dataset.act === "collapse") {
+    if (card === maxed) unmax();
+    card.classList.toggle("collapsed");
+    const collapsed = {};
+    ["cardOrg", "cardPipe", "cardDetail"].forEach((id) => { if (el(id).classList.contains("collapsed")) collapsed[id] = true; });
+    saveLayout({ collapsed });
+  } else if (btn.dataset.act === "max") {
+    if (maxed === card) unmax();
+    else { unmax(); card.classList.remove("collapsed"); card.classList.add("maxed"); maxed = card; el("backdrop").classList.add("on"); }
+  }
+});
+el("backdrop").addEventListener("click", unmax);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") unmax(); });
+
+loadLayout();
 </script>
 </body>
 </html>
