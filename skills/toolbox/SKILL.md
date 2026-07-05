@@ -35,9 +35,18 @@ tool is a deterministic `aipe` command.
      "objective": "Structure substantial features spec-first.",
      "whenToUse": "Substantial features/refactors; NOT trivial edits (copy, colours, one-liners).",
      "repos": ["embark", "prontuario"],
-     "source": "/path/to/the/skill/dir/or/SKILL.md"
+     "source": "/path/to/the/skill/dir/or/SKILL.md",
+     "routing": {
+       "taskTypes": ["feature", "refactor"],
+       "skipFor": ["styling", "copy", "one-liner"],
+       "minSize": "large"
+     }
    }
    ```
+   `routing` is optional but recommended: it lets `aipe skill match` decide
+   mechanically whether a skill applies, instead of you interpreting the prose.
+   `taskTypes` = only these; `skipFor` = never these; `minSize` =
+   `small|medium|large` floor.
    Output: `INSTALLED <repo>` per repo, then `OK skill=<name>`. The content is
    copied into each repo's `.claude/skills/<name>/` and into
    `.aipe/skills/<name>/` (the published source of truth).
@@ -77,10 +86,15 @@ Before decomposing a demand, read the catalog so you route correctly:
 aipe skill list --workspace <workspace>
 aipe mcp list --workspace <workspace>
 ```
-Each `SKILL <name> [repos] <whenToUse>` line tells you whether a framework
-applies to the task at hand. Fold the relevant tool into the specialist's
-hiring brief (mention the installed framework/MCP and when to use it); leave
-heavy frameworks out of briefs for trivial tasks.
+For a mechanical decision on a specific task, ask which skills apply:
+```bash
+aipe skill match --task-type <feature|refactor|styling|copy|...> [--size small|medium|large] --workspace <workspace>
+```
+`MATCH <name>` lines are the skills whose structured `routing` fits the task
+(un-routed skills always match — judge those from their `whenToUse`). Fold each
+matched tool into the specialist's hiring brief; leave heavy frameworks out for
+tasks that don't match (e.g. a `styling` task won't match an SDD kit that lists
+`skipFor: [styling]`).
 
 ## Rules
 

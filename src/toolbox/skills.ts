@@ -2,7 +2,7 @@ import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
 import { readToolbox, upsertSkill, writeToolbox } from "./catalog";
-import type { SkillEntry } from "./types";
+import type { SkillEntry, SkillRouting } from "./types";
 
 export interface InstallSkillInput {
   name: string; // skill slug (directory + skill name)
@@ -11,6 +11,7 @@ export interface InstallSkillInput {
   whenToUse: string;
   repos: string[]; // repo names to install into
   source: string; // path to a SKILL.md file, or a dir containing SKILL.md
+  routing?: SkillRouting; // optional structured routing signals
 }
 
 export interface InstallSkillRow {
@@ -91,6 +92,7 @@ export async function installSkill(
     objective: input.objective,
     whenToUse: input.whenToUse,
     repos: installedRepos,
+    ...(input.routing ? { routing: input.routing } : {}),
   };
   await writeToolbox(workspaceDir, upsertSkill(await readToolbox(workspaceDir), entry));
 

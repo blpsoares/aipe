@@ -7,7 +7,9 @@
 import { readFile } from "node:fs/promises";
 import { readToolbox } from "./catalog";
 import { installMcp, type InstallMcpInput } from "./mcp";
+import { matchSkills } from "./routing";
 import { installSkill, type InstallSkillInput } from "./skills";
+import type { TaskSize } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -57,13 +59,27 @@ async function skillList(workspace: string): Promise<number> {
   return 0;
 }
 
+// Deterministic routing: which toolbox skills apply to a task of this
+// type/size? The coordinator calls this before deciding whether to invoke a
+// framework, instead of interpreting the free-text hint.
+async function skillMatch(workspace: string, args: string[]): Promise<number> {
+  const tb = await readToolbox(workspace);
+  const taskType = getFlag(args, "--task-type");
+  const size = getFlag(args, "--size") as TaskSize | undefined;
+  const matched = matchSkills(tb, { taskType, size });
+  for (const s of matched) console.log(`MATCH ${s.name} [${s.repos.join(",")}]`);
+  console.log(`STATE matched=${matched.length} of ${tb.skills.length}`);
+  return 0;
+}
+
 export async function runSkill(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const [sub, ...rest] = args;
   if (sub === "add") return skillAdd(workspace, rest);
   if (sub === "list") return skillList(workspace);
+  if (sub === "match") return skillMatch(workspace, rest);
   console.log(`ERROR command: unknown skill command "${sub ?? ""}"`);
-  console.log("Usage: aipe skill <add --input <json> | list> [--workspace <dir>]");
+  console.log("Usage: aipe skill <add --input <json> | list | match --task-type <t> [--size <s>]> [--workspace <dir>]");
   return 1;
 }
 

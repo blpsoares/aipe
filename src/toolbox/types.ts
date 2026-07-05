@@ -4,12 +4,24 @@
 // can read, in one place, what exists and — crucially — WHEN to reach for each
 // (so it doesn't spawn a heavy SDD flow to change a button colour).
 
+export type TaskSize = "small" | "medium" | "large";
+
+// Optional structured signals so the coordinator can route mechanically instead
+// of interpreting prose: only surface this skill for these task types, never for
+// these, and only at/above this size.
+export interface SkillRouting {
+  taskTypes?: string[]; // e.g. ["feature", "refactor"]
+  skipFor?: string[]; // e.g. ["styling", "copy", "one-liner"]
+  minSize?: TaskSize; // e.g. "large" → skip small/medium tasks
+}
+
 export interface SkillEntry {
   name: string;
   description: string; // what the skill/framework is
   objective: string; // what it's for
-  whenToUse: string; // the routing hint the coordinator/specialists use
+  whenToUse: string; // free-text routing hint (human summary)
   repos: string[]; // repos it is installed into
+  routing?: SkillRouting; // optional structured routing signals
 }
 
 export interface McpEntry {
