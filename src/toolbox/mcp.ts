@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
 import { readToolbox, upsertMcp, writeToolbox } from "./catalog";
+import { findSecrets } from "./secrets";
 import type { McpEntry } from "./types";
 
 export interface InstallMcpInput {
@@ -10,6 +11,7 @@ export interface InstallMcpInput {
   repos: string[]; // for scope=repo
   description: string;
   config: unknown; // the harness MCP server definition (keep secret-free: use env refs)
+  allowSecrets?: boolean; // escape hatch for the rare intentional literal
 }
 
 export interface InstallMcpRow {
@@ -43,6 +45,17 @@ async function mergeMcpJson(dir: string, name: string, config: unknown): Promise
 export async function installMcp(workspaceDir: string, input: InstallMcpInput): Promise<InstallMcpResult> {
   const brain = await readBrain(workspaceDir);
   if (!brain.ok) return { ok: false, error: brain.error };
+
+  if (!input.allowSecrets) {
+    const secrets = findSecrets(input.config);
+    if (secrets.length > 0) {
+      return {
+        ok: false,
+        error: `literal secret(s) in config at: ${secrets.join(", ")} — use env references like "\${VAR}", or pass --allow-secrets to override`,
+      };
+    }
+  }
+
   const pathByRepo = new Map(brain.brain.repos.map((r) => [r.name, r.path]));
 
   const rows: InstallMcpRow[] = [];

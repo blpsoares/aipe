@@ -64,9 +64,11 @@ aipe mcp add --input <file.json> --workspace <workspace>
 ```
 Writes/merges `.mcp.json` (workspace root or per repo) and records the catalog.
 
-> **Secrets:** the catalog is published. Never put a literal secret in
-> `config` — reference an environment variable (`"${PG_URL}"`) and set the real
-> value in the machine's environment.
+> **Secrets:** the catalog is published, so `aipe mcp add` **refuses** a config
+> that carries a literal secret (a secret-named field, or inline `user:pass@`
+> URL credentials, whose value isn't an env reference). Use `"${PG_URL}"` and
+> set the real value in the machine's environment. `--allow-secrets` overrides
+> only for a deliberate, non-sensitive literal.
 
 ## Reviewing before you dispatch
 

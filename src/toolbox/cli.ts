@@ -80,7 +80,8 @@ async function mcpAdd(workspace: string, args: string[]): Promise<number> {
     console.log("ERROR input: name and scope (workspace|repo) are required");
     return 1;
   }
-  const result = await installMcp(workspace, { ...i, repos: i.repos ?? [] });
+  const allowSecrets = args.includes("--allow-secrets");
+  const result = await installMcp(workspace, { ...i, repos: i.repos ?? [], allowSecrets });
   if (!result.ok) {
     console.log(`ERROR ${result.error}`);
     return 1;
