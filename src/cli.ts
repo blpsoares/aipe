@@ -14,6 +14,7 @@ import { run as hireSpecialists } from "./hire-specialists/cli";
 import { run as relationship } from "./relationship/cli";
 import { run as readState, runSessionContext } from "./session-hook/read-state";
 import { run as start } from "./start/cli";
+import { run as worktree } from "./worktree/cli";
 
 export const VERSION = "0.1.0";
 
@@ -27,6 +28,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "hire-specialists": hireSpecialists,
   "read-state": readState,
   "session-context": runSessionContext,
+  worktree: worktree,
 };
 
 const HELP = [
@@ -40,6 +42,7 @@ const HELP = [
   "  make-workspace     Clone the declared repos on disk",
   "  relationship       Discover cross-repo relations + backfill stack",
   "  hire-specialists   Generate the per-repo persona skills + personas.yaml",
+  "  worktree           Provision/list/remove per-specialist git worktrees",
   "  read-state         Print the coordinator awareness fields (used by hooks)",
   "  session-context    Emit the SessionStart hook JSON (coordinator awareness)",
   "",
