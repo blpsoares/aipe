@@ -21,7 +21,7 @@ const fullBrain = {
     { name: "prontuario", url: "git@github.com:opvibes/prontuario.git", path: "./prontuario" },
   ],
 };
-const doneState = { phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } };
+const doneState = { phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } };
 
 test("brain+state complete (everything done)", async () => {
   const dir = await ws(fullBrain, doneState);
@@ -32,7 +32,7 @@ test("brain+state complete (everything done)", async () => {
     expect(f.coordinator).toBe("Nicolas");
     expect(f.repos).toEqual(["embark", "prontuario"]);
     expect(f.phaseWorkspace).toBe("done");
-    expect(f.phaseGenerator).toBe("done");
+    expect(f.phaseSpecialists).toBe("done");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -50,7 +50,7 @@ test("brain absent → state 1 (absent)", async () => {
 });
 
 test("partial state (workspace pending) reflects the phases", async () => {
-  const dir = await ws(fullBrain, { phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" } });
+  const dir = await ws(fullBrain, { phase: { brain: "done", workspace: "pending", relationship: "pending", specialists: "pending" } });
   try {
     const f = await readState(dir);
     expect(f.phaseWorkspace).toBe("pending");

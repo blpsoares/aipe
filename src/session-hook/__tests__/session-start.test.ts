@@ -46,7 +46,7 @@ test("state 1: no brain → points to /context-brain, valid JSON", async () => {
 });
 
 test("state 2: incomplete onboarding → next step /make-workspace", async () => {
-  const dir = await makeWs({ phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" } });
+  const dir = await makeWs({ phase: { brain: "done", workspace: "pending", relationship: "pending", specialists: "pending" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
     expect(ctx).toContain("being configured");
@@ -58,7 +58,7 @@ test("state 2: incomplete onboarding → next step /make-workspace", async () =>
 });
 
 test("state 3: everything done → full coordinator with repos", async () => {
-  const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } });
+  const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
     expect(ctx).toContain("You ARE Nicolas");
@@ -70,7 +70,7 @@ test("state 3: everything done → full coordinator with repos", async () => {
 });
 
 test("opt-out present in every state", async () => {
-  const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } });
+  const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } });
   try {
     const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
     expect(ctx).toContain("exit AIPe mode");
@@ -92,7 +92,7 @@ test("brain.yaml with embedded C0 control character → emitted JSON is still va
     await writeFile(join(dir, ".aipe", "brain.yaml"), raw, "utf8");
     await writeFile(
       join(dir, ".aipe", "state.yaml"),
-      stringify({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "done" } }),
+      stringify({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } }),
       "utf8",
     );
     const out = await runHook(dir);

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
 import type { BrainFile, Phase, StateFile } from "../context-brain/types";
+import { renderSessionContext } from "./awareness";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -27,7 +28,7 @@ export interface Fields {
   phaseBrain: Phase;
   phaseWorkspace: Phase;
   phaseRelationship: Phase;
-  phaseGenerator: Phase;
+  phaseSpecialists: Phase;
   repos: string[];
 }
 
@@ -53,7 +54,7 @@ function absentFields(): Fields {
     phaseBrain: "pending",
     phaseWorkspace: "pending",
     phaseRelationship: "pending",
-    phaseGenerator: "pending",
+    phaseSpecialists: "pending",
     repos: [],
   };
 }
@@ -85,7 +86,7 @@ export async function readState(workspaceDir: string): Promise<Fields> {
     phaseBrain: readPhase(phase?.brain, "done"),
     phaseWorkspace: readPhase(phase?.workspace, "pending"),
     phaseRelationship: readPhase(phase?.relationship, "pending"),
-    phaseGenerator: readPhase(phase?.generator, "pending"),
+    phaseSpecialists: readPhase(phase?.specialists, "pending"),
     repos,
   };
 }
@@ -98,12 +99,27 @@ export function formatFields(f: Fields): string {
     `PHASE_BRAIN=${f.phaseBrain}`,
     `PHASE_WORKSPACE=${f.phaseWorkspace}`,
     `PHASE_RELATIONSHIP=${f.phaseRelationship}`,
-    `PHASE_GENERATOR=${f.phaseGenerator}`,
+    `PHASE_SPECIALISTS=${f.phaseSpecialists}`,
     `REPOS=${f.repos.join(",")}`,
   ].join("\n");
 }
 
-if (import.meta.main) {
-  const workspace = getFlag(process.argv.slice(2), "--workspace") ?? process.cwd();
+export async function run(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
   console.log(formatFields(await readState(workspace)));
+  return 0;
+}
+
+export async function runSessionContext(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  if (!workspace) {
+    console.log("{}");
+    return 0;
+  }
+  console.log(renderSessionContext(await readState(workspace)));
+  return 0;
+}
+
+if (import.meta.main) {
+  run(process.argv.slice(2)).then((code) => process.exit(code));
 }

@@ -32,11 +32,12 @@ may happen in another language, but the repository is English-only.)
 | 2 | `/make-workspace` — clone the repos | Merged | [02-make-workspace.md](02-make-workspace.md) |
 | 3 | `SessionStart` hook — coordinator context injection | Merged | [03-session-hook.md](03-session-hook.md) |
 | 4 | `/relationship` — cross-repo relationship discovery (also backfills `stack`) | Ready to merge | [04-relationship.md](04-relationship.md) |
+| 5 | `/hire-specialists` — persona skills (renamed from `/context-brain-generator`) | Implemented | [05-hire-specialists.md](05-hire-specialists.md) |
+| — | Unified `aipe` CLI + zero-dependency distribution | Implemented | [06-unified-cli-distribution.md](06-unified-cli-distribution.md) |
 
 ### Roadmap (not yet built)
 
 - Worktree-per-journey (foundational)
-- `/context-brain-generator` — persona skills
 - `/aipe-add-repo` — incremental repo addition
 
 See the foundation design at

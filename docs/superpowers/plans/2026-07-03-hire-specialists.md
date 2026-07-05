@@ -1,6 +1,14 @@
-# /context-brain-generator Implementation Plan
+# /hire-specialists Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+> **As-built note (2026-07-04):** renamed from `context-brain-generator` to
+> `hire-specialists`; the `generator` phase became `specialists`; the module
+> lives at `src/hire-specialists/` and is invoked as the `aipe
+> hire-specialists` subcommand of the unified binary (not `bun …/cli.ts`).
+> The per-task `~/aipe-worktree-*` and `bun src/…/cli.ts` commands below are
+> historical; the code was implemented in-place on the session branch. See
+> dossier entry 05 for what actually shipped.
 
 **Goal:** Generate, for every repo in a context, exactly 2 personas (1 dev-fullstack + 1 QA) installed as two-mode skills inside that repo, plus a cross-repo `.aipe/personas.yaml` registry (coordinator + every persona).
 
@@ -19,8 +27,8 @@
 - Built-in name pool (used to fill any name the PE didn't provide), in this exact order: `Alice, Bruno, Carla, Diego, Elena, Felipe, Gabriela, Hugo, Isabela, Joaquim, Karen, Lucas, Marina, Nicolas, Olivia, Pedro, Quintino, Rafaela, Samuel, Tania, Ursula, Victor, Wanda, Xavier, Yasmin, Zeca`. If the pool is exhausted (more than 26 personas needed), fall back to `persona-1`, `persona-2`, ... until an unused one is found.
 - Slugification for a persona's directory name and skill `name:` frontmatter field: lowercase, non-alphanumeric runs collapsed to a single `-`, leading/trailing `-` trimmed (e.g. `Joaquim` → `joaquim`).
 - The materialize CLI mode **defensively deduplicates** reports by name (case-insensitive) and drops any report whose name equals the coordinator's — first occurrence wins, later duplicates are silently dropped (never overwritten in place), keeping the invariant intact even if two live agents somehow returned the same name.
-- `state.phase.generator` becomes `done` only if **every** `(repo, role)` pair — 2 per repo — has a valid report; otherwise `pending`.
-- `.aipe/generator/.reports/` (transient staging) is deleted **only when the phase reaches `done`** — when `pending`, it's left in place so a coordinator retry can add just the missing `(repo, role)` reports without losing the ones that already succeeded.
+- `state.phase.specialists` becomes `done` only if **every** `(repo, role)` pair — 2 per repo — has a valid report; otherwise `pending`.
+- `.aipe/specialists/.reports/` (transient staging) is deleted **only when the phase reaches `done`** — when `pending`, it's left in place so a coordinator retry can add just the missing `(repo, role)` reports without losing the ones that already succeeded.
 - The **hiring brief is never a persisted artifact** — no template file is written by this CLI or this skill. A persona's `SKILL.md` only documents in prose how to interpret one when received.
 - Messages to the user in **English**; commits in English following Conventional Commits.
 
@@ -29,14 +37,14 @@
 ## File Structure
 
 ```
-src/context-brain-generator/
-  ├── types.ts        # PersonaRole, PersonaAssignment, NamingResult, ProvidedNames, PersonaReport, PersonaRegistryEntry, GeneratorPhase
+src/hire-specialists/
+  ├── types.ts        # PersonaRole, PersonaAssignment, NamingResult, ProvidedNames, PersonaReport, PersonaRegistryEntry, SpecialistsPhase
   ├── naming.ts         # resolveNames(), dedupeReportsByName(): pure name resolution + collision handling
   ├── render.ts         # personaSlug(), renderSkillMd(): pure SKILL.md assembly from a validated PersonaReport
   ├── reports.ts        # readReports(): reads + validates .reports/*.json from disk
   ├── registry.ts       # buildRegistry(), renderPersonasYaml(): pure personas.yaml assembly
-  ├── state.ts          # updateGeneratorPhase(): updates state.yaml preserving other phases
-  ├── run.ts            # resolvePersonaNames(), runGenerator(): orchestration
+  ├── state.ts          # updateSpecialistsPhase(): updates state.yaml preserving other phases
+  ├── run.ts            # resolvePersonaNames(), runHireSpecialists(): orchestration
   ├── cli.ts            # flag parsing, two modes (--resolve-names / materialize), renderReport (pure), wiring
   └── __tests__/
        ├── naming.test.ts
@@ -46,7 +54,7 @@ src/context-brain-generator/
        ├── state.test.ts
        ├── run.test.ts
        └── cli.test.ts
-skills/context-brain-generator/SKILL.md
+skills/hire-specialists/SKILL.md
 ```
 
 ---
@@ -54,7 +62,7 @@ skills/context-brain-generator/SKILL.md
 ## Task 1: Types (`types.ts`)
 
 **Files:**
-- Create: `src/context-brain-generator/types.ts`
+- Create: `src/hire-specialists/types.ts`
 
 **Interfaces:**
 - Consumes: `BrainFile`, `RepoEntry`, `Phase`, `StateFile` from `src/context-brain/types.ts` (re-exported).
@@ -65,11 +73,11 @@ skills/context-brain-generator/SKILL.md
   - `interface ProvidedNames { [repo: string]: { devFullstack?: string | null; qa?: string | null } }`
   - `interface PersonaReport { repo: string; role: PersonaRole; name: string; body: string }`
   - `interface PersonaRegistryEntry { name: string; role: PersonaRole | "coordinator"; repo: string | null; path: string | null }`
-  - `type GeneratorPhase = "pending" | "done"`
+  - `type SpecialistsPhase = "pending" | "done"`
 
 - [ ] **Step 1: Write the types**
 
-Create `src/context-brain-generator/types.ts`:
+Create `src/hire-specialists/types.ts`:
 
 ```ts
 import type { BrainFile, Phase, RepoEntry, StateFile } from "../context-brain/types";
@@ -107,19 +115,19 @@ export interface PersonaRegistryEntry {
   path: string | null;
 }
 
-export type GeneratorPhase = "pending" | "done";
+export type SpecialistsPhase = "pending" | "done";
 ```
 
 - [ ] **Step 2: Type-check**
 
-Run: `cd ~/aipe-worktree-generator && bunx tsc --noEmit -p tsconfig.json`
+Run: `cd ~/aipe-worktree-hire-specialists && bunx tsc --noEmit -p tsconfig.json`
 Expected: 0 errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add src/context-brain-generator/types.ts
-git commit -m "feat: context-brain-generator types"
+cd ~/aipe-worktree-hire-specialists && git add src/hire-specialists/types.ts
+git commit -m "feat: hire-specialists types"
 ```
 
 ---
@@ -127,8 +135,8 @@ git commit -m "feat: context-brain-generator types"
 ## Task 2: Naming (`naming.ts`)
 
 **Files:**
-- Create: `src/context-brain-generator/naming.ts`
-- Test: `src/context-brain-generator/__tests__/naming.test.ts`
+- Create: `src/hire-specialists/naming.ts`
+- Test: `src/hire-specialists/__tests__/naming.test.ts`
 
 **Interfaces:**
 - Consumes: `BrainFile`, `NamingResult`, `PersonaAssignment`, `ProvidedNames`, `PersonaReport` from `./types`.
@@ -138,7 +146,7 @@ git commit -m "feat: context-brain-generator types"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/context-brain-generator/__tests__/naming.test.ts`:
+Create `src/hire-specialists/__tests__/naming.test.ts`:
 
 ```ts
 import { expect, test } from "bun:test";
@@ -207,12 +215,12 @@ test("dedupeReportsByName drops a report whose name matches the coordinator's, c
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/naming.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/naming.test.ts`
 Expected: FAIL — `Cannot find module "../naming"`.
 
 - [ ] **Step 3: Implement `naming.ts`**
 
-Create `src/context-brain-generator/naming.ts`:
+Create `src/hire-specialists/naming.ts`:
 
 ```ts
 import type { BrainFile, NamingResult, PersonaAssignment, PersonaReport, ProvidedNames } from "./types";
@@ -270,13 +278,13 @@ export function dedupeReportsByName(reports: PersonaReport[], coordinatorName: s
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/naming.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/naming.test.ts`
 Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add src/context-brain-generator/naming.ts src/context-brain-generator/__tests__/naming.test.ts
+cd ~/aipe-worktree-hire-specialists && git add src/hire-specialists/naming.ts src/hire-specialists/__tests__/naming.test.ts
 git commit -m "feat: persona name resolution and dedupe"
 ```
 
@@ -285,8 +293,8 @@ git commit -m "feat: persona name resolution and dedupe"
 ## Task 3: Rendering (`render.ts`)
 
 **Files:**
-- Create: `src/context-brain-generator/render.ts`
-- Test: `src/context-brain-generator/__tests__/render.test.ts`
+- Create: `src/hire-specialists/render.ts`
+- Test: `src/hire-specialists/__tests__/render.test.ts`
 
 **Interfaces:**
 - Consumes: `PersonaReport`, `PersonaRole` from `./types`.
@@ -296,7 +304,7 @@ git commit -m "feat: persona name resolution and dedupe"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/context-brain-generator/__tests__/render.test.ts`:
+Create `src/hire-specialists/__tests__/render.test.ts`:
 
 ```ts
 import { expect, test } from "bun:test";
@@ -340,12 +348,12 @@ test("renderSkillMd starts with YAML frontmatter delimiters", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/render.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/render.test.ts`
 Expected: FAIL — `Cannot find module "../render"`.
 
 - [ ] **Step 3: Implement `render.ts`**
 
-Create `src/context-brain-generator/render.ts`:
+Create `src/hire-specialists/render.ts`:
 
 ```ts
 import type { PersonaReport, PersonaRole } from "./types";
@@ -376,13 +384,13 @@ export function renderSkillMd(report: PersonaReport, stack: string[]): string {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/render.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/render.test.ts`
 Expected: PASS (5 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add src/context-brain-generator/render.ts src/context-brain-generator/__tests__/render.test.ts
+cd ~/aipe-worktree-hire-specialists && git add src/hire-specialists/render.ts src/hire-specialists/__tests__/render.test.ts
 git commit -m "feat: persona SKILL.md rendering"
 ```
 
@@ -391,8 +399,8 @@ git commit -m "feat: persona SKILL.md rendering"
 ## Task 4: Report reading (`reports.ts`)
 
 **Files:**
-- Create: `src/context-brain-generator/reports.ts`
-- Test: `src/context-brain-generator/__tests__/reports.test.ts`
+- Create: `src/hire-specialists/reports.ts`
+- Test: `src/hire-specialists/__tests__/reports.test.ts`
 
 **Interfaces:**
 - Consumes: `PersonaReport` from `./types`.
@@ -400,7 +408,7 @@ git commit -m "feat: persona SKILL.md rendering"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/context-brain-generator/__tests__/reports.test.ts`:
+Create `src/hire-specialists/__tests__/reports.test.ts`:
 
 ```ts
 import { expect, test } from "bun:test";
@@ -475,12 +483,12 @@ test("returns an empty list when the directory does not exist", async () => {
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/reports.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/reports.test.ts`
 Expected: FAIL — `Cannot find module "../reports"`.
 
 - [ ] **Step 3: Implement `reports.ts`**
 
-Create `src/context-brain-generator/reports.ts`:
+Create `src/hire-specialists/reports.ts`:
 
 ```ts
 import { readFile, readdir } from "node:fs/promises";
@@ -529,13 +537,13 @@ export async function readReports(reportsDir: string): Promise<PersonaReport[]> 
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/reports.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/reports.test.ts`
 Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add src/context-brain-generator/reports.ts src/context-brain-generator/__tests__/reports.test.ts
+cd ~/aipe-worktree-hire-specialists && git add src/hire-specialists/reports.ts src/hire-specialists/__tests__/reports.test.ts
 git commit -m "feat: persona report reading and validation"
 ```
 
@@ -544,8 +552,8 @@ git commit -m "feat: persona report reading and validation"
 ## Task 5: Registry (`registry.ts`)
 
 **Files:**
-- Create: `src/context-brain-generator/registry.ts`
-- Test: `src/context-brain-generator/__tests__/registry.test.ts`
+- Create: `src/hire-specialists/registry.ts`
+- Test: `src/hire-specialists/__tests__/registry.test.ts`
 
 **Interfaces:**
 - Consumes: `BrainFile`, `PersonaRegistryEntry`, `PersonaReport` from `./types`; `personaSlug` from `./render`.
@@ -555,7 +563,7 @@ git commit -m "feat: persona report reading and validation"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/context-brain-generator/__tests__/registry.test.ts`:
+Create `src/hire-specialists/__tests__/registry.test.ts`:
 
 ```ts
 import { expect, test } from "bun:test";
@@ -590,12 +598,12 @@ test("renderPersonasYaml produces parseable YAML with a personas list", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/registry.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/registry.test.ts`
 Expected: FAIL — `Cannot find module "../registry"`.
 
 - [ ] **Step 3: Implement `registry.ts`**
 
-Create `src/context-brain-generator/registry.ts`:
+Create `src/hire-specialists/registry.ts`:
 
 ```ts
 import { stringify } from "yaml";
@@ -628,13 +636,13 @@ export function renderPersonasYaml(entries: PersonaRegistryEntry[]): string {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/registry.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/registry.test.ts`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add src/context-brain-generator/registry.ts src/context-brain-generator/__tests__/registry.test.ts
+cd ~/aipe-worktree-hire-specialists && git add src/hire-specialists/registry.ts src/hire-specialists/__tests__/registry.test.ts
 git commit -m "feat: personas.yaml registry assembly"
 ```
 
@@ -643,16 +651,16 @@ git commit -m "feat: personas.yaml registry assembly"
 ## Task 6: `state.yaml` update (`state.ts`)
 
 **Files:**
-- Create: `src/context-brain-generator/state.ts`
-- Test: `src/context-brain-generator/__tests__/state.test.ts`
+- Create: `src/hire-specialists/state.ts`
+- Test: `src/hire-specialists/__tests__/state.test.ts`
 
 **Interfaces:**
 - Consumes: `Phase`, `StateFile` from `../context-brain/types`; `initialState` from `../context-brain/write`.
-- Produces: `updateGeneratorPhase(workspaceDir: string, phase: Phase): Promise<string>`.
+- Produces: `updateSpecialistsPhase(workspaceDir: string, phase: Phase): Promise<string>`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/context-brain-generator/__tests__/state.test.ts`:
+Create `src/hire-specialists/__tests__/state.test.ts`:
 
 ```ts
 import { expect, test } from "bun:test";
@@ -660,21 +668,21 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import { updateGeneratorPhase } from "../state";
+import { updateSpecialistsPhase } from "../state";
 
-test("updates generator preserving the other phases", async () => {
+test("updates specialists preserving the other phases", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-genst-"));
   try {
     await mkdir(join(dir, ".aipe"), { recursive: true });
     await writeFile(
       join(dir, ".aipe", "state.yaml"),
-      stringify({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "pending" } }),
+      stringify({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "pending" } }),
       "utf8",
     );
 
-    const statePath = await updateGeneratorPhase(dir, "done");
+    const statePath = await updateSpecialistsPhase(dir, "done");
     const parsed = parse(await readFile(statePath, "utf8"));
-    expect(parsed.phase.generator).toBe("done");
+    expect(parsed.phase.specialists).toBe("done");
     expect(parsed.phase.relationship).toBe("done");
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -684,10 +692,10 @@ test("updates generator preserving the other phases", async () => {
 test("creates state from the default if missing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-genst-"));
   try {
-    const statePath = await updateGeneratorPhase(dir, "pending");
+    const statePath = await updateSpecialistsPhase(dir, "pending");
     const parsed = parse(await readFile(statePath, "utf8"));
     expect(parsed.phase.brain).toBe("done");
-    expect(parsed.phase.generator).toBe("pending");
+    expect(parsed.phase.specialists).toBe("pending");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -696,12 +704,12 @@ test("creates state from the default if missing", async () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/state.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/state.test.ts`
 Expected: FAIL — `Cannot find module "../state"`.
 
 - [ ] **Step 3: Implement `state.ts`**
 
-Create `src/context-brain-generator/state.ts`:
+Create `src/hire-specialists/state.ts`:
 
 ```ts
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -710,7 +718,7 @@ import { parse, stringify } from "yaml";
 import type { Phase, StateFile } from "../context-brain/types";
 import { initialState } from "../context-brain/write";
 
-export async function updateGeneratorPhase(workspaceDir: string, phase: Phase): Promise<string> {
+export async function updateSpecialistsPhase(workspaceDir: string, phase: Phase): Promise<string> {
   const aipeDir = join(workspaceDir, ".aipe");
   const statePath = join(aipeDir, "state.yaml");
 
@@ -725,7 +733,7 @@ export async function updateGeneratorPhase(workspaceDir: string, phase: Phase): 
     // no prior state: start from the default
   }
 
-  state.phase.generator = phase;
+  state.phase.specialists = phase;
   await mkdir(aipeDir, { recursive: true });
   await writeFile(statePath, stringify(state), "utf8");
   return statePath;
@@ -734,14 +742,14 @@ export async function updateGeneratorPhase(workspaceDir: string, phase: Phase): 
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/state.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/state.test.ts`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add src/context-brain-generator/state.ts src/context-brain-generator/__tests__/state.test.ts
-git commit -m "feat: generator phase update in state.yaml"
+cd ~/aipe-worktree-hire-specialists && git add src/hire-specialists/state.ts src/hire-specialists/__tests__/state.test.ts
+git commit -m "feat: specialists phase update in state.yaml"
 ```
 
 ---
@@ -749,21 +757,21 @@ git commit -m "feat: generator phase update in state.yaml"
 ## Task 7: Orchestration (`run.ts`)
 
 **Files:**
-- Create: `src/context-brain-generator/run.ts`
-- Test: `src/context-brain-generator/__tests__/run.test.ts`
+- Create: `src/hire-specialists/run.ts`
+- Test: `src/hire-specialists/__tests__/run.test.ts`
 
 **Interfaces:**
-- Consumes: `readBrain` (`../make-workspace/read`), `resolveNames`/`dedupeReportsByName` (`./naming`), `readReports` (`./reports`), `personaSlug`/`renderSkillMd` (`./render`), `buildRegistry`/`renderPersonasYaml` (`./registry`), `updateGeneratorPhase` (`./state`), `ProvidedNames`/`NamingResult`/`GeneratorPhase`/`PersonaRole` (`./types`).
+- Consumes: `readBrain` (`../make-workspace/read`), `resolveNames`/`dedupeReportsByName` (`./naming`), `readReports` (`./reports`), `personaSlug`/`renderSkillMd` (`./render`), `buildRegistry`/`renderPersonasYaml` (`./registry`), `updateSpecialistsPhase` (`./state`), `ProvidedNames`/`NamingResult`/`SpecialistsPhase`/`PersonaRole` (`./types`).
 - Produces:
   - `type ResolveNamesResult = { ok: true; result: NamingResult } | { ok: false; error: string }`
   - `resolvePersonaNames(workspaceDir: string, provided: ProvidedNames): Promise<ResolveNamesResult>`
   - `interface PersonaStatus { repo: string; role: PersonaRole; status: "ok" | "missing" }`
-  - `type RunResult = { ok: true; results: PersonaStatus[]; phase: GeneratorPhase } | { ok: false; error: string }`
-  - `runGenerator(workspaceDir: string): Promise<RunResult>`
+  - `type RunResult = { ok: true; results: PersonaStatus[]; phase: SpecialistsPhase } | { ok: false; error: string }`
+  - `runHireSpecialists(workspaceDir: string): Promise<RunResult>`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/context-brain-generator/__tests__/run.test.ts`:
+Create `src/hire-specialists/__tests__/run.test.ts`:
 
 ```ts
 import { expect, test } from "bun:test";
@@ -771,7 +779,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import { resolvePersonaNames, runGenerator } from "../run";
+import { resolvePersonaNames, runHireSpecialists } from "../run";
 import type { BrainFile } from "../types";
 
 const brain: BrainFile = {
@@ -788,14 +796,14 @@ async function ws(): Promise<string> {
   await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(brain), "utf8");
   await writeFile(
     join(dir, ".aipe", "state.yaml"),
-    stringify({ phase: { brain: "done", workspace: "done", relationship: "done", generator: "pending" } }),
+    stringify({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "pending" } }),
     "utf8",
   );
   return dir;
 }
 
 async function putReport(dir: string, repo: string, role: string, content: unknown): Promise<void> {
-  const reportsDir = join(dir, ".aipe", "generator", ".reports");
+  const reportsDir = join(dir, ".aipe", "specialists", ".reports");
   await mkdir(reportsDir, { recursive: true });
   await writeFile(join(reportsDir, `${repo}-${role}.json`), JSON.stringify(content), "utf8");
 }
@@ -838,7 +846,7 @@ test("all (repo, role) pairs reported → phase done, SKILL.md files written, pe
     await putReport(dir, "prontuario", "dev-fullstack", { repo: "prontuario", role: "dev-fullstack", name: "Pedro", body: "You are Pedro." });
     await putReport(dir, "prontuario", "qa", { repo: "prontuario", role: "qa", name: "Karen", body: "You are Karen." });
 
-    const result = await runGenerator(dir);
+    const result = await runHireSpecialists(dir);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.phase).toBe("done");
@@ -853,9 +861,9 @@ test("all (repo, role) pairs reported → phase done, SKILL.md files written, pe
     expect(registry.personas).toHaveLength(5); // coordinator + 4 personas
 
     const state = parse(await readFile(join(dir, ".aipe", "state.yaml"), "utf8"));
-    expect(state.phase.generator).toBe("done");
+    expect(state.phase.specialists).toBe("done");
 
-    expect(await exists(join(dir, ".aipe", "generator", ".reports"))).toBe(false);
+    expect(await exists(join(dir, ".aipe", "specialists", ".reports"))).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -866,7 +874,7 @@ test("a missing (repo, role) report → phase pending, reports dir kept for retr
   try {
     await putReport(dir, "embark", "dev-fullstack", { repo: "embark", role: "dev-fullstack", name: "Joaquim", body: "b" });
 
-    const result = await runGenerator(dir);
+    const result = await runHireSpecialists(dir);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.phase).toBe("pending");
@@ -874,7 +882,7 @@ test("a missing (repo, role) report → phase pending, reports dir kept for retr
       expect(result.results.find((r) => r.repo === "embark" && r.role === "dev-fullstack")?.status).toBe("ok");
     }
 
-    expect(await exists(join(dir, ".aipe", "generator", ".reports", "embark-dev-fullstack.json"))).toBe(true);
+    expect(await exists(join(dir, ".aipe", "specialists", ".reports", "embark-dev-fullstack.json"))).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -883,7 +891,7 @@ test("a missing (repo, role) report → phase pending, reports dir kept for retr
 test("missing brain → ok:false, nothing written", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-gen-run-"));
   try {
-    const result = await runGenerator(dir);
+    const result = await runHireSpecialists(dir);
     expect(result.ok).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -893,12 +901,12 @@ test("missing brain → ok:false, nothing written", async () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/run.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/run.test.ts`
 Expected: FAIL — `Cannot find module "../run"`.
 
 - [ ] **Step 3: Implement `run.ts`**
 
-Create `src/context-brain-generator/run.ts`:
+Create `src/hire-specialists/run.ts`:
 
 ```ts
 import { mkdir, rm, writeFile } from "node:fs/promises";
@@ -908,8 +916,8 @@ import { dedupeReportsByName, resolveNames } from "./naming";
 import { personaSlug, renderSkillMd } from "./render";
 import { readReports } from "./reports";
 import { buildRegistry, renderPersonasYaml } from "./registry";
-import { updateGeneratorPhase } from "./state";
-import type { GeneratorPhase, NamingResult, PersonaRole, ProvidedNames } from "./types";
+import { updateSpecialistsPhase } from "./state";
+import type { SpecialistsPhase, NamingResult, PersonaRole, ProvidedNames } from "./types";
 
 export type ResolveNamesResult =
   | { ok: true; result: NamingResult }
@@ -928,15 +936,15 @@ export interface PersonaStatus {
 }
 
 export type RunResult =
-  | { ok: true; results: PersonaStatus[]; phase: GeneratorPhase }
+  | { ok: true; results: PersonaStatus[]; phase: SpecialistsPhase }
   | { ok: false; error: string };
 
-export async function runGenerator(workspaceDir: string): Promise<RunResult> {
+export async function runHireSpecialists(workspaceDir: string): Promise<RunResult> {
   const brainResult = await readBrain(workspaceDir);
   if (!brainResult.ok) return { ok: false, error: brainResult.error };
   const brain = brainResult.brain;
 
-  const reportsDir = join(workspaceDir, ".aipe", "generator", ".reports");
+  const reportsDir = join(workspaceDir, ".aipe", "specialists", ".reports");
   const rawReports = await readReports(reportsDir);
   const reports = dedupeReportsByName(rawReports, brain.context.coordinator);
   const byKey = new Map(reports.map((r) => [`${r.repo}|${r.role}`, r]));
@@ -947,7 +955,7 @@ export async function runGenerator(workspaceDir: string): Promise<RunResult> {
       results.push({ repo: repo.name, role, status: byKey.has(`${repo.name}|${role}`) ? "ok" : "missing" });
     }
   }
-  const phase: GeneratorPhase = results.every((r) => r.status === "ok") ? "done" : "pending";
+  const phase: SpecialistsPhase = results.every((r) => r.status === "ok") ? "done" : "pending";
 
   for (const report of reports) {
     const repo = brain.repos.find((r) => r.name === report.repo);
@@ -961,7 +969,7 @@ export async function runGenerator(workspaceDir: string): Promise<RunResult> {
   await mkdir(join(workspaceDir, ".aipe"), { recursive: true });
   await writeFile(join(workspaceDir, ".aipe", "personas.yaml"), renderPersonasYaml(registry), "utf8");
 
-  await updateGeneratorPhase(workspaceDir, phase);
+  await updateSpecialistsPhase(workspaceDir, phase);
 
   if (phase === "done") {
     await rm(reportsDir, { recursive: true, force: true });
@@ -973,14 +981,14 @@ export async function runGenerator(workspaceDir: string): Promise<RunResult> {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/run.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/run.test.ts`
 Expected: PASS (5 tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add src/context-brain-generator/run.ts src/context-brain-generator/__tests__/run.test.ts
-git commit -m "feat: context-brain-generator orchestration"
+cd ~/aipe-worktree-hire-specialists && git add src/hire-specialists/run.ts src/hire-specialists/__tests__/run.test.ts
+git commit -m "feat: hire-specialists orchestration"
 ```
 
 ---
@@ -988,16 +996,16 @@ git commit -m "feat: context-brain-generator orchestration"
 ## Task 8: CLI + manual end-to-end verification
 
 **Files:**
-- Create: `src/context-brain-generator/cli.ts`
-- Test: `src/context-brain-generator/__tests__/cli.test.ts`
+- Create: `src/hire-specialists/cli.ts`
+- Test: `src/hire-specialists/__tests__/cli.test.ts`
 
 **Interfaces:**
-- Consumes: `resolvePersonaNames`, `runGenerator`, `PersonaStatus` (`./run`), `GeneratorPhase` (`./types`).
-- Produces: `renderReport(results: PersonaStatus[], phase: GeneratorPhase): string[]` (pure, testable).
+- Consumes: `resolvePersonaNames`, `runHireSpecialists`, `PersonaStatus` (`./run`), `SpecialistsPhase` (`./types`).
+- Produces: `renderReport(results: PersonaStatus[], phase: SpecialistsPhase): string[]` (pure, testable).
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src/context-brain-generator/__tests__/cli.test.ts`:
+Create `src/hire-specialists/__tests__/cli.test.ts`:
 
 ```ts
 import { expect, test } from "bun:test";
@@ -1013,7 +1021,7 @@ test("renderReport formats each (repo, role) pair and the STATE line when done",
   );
   expect(lines).toContain("OK embark dev-fullstack");
   expect(lines).toContain("OK embark qa");
-  expect(lines.some((l) => l.startsWith("STATE generator=done"))).toBe(true);
+  expect(lines.some((l) => l.startsWith("STATE specialists=done"))).toBe(true);
 });
 
 test("renderReport lists missing pairs and marks pending", () => {
@@ -1025,24 +1033,24 @@ test("renderReport lists missing pairs and marks pending", () => {
     "pending",
   );
   expect(lines).toContain("MISSING embark qa");
-  expect(lines.some((l) => l.startsWith("STATE generator=pending"))).toBe(true);
+  expect(lines.some((l) => l.startsWith("STATE specialists=pending"))).toBe(true);
 });
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/cli.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/cli.test.ts`
 Expected: FAIL — `Cannot find module "../cli"` (or `renderReport` undefined).
 
 - [ ] **Step 3: Implement `cli.ts`**
 
-Create `src/context-brain-generator/cli.ts`:
+Create `src/hire-specialists/cli.ts`:
 
 ```ts
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
-import { resolvePersonaNames, runGenerator, type PersonaStatus } from "./run";
-import type { GeneratorPhase, ProvidedNames } from "./types";
+import { resolvePersonaNames, runHireSpecialists, type PersonaStatus } from "./run";
+import type { SpecialistsPhase, ProvidedNames } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -1052,14 +1060,14 @@ function getFlag(args: string[], name: string): string | undefined {
   return value;
 }
 
-export function renderReport(results: PersonaStatus[], phase: GeneratorPhase): string[] {
+export function renderReport(results: PersonaStatus[], phase: SpecialistsPhase): string[] {
   const lines: string[] = [];
   for (const r of results) {
     lines.push(r.status === "ok" ? `OK ${r.repo} ${r.role}` : `MISSING ${r.repo} ${r.role}`);
   }
   const missing = results.filter((r) => r.status === "missing").length;
   const suffix = missing > 0 ? ` (${missing} missing of ${results.length} personas)` : "";
-  lines.push(`STATE generator=${phase}${suffix}`);
+  lines.push(`STATE specialists=${phase}${suffix}`);
   return lines;
 }
 
@@ -1091,7 +1099,7 @@ async function resolveNamesCommand(args: string[]): Promise<number> {
 
 async function materializeCommand(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
-  const result = await runGenerator(workspace);
+  const result = await runHireSpecialists(workspace);
   if (!result.ok) {
     console.log(`ERROR brain: ${result.error}`);
     return 1;
@@ -1121,13 +1129,13 @@ if (import.meta.main) {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd ~/aipe-worktree-generator && bun test src/context-brain-generator/__tests__/cli.test.ts`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test src/hire-specialists/__tests__/cli.test.ts`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Manual end-to-end verification (no live agents needed — simulate their output)**
 
 ```bash
-cd ~/aipe-worktree-generator && GW=$(mktemp -d) && mkdir -p "$GW/.aipe"
+cd ~/aipe-worktree-hire-specialists && GW=$(mktemp -d) && mkdir -p "$GW/.aipe"
 cat > "$GW/.aipe/brain.yaml" <<'YAML'
 context:
   name: teste
@@ -1147,70 +1155,70 @@ phase:
   brain: done
   workspace: done
   relationship: done
-  generator: pending
+  specialists: pending
 YAML
 mkdir -p "$GW/embark" "$GW/prontuario"
 
 # Step A: resolve names (simulating the PE leaving everything blank)
 echo '{}' > "$GW/names.json"
-bun src/context-brain-generator/cli.ts --resolve-names --input "$GW/names.json" --workspace "$GW" | tee "$GW/resolved.json"
+bun src/hire-specialists/cli.ts --resolve-names --input "$GW/names.json" --workspace "$GW" | tee "$GW/resolved.json"
 
 # Step B: simulate the 4 agent reports using the resolved names
 NAMES=$(cat "$GW/resolved.json")
-mkdir -p "$GW/.aipe/generator/.reports"
+mkdir -p "$GW/.aipe/specialists/.reports"
 bun -e '
 const fs = require("fs");
 const resolved = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 const dir = process.argv[2];
 for (const p of resolved.personas) {
   const body = `You are ${p.name}, the ${p.role} for ${p.repo}.`;
-  fs.writeFileSync(`${dir}/.aipe/generator/.reports/${p.repo}-${p.role}.json`, JSON.stringify({ ...p, body }));
+  fs.writeFileSync(`${dir}/.aipe/specialists/.reports/${p.repo}-${p.role}.json`, JSON.stringify({ ...p, body }));
 }
 ' "$GW/resolved.json" "$GW"
 
 # Step C: materialize
-bun src/context-brain-generator/cli.ts --workspace "$GW"; echo "exit=$?"
+bun src/hire-specialists/cli.ts --workspace "$GW"; echo "exit=$?"
 cat "$GW/.aipe/personas.yaml"
 find "$GW/embark/.claude/skills" "$GW/prontuario/.claude/skills" -name SKILL.md -print -exec cat {} \;
-ls "$GW/.aipe/generator" 2>&1 # .reports/ must be gone (dir itself may remain empty or not exist)
+ls "$GW/.aipe/specialists" 2>&1 # .reports/ must be gone (dir itself may remain empty or not exist)
 rm -rf "$GW"
 ```
-Expected: `--resolve-names` prints one JSON line with `coordinator: "Nicolas"` and 4 personas, all names distinct. Materialize prints 4 `OK <repo> <role>` lines and `STATE generator=done` (exit 0). `personas.yaml` lists 5 entries (coordinator + 4). Each repo has exactly one `SKILL.md` per assigned persona under `.claude/skills/<slug>/`, with the agent's body text present. `.aipe/generator/.reports/` no longer exists.
+Expected: `--resolve-names` prints one JSON line with `coordinator: "Nicolas"` and 4 personas, all names distinct. Materialize prints 4 `OK <repo> <role>` lines and `STATE specialists=done` (exit 0). `personas.yaml` lists 5 entries (coordinator + 4). Each repo has exactly one `SKILL.md` per assigned persona under `.claude/skills/<slug>/`, with the agent's body text present. `.aipe/specialists/.reports/` no longer exists.
 
 - [ ] **Step 6: Run the full suite and type-check**
 
-Run: `cd ~/aipe-worktree-generator && bun test && bunx tsc --noEmit -p tsconfig.json`
+Run: `cd ~/aipe-worktree-hire-specialists && bun test && bunx tsc --noEmit -p tsconfig.json`
 Expected: all tests PASS, 0 type errors.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add src/context-brain-generator/cli.ts src/context-brain-generator/__tests__/cli.test.ts
-git commit -m "feat: context-brain-generator CLI"
+cd ~/aipe-worktree-hire-specialists && git add src/hire-specialists/cli.ts src/hire-specialists/__tests__/cli.test.ts
+git commit -m "feat: hire-specialists CLI"
 ```
 
 ---
 
-## Task 9: `/context-brain-generator` skill
+## Task 9: `/hire-specialists` skill
 
 **Files:**
-- Create: `skills/context-brain-generator/SKILL.md`
+- Create: `skills/hire-specialists/SKILL.md`
 
 **Interfaces:**
-- Consumes: `src/context-brain-generator/cli.ts` (via `bun`, both modes), `<workspace>/.aipe/brain.yaml`, `.aipe/relations/graph.yaml`, and `state.yaml`.
+- Consumes: `src/hire-specialists/cli.ts` (via `bun`, both modes), `<workspace>/.aipe/brain.yaml`, `.aipe/relations/graph.yaml`, and `state.yaml`.
 - Produces: no code symbol — the conversational interface, naming flow, and the exact `Agent()` schema the coordinator forces per `(repo, role)` pair.
 
 - [ ] **Step 1: Write the skill**
 
-Create `skills/context-brain-generator/SKILL.md`:
+Create `skills/hire-specialists/SKILL.md`:
 
 ````markdown
 ---
-name: context-brain-generator
+name: hire-specialists
 description: Use in step 4 (last) of AIPe onboarding to generate the persona skills — 1 dev-fullstack + 1 QA per repo — installed inside each repo, plus the cross-repo personas.yaml registry. Resolves persona names with the PE, dispatches 2 subagents per repo (one per role), then hands the structured results to a deterministic CLI.
 ---
 
-# /context-brain-generator
+# /hire-specialists
 
 Materializes the context's specialists: for every repo in `brain.yaml`, one
 dev-fullstack persona and one QA persona, each installed as a two-mode skill
@@ -1245,7 +1253,7 @@ CLI, same as the earlier onboarding steps.
 
 5. **Resolve final names.** Write that JSON to a temp file and run:
    ```bash
-   bun <plugin-path>/src/context-brain-generator/cli.ts --resolve-names --input <file.json> --workspace <workspace>
+   bun <plugin-path>/src/hire-specialists/cli.ts --resolve-names --input <file.json> --workspace <workspace>
    ```
    The CLI prints one JSON line: `{"coordinator":"Nicolas","personas":[{"repo":"embark","role":"dev-fullstack","name":"Joaquim"}, ...]}`.
    Every name here is final and unique across the whole context (including
@@ -1279,12 +1287,12 @@ CLI, same as the earlier onboarding steps.
      ```
 
 7. **Save each result** to
-   `<workspace>/.aipe/generator/.reports/<repo-name>-<role>.json` (create the
+   `<workspace>/.aipe/specialists/.reports/<repo-name>-<role>.json` (create the
    directory if needed).
 
 8. **Run the CLI:**
    ```bash
-   bun <plugin-path>/src/context-brain-generator/cli.ts --workspace <workspace>
+   bun <plugin-path>/src/hire-specialists/cli.ts --workspace <workspace>
    ```
 
 9. **Translate the output to the PE:**
@@ -1293,7 +1301,7 @@ CLI, same as the earlier onboarding steps.
      timed out). The reports directory is preserved when any pair is
      missing, so re-dispatching just the missing pairs and re-running the
      CLI is safe and won't lose the ones that already succeeded.
-   - `STATE generator=done|pending` → aggregated state.
+   - `STATE specialists=done|pending` → aggregated state.
 
 10. **Report the artifacts.** On `done`, point the PE to `.aipe/personas.yaml`
     (the full roster) and to each `<repo>/.claude/skills/<name>/SKILL.md`.
@@ -1310,7 +1318,7 @@ CLI, same as the earlier onboarding steps.
   an agent must be told its final name to write coherent identity prose.
 - Each subagent must stay scoped to its own repo when writing persona
   content — no cross-repo file access.
-- Re-running `/context-brain-generator` after it already reached `done`
+- Re-running `/hire-specialists` after it already reached `done`
   re-resolves names, re-dispatches all 2N agents, and overwrites every
   persona `SKILL.md` + `personas.yaml` from scratch — there's no incremental
   regeneration.
@@ -1322,14 +1330,14 @@ CLI, same as the earlier onboarding steps.
 
 - [ ] **Step 2: Check coherence with the existing pattern**
 
-Run: `cd ~/aipe-worktree-generator && cat skills/relationship/SKILL.md skills/context-brain-generator/SKILL.md | head -100`
+Run: `cd ~/aipe-worktree-hire-specialists && cat skills/relationship/SKILL.md skills/hire-specialists/SKILL.md | head -100`
 Expected: frontmatter (`name`/`description`) in the same format as the other skills; flow uses the same `OK`/`MISSING`/`STATE` line style as `/relationship`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add skills/context-brain-generator/SKILL.md
-git commit -m "feat: /context-brain-generator skill"
+cd ~/aipe-worktree-hire-specialists && git add skills/hire-specialists/SKILL.md
+git commit -m "feat: /hire-specialists skill"
 ```
 
 ---
@@ -1337,7 +1345,7 @@ git commit -m "feat: /context-brain-generator skill"
 ## Task 10: Manual load-order validation + dossier entry
 
 **Files:**
-- Create: `docs/dossie/05-context-brain-generator.md`
+- Create: `docs/dossie/05-hire-specialists.md`
 - Modify: `docs/dossie/README.md` (index row + roadmap update)
 
 No new code — this task produces empirical evidence (per design spec §8) and
@@ -1348,7 +1356,7 @@ the dossier entry required by the repo's convention (`docs/dossie/README.md`).
 Pick (or create) a small local git repo the worktree can write into, e.g.:
 
 ```bash
-cd ~/aipe-worktree-generator
+cd ~/aipe-worktree-hire-specialists
 TESTREPO=$(mktemp -d) && cd "$TESTREPO" && git init -q && echo '{"name":"toy"}' > package.json && git add -A && git commit -q -m "init"
 mkdir -p "$TESTREPO/.claude/skills/testdev"
 cat > "$TESTREPO/.claude/skills/testdev/SKILL.md" <<'MD'
@@ -1380,7 +1388,7 @@ trivial prompt (e.g. "let's brainstorm a tiny CLI tool"). Observe:
 
 - [ ] **Step 3: Write the findings into the dossier entry**
 
-Create `docs/dossie/05-context-brain-generator.md` following the same
+Create `docs/dossie/05-hire-specialists.md` following the same
 structure as `docs/dossie/04-relationship.md` (Purpose, Key decisions from
 brainstorming, Plan, Execution & review findings, Final state), and add a
 dedicated **"Load-order validation"** section recording exactly what was
@@ -1390,9 +1398,9 @@ guess).
 
 - [ ] **Step 4: Update the dossier index**
 
-Edit `docs/dossie/README.md`: add a row `| 5 | /context-brain-generator —
-persona skills | Merged | [05-context-brain-generator.md](05-context-brain-generator.md) |`
-to the Index table, and remove `/context-brain-generator — persona skills`
+Edit `docs/dossie/README.md`: add a row `| 5 | /hire-specialists —
+persona skills | Merged | [05-hire-specialists.md](05-hire-specialists.md) |`
+to the Index table, and remove `/hire-specialists — persona skills`
 from the "Roadmap (not yet built)" list (add `/aipe-add-repo` context if it
 isn't already the only remaining item).
 
@@ -1405,8 +1413,8 @@ rm -rf "$TESTREPO"
 - [ ] **Step 6: Commit**
 
 ```bash
-cd ~/aipe-worktree-generator && git add docs/dossie/05-context-brain-generator.md docs/dossie/README.md
-git commit -m "docs: dossier entry for /context-brain-generator"
+cd ~/aipe-worktree-hire-specialists && git add docs/dossie/05-hire-specialists.md docs/dossie/README.md
+git commit -m "docs: dossier entry for /hire-specialists"
 ```
 
 ---
@@ -1428,4 +1436,4 @@ git commit -m "docs: dossier entry for /context-brain-generator"
 
 **Placeholder scan:** no TBD/TODO; every code step has complete code; the SKILL.md has the full literal schema, not a description of one; Task 10's dossier step gives exact section names and file paths rather than "document findings."
 
-**Type consistency:** `PersonaRole`/`PersonaAssignment`/`NamingResult`/`ProvidedNames`/`PersonaReport`/`PersonaRegistryEntry`/`GeneratorPhase` defined once in Task 1 and reused identically across Tasks 2-8. `resolveNames(brain, provided)` and `dedupeReportsByName(reports, coordinatorName)` signatures identical between Task 2's definition and Task 7's `run.ts` call sites. `personaSlug(name)` and `renderSkillMd(report, stack)` signatures identical between Task 3's definition and Tasks 5/7's call sites. `buildRegistry(brain, reports)`/`renderPersonasYaml(entries)` signatures identical between Task 5's definition and Task 7's call site. `updateGeneratorPhase(workspaceDir, phase)` signature identical between Task 6's definition and Task 7's call site. `PersonaStatus`/`RunResult`/`ResolveNamesResult` defined in Task 7 and reused identically in Task 8's `cli.ts`.
+**Type consistency:** `PersonaRole`/`PersonaAssignment`/`NamingResult`/`ProvidedNames`/`PersonaReport`/`PersonaRegistryEntry`/`SpecialistsPhase` defined once in Task 1 and reused identically across Tasks 2-8. `resolveNames(brain, provided)` and `dedupeReportsByName(reports, coordinatorName)` signatures identical between Task 2's definition and Task 7's `run.ts` call sites. `personaSlug(name)` and `renderSkillMd(report, stack)` signatures identical between Task 3's definition and Tasks 5/7's call sites. `buildRegistry(brain, reports)`/`renderPersonasYaml(entries)` signatures identical between Task 5's definition and Task 7's call site. `updateSpecialistsPhase(workspaceDir, phase)` signature identical between Task 6's definition and Task 7's call site. `PersonaStatus`/`RunResult`/`ResolveNamesResult` defined in Task 7 and reused identically in Task 8's `cli.ts`.

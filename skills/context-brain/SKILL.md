@@ -11,12 +11,13 @@ the writing to the typed CLI, which validates and serializes it.
 
 ## Flow
 
-1. **Confirm the workspace.** The brain is written to `<workspace>/.aipe/`. By default the
-   workspace is the current directory. Confirm with the PE whether this is the right place
-   (it should be an `aipe-<context>` folder).
+1. **The workspace already exists.** `aipe start` created this `aipe-<name>/`
+   folder and installed the integration here — the current directory **is** the
+   workspace. The **context name is already decided**: it's this folder's name
+   with the `aipe-` prefix removed. Do not ask the PE for it; do not create
+   another folder.
 
-2. **Collect the data, one question at a time:**
-   - **Context** name (slug: lowercase, numbers, hyphens — becomes `aipe-<name>`).
+2. **Collect only what's missing, one question at a time:**
    - **Coordinator** name (how the PE wants to be addressed).
    - The **repositories**: for each one, `name`, `url` (git@, or https with `.git`
      optional) and a relative `path`
@@ -24,21 +25,25 @@ the writing to the typed CLI, which validates and serializes it.
      otherwise leave it out (it will be filled in during later phases). The PE may paste a
      whole list at once.
 
-3. **Assemble the JSON** in `ContextInput` format:
+3. **Assemble the JSON** in `ContextInput` format (`name` = the folder name
+   minus `aipe-`):
    ```json
    {
-     "context": { "name": "<slug>", "coordinator": "<name>" },
+     "context": { "name": "<folder-name-without-aipe->", "coordinator": "<name>" },
      "repos": [ { "name": "...", "url": "...", "path": "./...", "stack": ["..."] } ]
    }
    ```
 
 4. **Write via the CLI.** Write the JSON to a temporary file and run:
    ```bash
-   bun <plugin-path>/src/context-brain/cli.ts --input <file.json> --workspace <workspace>
+   aipe context-brain --input <file.json> --workspace <workspace>
    ```
 
 5. **Handle the result:**
-   - Output `OK brain=... / OK state=...` → confirm to the PE that the files were written.
+   - Output `OK brain=... / OK state=...` → confirm the brain was written, then
+     tell the PE this step is done and to open a **new session in this same
+     folder** to continue — the next step (`/make-workspace`) starts
+     automatically there.
    - Lines `ERROR <field>: <message>` → show them to the PE, fix the flagged data and
      run it again. Never write anything by hand.
 

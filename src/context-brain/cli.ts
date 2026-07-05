@@ -14,8 +14,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function main(): Promise<number> {
-  const args = process.argv.slice(2);
+export async function run(args: string[]): Promise<number> {
   const inputPath = getFlag(args, "--input");
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
 
@@ -47,9 +46,11 @@ async function main(): Promise<number> {
   return 0;
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((err) => {
-    console.log(`ERROR ${err}`);
-    process.exit(1);
-  });
+if (import.meta.main) {
+  run(process.argv.slice(2))
+    .then((code) => process.exit(code))
+    .catch((err) => {
+      console.log(`ERROR ${err}`);
+      process.exit(1);
+    });
+}

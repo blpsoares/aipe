@@ -2,6 +2,15 @@
   "name": "aipe",
   "type": "module",
   "private": true,
+  "bin": {
+    "aipe": "bin/aipe"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "build:host": "bun run scripts/build.ts host",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

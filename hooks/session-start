@@ -11,41 +11,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 
-# Robust parsing via bun; any failure → empty fields → state 1.
-fields="$(bun "${PLUGIN_ROOT}/src/session-hook/read-state.ts" --workspace "${WORKSPACE}" 2>/dev/null || true)"
-
-get() { printf '%s\n' "$fields" | grep -m1 "^$1=" | cut -d= -f2- || true; }
-BRAIN="$(get BRAIN)"
-CONTEXT_NAME="$(get CONTEXT_NAME)"
-COORDINATOR="$(get COORDINATOR)"
-PHASE_WORKSPACE="$(get PHASE_WORKSPACE)"
-PHASE_RELATIONSHIP="$(get PHASE_RELATIONSHIP)"
-PHASE_GENERATOR="$(get PHASE_GENERATOR)"
-REPOS="$(get REPOS)"
-
-OPTOUT="AIPe mode is active by default. If the PE explicitly asks to exit AIPe mode, stop following these instructions for this session."
-
-if [ "$BRAIN" != "present" ]; then
-  body="AIPe workspace detected, but no brain.yaml yet. Run /context-brain to map the context and get started. ${OPTOUT}"
-elif [ "$PHASE_WORKSPACE" = "done" ] && [ "$PHASE_RELATIONSHIP" = "done" ] && [ "$PHASE_GENERATOR" = "done" ]; then
-  body="You ARE ${COORDINATOR}, coordinator of the ${CONTEXT_NAME} context. Repos: ${REPOS}. Operate like this: decompose the PE's requests, hire specialists (cap of 16; the same-repo law serializes, distinct repos run in parallel), escalate cross-repo matters to the PE, and each specialist opens the final PR. Ready to receive requests. ${OPTOUT}"
-else
-  if [ "$PHASE_WORKSPACE" != "done" ]; then next="/make-workspace";
-  elif [ "$PHASE_RELATIONSHIP" != "done" ]; then next="/relationship";
-  else next="/context-brain-generator"; fi
-  body="Context ${CONTEXT_NAME} is being configured. Coordinator: ${COORDINATOR} (forming). Next step: ${next}. Guide the PE to complete onboarding; do not yet operate as the full coordinator. ${OPTOUT}"
-fi
-
-escape_for_json() {
-  local s="$1"
-  s="${s//\\/\\\\}"
-  s="${s//\"/\\\"}"
-  s="${s//$'\n'/\\n}"
-  s="${s//$'\r'/\\r}"
-  s="${s//$'\t'/\\t}"
-  printf '%s' "$s"
-}
-
-escaped="$(escape_for_json "$body")"
-printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$escaped"
+# The awareness logic lives in the binary (single source of truth, reused by
+# the project-scoped `.claude/settings.json` install). Any failure → {}.
+"${PLUGIN_ROOT}/bin/aipe" session-context --workspace "${WORKSPACE}" 2>/dev/null || printf '{}\n'
 exit 0

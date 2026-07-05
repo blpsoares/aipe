@@ -21,8 +21,7 @@ export function renderReport(results: RepoRelationshipStatus[], phase: Relations
   return lines;
 }
 
-async function main(): Promise<number> {
-  const args = process.argv.slice(2);
+export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
 
   const result = await runRelationship(workspace);
@@ -38,7 +37,7 @@ async function main(): Promise<number> {
 }
 
 if (import.meta.main) {
-  main()
+  run(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((err) => {
       console.log(`ERROR ${err}`);

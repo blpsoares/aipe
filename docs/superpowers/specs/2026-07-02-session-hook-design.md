@@ -185,10 +185,10 @@ the output is empty. The emitted JSON is valid (parseable).
 
 - Context-injection hook (`SessionStart`) — **this spec**; foundational piece.
 - Injection of **persona within a repo** remains with the personas sub-project
-  (`/context-brain-generator`) — this hook never fires inside a repo, so there's no
+  (`/hire-specialists`) — this hook never fires inside a repo, so there's no
   overlap.
 - Suggested order of subsequent cycles remains: **worktree-per-journey** →
-  `/relationship` → `/context-brain-generator` → `/aipe-add-repo`.
+  `/relationship` → `/hire-specialists` → `/aipe-add-repo`.
 
 ---
 

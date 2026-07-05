@@ -1,4 +1,12 @@
-# `/context-brain-generator` — design spec
+# `/hire-specialists` — design spec
+
+> **As-built note (2026-07-04):** this step was renamed from
+> `context-brain-generator` to `hire-specialists`, and its `state.yaml`
+> phase from `generator` to `specialists`. The CLI shipped as a subcommand
+> of the unified `aipe` binary (`aipe hire-specialists …`), not a
+> standalone `bun …/cli.ts` entry point. See the packaging spec
+> `2026-07-04-unified-cli-distribution-design.md` and dossier entry 05 for
+> the as-built details; the design below is otherwise accurate.
 
 **Date:** 2026-07-03
 **Status:** Design approved — ready for implementation plan
@@ -9,7 +17,7 @@
 ## 1. Purpose
 
 Step 4 (last) of the AIPe onboarding pipeline. Once relations are discovered and
-`stack` is backfilled (`state.phase.relationship == done`), `/context-brain-generator`
+`stack` is backfilled (`state.phase.relationship == done`), `/hire-specialists`
 materializes the **specialists** of the company analogy: for every repo in the
 context, exactly **2 personas** — a **dev-fullstack** and a **QA** — each
 installed as a two-mode skill inside that repo
@@ -84,7 +92,7 @@ interactively — sharing one identity/stack/scope grounding written once above
 both sections.
 
 **Staging:** each result is saved by the coordinator to
-`.aipe/generator/.reports/<repo>-<role>.json` before the CLI runs — same
+`.aipe/specialists/.reports/<repo>-<role>.json` before the CLI runs — same
 inspectable/fixture-testable pattern as `/relationship`.
 
 ---
@@ -109,7 +117,7 @@ Pure, testable TypeScript past "2N raw JSON reports on disk":
 5. **Write/update `.aipe/personas.yaml`** — full rewrite from the current
    batch plus the coordinator entry (read from `brain.yaml`), same
    full-overwrite posture as `/relationship`'s `graph.yaml`.
-6. **Update `state.yaml`** — `state.phase.generator = done` only if every repo
+6. **Update `state.yaml`** — `state.phase.specialists = done` only if every repo
    has both a dev-fullstack and a QA report; otherwise `pending`. Other phases
    preserved.
 7. **Delete `.reports/`** only when `done` — retained on partial failure so a
@@ -125,7 +133,7 @@ consistent with the rest of onboarding (rare, deliberate act).
 ## 6. Hiring brief — not a persisted artifact
 
 The "hiring brief" (the object the coordinator hands a specialist when
-dispatching a task) is **not** written to disk by this generator. Each
+dispatching a task) is **not** written to disk by this step. Each
 persona's SKILL.md only documents, in prose, how that persona should interpret
 a brief when it receives one (task description, relevant files, delivery
 contract) via `Agent()`/Task dispatch. The brief's concrete shape is decided by
@@ -140,7 +148,7 @@ exercised yet.
 
 Same resilience posture as `/relationship` and `/make-workspace`: one failed
 `(repo, role)` agent doesn't block the other 2N-1. The CLI processes whatever
-reports exist; `state.phase.generator` stays `pending` unless the full set is
+reports exist; `state.phase.specialists` stays `pending` unless the full set is
 present; the coordinator's final report to the PE lists exactly which
 `(repo, role)` pairs are missing, so a retry can re-dispatch only those.
 
@@ -173,10 +181,10 @@ design.
 ```
 <workspace>/.aipe/
   ├── brain.yaml                    ← read only (stack, context.coordinator)
-  ├── state.yaml                    ← phase.generator updated here
+  ├── state.yaml                    ← phase.specialists updated here
   ├── relations/graph.yaml          ← read only (relations per repo)
   ├── personas.yaml                 ← durable registry (coordinator + all personas)
-  └── generator/
+  └── specialists/
        └── .reports/                ← transient staging, deleted after each run
             ├── embark-dev-fullstack.json
             ├── embark-qa.json
@@ -190,24 +198,24 @@ design.
 
 ## 10. Implementation shape (mirrors `/relationship`)
 
-- `src/context-brain-generator/types.ts` — `PersonaRole`, `PersonaReport`,
-  `PersonaRegistryEntry`, `GeneratorPhase`.
-- `src/context-brain-generator/naming.ts` — pure name collision-checking +
+- `src/hire-specialists/types.ts` — `PersonaRole`, `PersonaReport`,
+  `PersonaRegistryEntry`, `SpecialistsPhase`.
+- `src/hire-specialists/naming.ts` — pure name collision-checking +
   random-name fill from a built-in list.
-- `src/context-brain-generator/render.ts` — pure frontmatter + SKILL.md
+- `src/hire-specialists/render.ts` — pure frontmatter + SKILL.md
   assembly from a validated `PersonaReport`.
-- `src/context-brain-generator/reports.ts` — disk report reading + deep
+- `src/hire-specialists/reports.ts` — disk report reading + deep
   validation (mirrors `relationship/reports.ts`'s enum/shape checking).
-- `src/context-brain-generator/registry.ts` — pure `personas.yaml`
+- `src/hire-specialists/registry.ts` — pure `personas.yaml`
   serialization from reports + coordinator entry.
-- `src/context-brain-generator/state.ts` — updates `state.phase.generator`,
+- `src/hire-specialists/state.ts` — updates `state.phase.specialists`,
   preserving other phases.
-- `src/context-brain-generator/run.ts` — orchestrates: read reports dir →
+- `src/hire-specialists/run.ts` — orchestrates: read reports dir →
   validate → write SKILL.md files → write `personas.yaml` → update state →
   conditional `.reports/` cleanup.
-- `src/context-brain-generator/cli.ts` — flag parsing (`--workspace`) +
+- `src/hire-specialists/cli.ts` — flag parsing (`--workspace`) +
   `renderReport` output, same style as `relationship/cli.ts`.
-- `skills/context-brain-generator/SKILL.md` — the coordinator-facing flow
+- `skills/hire-specialists/SKILL.md` — the coordinator-facing flow
   (naming questions, exact 2N `Agent()` schema, dispatch, staging, CLI
   invocation, output translation).
 

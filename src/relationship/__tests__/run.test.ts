@@ -20,7 +20,7 @@ async function ws(): Promise<string> {
   await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(brain), "utf8");
   await writeFile(
     join(dir, ".aipe", "state.yaml"),
-    stringify({ phase: { brain: "done", workspace: "done", relationship: "pending", generator: "pending" } }),
+    stringify({ phase: { brain: "done", workspace: "done", relationship: "pending", specialists: "pending" } }),
     "utf8",
   );
   return dir;

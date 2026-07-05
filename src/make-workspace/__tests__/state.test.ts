@@ -11,7 +11,7 @@ test("updates workspace while preserving the other phases", async () => {
     await mkdir(join(dir, ".aipe"), { recursive: true });
     await writeFile(
       join(dir, ".aipe", "state.yaml"),
-      stringify({ phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" } }),
+      stringify({ phase: { brain: "done", workspace: "pending", relationship: "pending", specialists: "pending" } }),
       "utf8",
     );
 

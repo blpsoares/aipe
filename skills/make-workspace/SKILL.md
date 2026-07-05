@@ -20,7 +20,7 @@ error), never overwrites anything, and updates `state.yaml`.
 
 3. **Run the CLI:**
    ```bash
-   bun <plugin-path>/src/make-workspace/cli.ts --workspace <workspace>
+   aipe make-workspace --workspace <workspace>
    ```
 
 4. **Translate the output to the PE** (one line per repo):
@@ -31,9 +31,12 @@ error), never overwrites anything, and updates `state.yaml`.
      move the occupied folder, or fix the URL in the brain via `/context-brain`).
    - `STATE workspace=done|pending` → aggregated state.
 
-5. **Next step:** if `workspace=done` (all present), the context is ready for
-   `/relationship`. If `pending`, list what's missing to the PE; re-running is safe and
-   only completes what's missing.
+5. **Next step:** if `workspace=done` (all present), tell the PE this step is
+   complete and to open a **new session** in this workspace to continue with
+   `/relationship` (a fresh session keeps the coordinator's context clean; the
+   SessionStart hook picks up exactly where onboarding left off). If `pending`,
+   list what's missing to the PE; re-running is safe and only completes what's
+   missing.
 
 ## Rules
 

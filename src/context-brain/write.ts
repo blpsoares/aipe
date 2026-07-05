@@ -5,7 +5,7 @@ import type { BrainFile, StateFile } from "./types";
 
 export function initialState(): StateFile {
   return {
-    phase: { brain: "done", workspace: "pending", relationship: "pending", generator: "pending" },
+    phase: { brain: "done", workspace: "pending", relationship: "pending", specialists: "pending" },
   };
 }
 
