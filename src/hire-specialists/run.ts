@@ -3,10 +3,40 @@ import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
 import { dedupeReportsByName, resolveNames } from "./naming";
 import { personaSlug, renderSkillMd } from "./render";
+import { readPersonas } from "./read-personas";
 import { readReports } from "./reports";
-import { buildRegistry, renderPersonasYaml } from "./registry";
+import { buildRegistry, mergeRegistry, renderPersonasYaml } from "./registry";
 import { updateSpecialistsPhase } from "./state";
-import type { NamingResult, PersonaRole, ProvidedNames, SpecialistsPhase } from "./types";
+import type { BrainFile, NamingResult, PersonaReport, PersonaRegistryEntry, PersonaRole, ProvidedNames, SpecialistsPhase } from "./types";
+
+// Writes each report's persona SKILL.md into (1) the repo and (2) the published
+// .aipe/personas/ source of truth. Shared by the full and incremental paths.
+async function writePersonaFiles(
+  workspaceDir: string,
+  brain: BrainFile,
+  reports: PersonaReport[],
+): Promise<void> {
+  for (const report of reports) {
+    const repo = brain.repos.find((r) => r.name === report.repo);
+    if (!repo) continue;
+    const slug = personaSlug(report.name);
+    const content = renderSkillMd(report, repo.stack ?? []);
+    const skillDir = join(workspaceDir, repo.path, ".claude", "skills", slug);
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), content, "utf8");
+    const sourceDir = join(workspaceDir, ".aipe", "personas", report.repo, slug);
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "SKILL.md"), content, "utf8");
+  }
+}
+
+function rosterCoversAllRepos(brain: BrainFile, roster: PersonaRegistryEntry[]): boolean {
+  return brain.repos.every((repo) =>
+    (["dev-fullstack", "qa"] as const).every((role) =>
+      roster.some((e) => e.repo === repo.name && e.role === role),
+    ),
+  );
+}
 
 export type ResolveNamesResult =
   | { ok: true; result: NamingResult }
@@ -53,21 +83,7 @@ export async function runHireSpecialists(workspaceDir: string): Promise<RunResul
   }
   const phase: SpecialistsPhase = results.every((r) => r.status === "ok") ? "done" : "pending";
 
-  for (const report of reports) {
-    const repo = brain.repos.find((r) => r.name === report.repo);
-    if (!repo) continue;
-    const slug = personaSlug(report.name);
-    const content = renderSkillMd(report, repo.stack ?? []);
-    // (1) install into the repo, so opening a session there loads the persona.
-    const skillDir = join(workspaceDir, repo.path, ".claude", "skills", slug);
-    await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), content, "utf8");
-    // (2) keep a committed copy in .aipe/personas/ (the repo dir isn't published),
-    // so `aipe rehydrate` can restore it on another machine after re-cloning.
-    const sourceDir = join(workspaceDir, ".aipe", "personas", report.repo, slug);
-    await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "SKILL.md"), content, "utf8");
-  }
+  await writePersonaFiles(workspaceDir, brain, reports);
 
   const registry = buildRegistry(brain, reports);
   await mkdir(join(workspaceDir, ".aipe"), { recursive: true });
@@ -79,5 +95,46 @@ export async function runHireSpecialists(workspaceDir: string): Promise<RunResul
     await rm(reportsDir, { recursive: true, force: true });
   }
 
+  return { ok: true, results, phase };
+}
+
+// Incremental hire for /aipe-add-repo: fold the staged reports (typically for a
+// single newly-added repo) into the EXISTING personas.yaml without disturbing
+// personas already hired. Phase is `done` once the merged roster covers every
+// repo in the brain with both roles.
+export async function runHireSpecialistsMerge(workspaceDir: string): Promise<RunResult> {
+  const brainResult = await readBrain(workspaceDir);
+  if (!brainResult.ok) return { ok: false, error: brainResult.error };
+  const brain = brainResult.brain;
+
+  const existing = await readPersonas(workspaceDir);
+  const reportsDir = join(workspaceDir, ".aipe", "specialists", ".reports");
+  const usedNames = existing.map((e) => e.name).filter((n) => n !== brain.context.coordinator);
+  const rawReports = await readReports(reportsDir);
+  // reserve both the coordinator and every already-hired name against collisions
+  const reports = dedupeReportsByName(rawReports, brain.context.coordinator).filter(
+    (r) => !usedNames.some((n) => n.toLowerCase() === r.name.toLowerCase()),
+  );
+
+  await writePersonaFiles(workspaceDir, brain, reports);
+
+  const merged = mergeRegistry(brain, existing, reports);
+  await mkdir(join(workspaceDir, ".aipe"), { recursive: true });
+  await writeFile(join(workspaceDir, ".aipe", "personas.yaml"), renderPersonasYaml(merged), "utf8");
+
+  const phase: SpecialistsPhase = rosterCoversAllRepos(brain, merged) ? "done" : "pending";
+  await updateSpecialistsPhase(workspaceDir, phase);
+  if (phase === "done") await rm(reportsDir, { recursive: true, force: true });
+
+  const results: PersonaStatus[] = [];
+  for (const repo of brain.repos) {
+    for (const role of ["dev-fullstack", "qa"] as const) {
+      results.push({
+        repo: repo.name,
+        role,
+        status: merged.some((e) => e.repo === repo.name && e.role === role) ? "ok" : "missing",
+      });
+    }
+  }
   return { ok: true, results, phase };
 }

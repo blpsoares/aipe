@@ -11,6 +11,7 @@ import relationshipSkill from "../../skills/relationship/SKILL.md" with { type: 
 import hireSpecialistsSkill from "../../skills/hire-specialists/SKILL.md" with { type: "text" };
 import operateSkill from "../../skills/operate/SKILL.md" with { type: "text" };
 import toolboxSkill from "../../skills/toolbox/SKILL.md" with { type: "text" };
+import addRepoSkill from "../../skills/aipe-add-repo/SKILL.md" with { type: "text" };
 
 const SKILLS: Record<string, string> = {
   "context-brain": contextBrainSkill,
@@ -19,6 +20,7 @@ const SKILLS: Record<string, string> = {
   "hire-specialists": hireSpecialistsSkill,
   operate: operateSkill,
   toolbox: toolboxSkill,
+  "aipe-add-repo": addRepoSkill,
 };
 
 const SESSION_START_HOOK = {

@@ -24,3 +24,39 @@ export function buildRegistry(brain: BrainFile, reports: PersonaReport[]): Perso
 export function renderPersonasYaml(entries: PersonaRegistryEntry[]): string {
   return stringify({ personas: entries });
 }
+
+// Incremental merge for /aipe-add-repo: fold new reports into an existing
+// roster without disturbing personas that aren't being (re)hired. Keeps every
+// existing entry whose repo is still in the brain and whose (repo, role) a new
+// report does not replace, then adds the new entries. The coordinator is always
+// rebuilt fresh from the brain. Deduped by name (coordinator reserved).
+export function mergeRegistry(
+  brain: BrainFile,
+  existing: PersonaRegistryEntry[],
+  reports: PersonaReport[],
+): PersonaRegistryEntry[] {
+  const repoNames = new Set(brain.repos.map((r) => r.name));
+  const replaced = new Set(reports.map((r) => `${r.repo}|${r.role}`));
+
+  const kept = existing.filter(
+    (e) =>
+      e.role !== "coordinator" &&
+      e.repo !== null &&
+      repoNames.has(e.repo) &&
+      !replaced.has(`${e.repo}|${e.role}`),
+  );
+
+  const fresh = buildRegistry(brain, reports).filter((e) => e.role !== "coordinator");
+
+  const merged: PersonaRegistryEntry[] = [
+    { name: brain.context.coordinator, role: "coordinator", repo: null, path: null },
+  ];
+  const seen = new Set<string>([brain.context.coordinator.toLowerCase()]);
+  for (const entry of [...kept, ...fresh]) {
+    const key = entry.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(entry);
+  }
+  return merged;
+}

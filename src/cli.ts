@@ -19,6 +19,7 @@ import { run as dispatchCmd } from "./dispatch/cli";
 import { run as journey } from "./journey/cli";
 import { run as rehydrate } from "./rehydrate/cli";
 import { runSkill, runMcp } from "./toolbox/cli";
+import { run as addRepo } from "./add-repo/cli";
 
 export const VERSION = "0.1.0";
 
@@ -38,6 +39,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   rehydrate: rehydrate,
   skill: runSkill,
   mcp: runMcp,
+  "add-repo": addRepo,
 };
 
 const HELP = [
@@ -49,6 +51,7 @@ const HELP = [
   "  start              Set up an AIPe workspace in this folder (pick your harness)",
   "  context-brain      Declare the context's repos → .aipe/brain.yaml",
   "  make-workspace     Clone the declared repos on disk",
+  "  add-repo           Add one repo to an existing context (incremental)",
   "  relationship       Discover cross-repo relations + backfill stack",
   "  hire-specialists   Generate the per-repo persona skills + personas.yaml",
   "  worktree           Provision/list/remove per-specialist git worktrees",

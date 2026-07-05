@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises";
-import { resolvePersonaNames, runHireSpecialists, type PersonaStatus } from "./run";
+import { resolvePersonaNames, runHireSpecialists, runHireSpecialistsMerge, type PersonaStatus } from "./run";
 import type { ProvidedNames, SpecialistsPhase } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -50,7 +50,10 @@ async function resolveNamesCommand(args: string[]): Promise<number> {
 
 async function materializeCommand(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
-  const result = await runHireSpecialists(workspace);
+  // --merge folds staged reports into an existing personas.yaml (used by
+  // /aipe-add-repo); the default overwrites the roster from scratch (onboarding).
+  const merge = args.includes("--merge");
+  const result = merge ? await runHireSpecialistsMerge(workspace) : await runHireSpecialists(workspace);
   if (!result.ok) {
     console.log(`ERROR brain: ${result.error}`);
     return 1;
