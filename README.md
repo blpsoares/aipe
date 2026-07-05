@@ -150,7 +150,7 @@ aipe serve --port 8080 --workspace ../aipe-opvibes
 | Item | Notes |
 |---|---|
 | Persona load-order validation | Needs a live interactive session (persona identity surviving a third-party skill loaded on top). Can't be done autonomously. |
-| `/relationship` at module grain | The graph already accepts module `fqid` nodes; auto-discovering intra-monorepo edges is a prose follow-up. |
+| Harness adapters beyond Claude Code | The `aipe` CLI is already harness-agnostic; an adapter needs another harness to target + validate against. Deferred. |
 | Non-Claude-Code harness adapters | The `aipe` CLI is already harness-agnostic; only the skills are Claude-Code-shaped. Deferred (Claude Code suffices for now). |
 | Release + Cloudflare wiring | Deferred debt — see [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md). Publish the release, then create the redirect rules. |
 
