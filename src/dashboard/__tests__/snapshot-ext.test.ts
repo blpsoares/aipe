@@ -108,6 +108,51 @@ test("snapshot carries a generatedAt stamp and journey updatedAt", async () => {
   }
 });
 
+test("snapshot exposes a persona CV per roster member (title, bio, competences)", async () => {
+  const dir = await ws();
+  try {
+    const s = await buildSnapshot(dir);
+    expect(s.personaCVs).toHaveLength(2);
+    const joaquim = s.personaCVs.find((c) => c.name === "Joaquim");
+    expect(joaquim?.title).toBe("Fullstack specialist");
+    expect(joaquim?.repo).toBe("embark");
+    // role competences + the repo stack, deduped
+    expect(joaquim?.competences).toContain("Feature delivery");
+    expect(joaquim?.competences).toContain("TypeScript");
+    expect(typeof joaquim?.bio).toBe("string");
+    expect((joaquim?.bio.length ?? 0)).toBeGreaterThan(0);
+    const nicolas = s.personaCVs.find((c) => c.name === "Nicolas");
+    expect(nicolas?.title).toBe("Coordinator");
+    expect(nicolas?.repo).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("persona CV reads the bio from the skill's description front-matter when present", async () => {
+  const dir = await ws();
+  try {
+    // Give Joaquim a real skill file at his registry path so the bio is read, not generated.
+    const skillDir = join(dir, "embark", ".claude", "skills", "joaquim");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), "---\nname: joaquim\ndescription: Ships checkout flows end to end.\n---\n\nbody\n", "utf8");
+    await writeFile(
+      join(dir, ".aipe", "personas.yaml"),
+      stringify({
+        personas: [
+          { name: "Nicolas", role: "coordinator", repo: null, path: null },
+          { name: "Joaquim", role: "dev-fullstack", repo: "embark", path: "./embark/.claude/skills/joaquim" },
+        ],
+      }),
+      "utf8",
+    );
+    const s = await buildSnapshot(dir);
+    expect(s.personaCVs.find((c) => c.name === "Joaquim")?.bio).toBe("Ships checkout flows end to end.");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("snapshot resolves modules and carries them on workers (monorepo)", async () => {
   const { mkdtemp } = await import("node:fs/promises");
   const dir = await mkdtemp(join(tmpdir(), "aipe-mod-"));

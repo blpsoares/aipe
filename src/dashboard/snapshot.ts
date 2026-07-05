@@ -6,7 +6,7 @@
 // `aipe serve` web console. Fields the TUI needs come first; everything the web
 // console adds (per-repo stacks, relation edges, toolbox detail, worktree rows,
 // timestamps) is layered on additively so the TUI and its tests are unaffected.
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveModules } from "../context-brain/modules";
 import { readPersonas } from "../hire-specialists/read-personas";
@@ -15,6 +15,7 @@ import { readBrain } from "../make-workspace/read";
 import { readGraph } from "../relationship/read-graph";
 import { readToolbox } from "../toolbox/catalog";
 import { listWorktrees } from "../worktree/run";
+import type { PersonaRegistryEntry } from "../hire-specialists/types";
 import type { JourneyLedger } from "../journey/types";
 import type { RelationType } from "../relationship/types";
 
@@ -70,6 +71,18 @@ export interface WorktreeView {
   branch: string;
   path: string;
 }
+// A specialist's "CV": the persona's title, bio (from their skill's description),
+// and competences (their stack + role focus). Deliveries / in-progress work are
+// derived on the client from the journeys, so this stays a static profile.
+export interface PersonaCV {
+  name: string;
+  role: string;
+  title: string;
+  repo: string | null;
+  module?: string;
+  bio: string;
+  competences: string[];
+}
 export type JourneyView = JourneyLedger & { updatedAt?: string };
 
 export interface Snapshot {
@@ -89,6 +102,7 @@ export interface Snapshot {
   toolboxDetail: { skills: ToolboxSkillView[]; mcps: ToolboxMcpView[] };
   worktreeRows: WorktreeView[];
   modules: ModuleView[];
+  personaCVs: PersonaCV[];
   generatedAt: string;
 }
 
@@ -141,8 +155,60 @@ function emptySnapshot(generatedAt: string): Snapshot {
     toolboxDetail: { skills: [], mcps: [] },
     worktreeRows: [],
     modules: [],
+    personaCVs: [],
     generatedAt,
   };
+}
+
+const ROLE_TITLE: Record<string, string> = {
+  coordinator: "Coordinator",
+  "dev-fullstack": "Fullstack specialist",
+  qa: "QA specialist",
+};
+
+// Role-focused competences, shown alongside the persona's stack in their CV.
+const ROLE_COMPETENCES: Record<string, string[]> = {
+  coordinator: ["Orchestration", "Spec authoring", "Cross-repo review"],
+  "dev-fullstack": ["Feature delivery", "API & data", "Refactoring"],
+  qa: ["Test design", "Regression", "Release gating"],
+};
+
+// Reads the `description:` line from a persona's skill front-matter (their bio).
+// Missing/unreadable → null, so the caller falls back to a generated line.
+async function readPersonaBio(workspaceDir: string, path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const rel = path.replace(/^\.\//, "");
+  const full = rel.startsWith("/") ? join(rel, "SKILL.md") : join(workspaceDir, rel, "SKILL.md");
+  try {
+    const raw = await readFile(full, "utf8");
+    const m = raw.match(/^description:\s*(.+)$/m);
+    return m ? m[1]!.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function buildPersonaCVs(
+  workspaceDir: string,
+  roster: PersonaRegistryEntry[],
+  repoInfos: RepoInfo[],
+  modules: ModuleView[],
+): Promise<PersonaCV[]> {
+  return Promise.all(
+    roster.map(async (p) => {
+      const title = ROLE_TITLE[p.role] ?? p.role;
+      const stack = p.module
+        ? modules.find((m) => m.repo === p.repo && m.module === p.module)?.stack ?? []
+        : repoInfos.find((r) => r.name === p.repo)?.stack ?? [];
+      const competences = [...new Set([...(ROLE_COMPETENCES[p.role] ?? []), ...stack])];
+      const bio =
+        (await readPersonaBio(workspaceDir, p.path)) ??
+        (p.repo
+          ? `${title} for ${p.module ? `${p.repo}/${p.module}` : p.repo}. Dispatched by the coordinator for scoped work, or worn directly in a session inside this unit.`
+          : `${title} of the context — plans journeys, authors the Orientation Spec, and reviews cross-repo work.`);
+      return { name: p.name, role: p.role, title, repo: p.repo, ...(p.module ? { module: p.module } : {}), bio, competences };
+    }),
+  );
 }
 
 export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
@@ -196,6 +262,17 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     detail: e.perspectives[0]?.detail,
   }));
 
+  const repoInfos: RepoInfo[] = brain.brain.repos.map((r) => ({ name: r.name, stack: r.stack ?? [] }));
+  const moduleViews: ModuleView[] = resolveModules(brain.brain).map((m) => ({
+    repo: m.repo,
+    module: m.module,
+    fqid: m.fqid,
+    group: m.group,
+    stack: m.stack,
+    implicit: m.implicit,
+  }));
+  const personaCVs = await buildPersonaCVs(workspaceDir, roster, repoInfos, moduleViews);
+
   return {
     ok: true,
     context: brain.brain.context,
@@ -206,14 +283,15 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     counts,
     skills: toolbox.skills.length,
     mcps: toolbox.mcps.length,
-    repoInfos: brain.brain.repos.map((r) => ({ name: r.name, stack: r.stack ?? [] })),
+    repoInfos,
     relations,
     toolboxDetail: {
       skills: toolbox.skills.map((s) => ({ name: s.name, description: s.description, whenToUse: s.whenToUse, repos: s.repos })),
       mcps: toolbox.mcps.map((m) => ({ name: m.name, scope: m.scope, repos: m.repos, description: m.description })),
     },
     worktreeRows: worktrees.map((w) => ({ repo: w.repo, slug: w.slug, journey: w.journey, branch: w.branch, path: w.path })),
-    modules: resolveModules(brain.brain).map((m) => ({ repo: m.repo, module: m.module, fqid: m.fqid, group: m.group, stack: m.stack, implicit: m.implicit })),
+    modules: moduleViews,
+    personaCVs,
     generatedAt,
   };
 }

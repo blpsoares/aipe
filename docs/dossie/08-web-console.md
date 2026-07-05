@@ -91,3 +91,47 @@ deliberate general-purpose escape hatch instead); localhost-only (no multi-
 workspace/remote/auth beyond the loopback guard); no full-screen TUIs in the web
 terminal (no PTY under the zero-dependency rule). The deferred release/Cloudflare
 debt was **not** touched.
+
+## Follow-up — emerald app-shell, live wiring, Team/CV, monorepo nomenclature
+
+A second pass replaced the exploratory SPA with the approved **emerald
+app-shell** and wired it end-to-end to real data.
+
+**App-shell (`src/serve/app.html`, one self-contained file):**
+- Sidebar nav (Overview, Org chart, Pipeline, Team, Toolbox, Activity, Terminal,
+  Settings), a ⌘K command palette, dedicated views, a slide-over worker drawer,
+  and a bottom tab bar for the **dedicated mobile layout** (single column, zero
+  horizontal scroll — verified at 390px across every view).
+- The single accent (emerald) is used only on components/bars/chips/buttons over
+  a near-black neutral base.
+- **Bilingual** EN (default) + PT-BR toggle, persisted; system data/logs stay in
+  English. **Configurable notifications** (Web Audio chime + Notifications API
+  desktop toasts, per-event), on a Settings screen.
+
+**Live, no fake data:** a `setSnap()` layer derives all view state from the real
+snapshot; `boot()` fetches `/api/snapshot` then subscribes to the named
+`snapshot` SSE events on `/api/stream`; each push re-renders the current view and
+diffs dispatches to emit activity events + notifications. The embedded terminal
+runs over the `/api/terminal` WebSocket (`ready`/`out`/`end` frames). Server bug
+fixed: `Bun.serve` `idleTimeout` was the 10s default, below the 25s SSE
+heartbeat — raised to 255s so the stream is not cut.
+
+**Team / CV area (user request):** a new snapshot field `personaCVs` (per roster
+member: title, bio read from the persona skill's `description` front-matter, and
+competences = role focus + unit stack). The **Team** view renders one CV card per
+specialist (title, bio, competence chips, and live delivered / in-progress /
+dispatch counts); the worker drawer shows the full CV plus in-progress and
+delivered work derived from the journeys.
+
+**Nomenclature (user request):** a repo that declares modules is now labelled
+**monorepo** (emerald-bordered node) vs a plain **repo**, and the org chart gained
+a **legend** spelling out coordinator / repo / monorepo / module / group /
+specialist / relation, in both languages.
+
+**Verification (follow-up):** `bun test` — **219 pass / 1 fail** (same pre-existing
+environment-only git-remote test; 2 new persona-CV tests added). `bunx tsc
+--noEmit` clean; `build:host` embeds the SPA. Driven end-to-end against a seeded
+monorepo workspace (Chromium): real context/KPIs/org/workers render, `api` shows
+as **monorepo** with Gustavo on the `gateway` module, the CV cards + drawer show
+competences and deliveries, the terminal ran `echo … && pwd`, the connection
+reads **live**, and no view overflows horizontally on mobile.

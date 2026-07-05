@@ -105,6 +105,10 @@ export function startServer(opts: ServeOpts): Server<WsData> {
   return Bun.serve<WsData>({
     port,
     hostname: host,
+    // The SSE snapshot stream and the terminal WebSocket are long-lived; Bun's
+    // default 10s idle timeout would cut the stream before the 25s heartbeat.
+    // 255s is Bun's max — the heartbeat keeps the SSE connection alive under it.
+    idleTimeout: 255,
     async fetch(req, server) {
       const url = new URL(req.url);
 
