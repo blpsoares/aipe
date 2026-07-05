@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import type { JourneyDispatch, JourneyLedger } from "./types";
+import type { JourneyDispatch, JourneyLedger, JourneySpec } from "./types";
 
 function ledgerPath(workspaceDir: string, id: string): string {
   return join(workspaceDir, ".aipe", "journeys", `${id}.yaml`);
@@ -30,7 +30,11 @@ export async function readLedger(workspaceDir: string, id: string): Promise<Jour
     const raw = await readFile(ledgerPath(workspaceDir, id), "utf8");
     const parsed = parse(raw);
     if (parsed && typeof parsed === "object" && Array.isArray(parsed.dispatches)) {
-      return { id, dispatches: parsed.dispatches as JourneyDispatch[] };
+      return {
+        id,
+        dispatches: parsed.dispatches as JourneyDispatch[],
+        ...(parsed.spec && typeof parsed.spec === "object" ? { spec: parsed.spec as JourneySpec } : {}),
+      };
     }
   } catch {
     // missing or malformed → treated as absent
@@ -41,8 +45,18 @@ export async function readLedger(workspaceDir: string, id: string): Promise<Jour
 async function writeLedger(workspaceDir: string, ledger: JourneyLedger): Promise<string> {
   const path = ledgerPath(workspaceDir, ledger.id);
   await mkdir(join(workspaceDir, ".aipe", "journeys"), { recursive: true });
-  await writeFile(path, stringify({ id: ledger.id, dispatches: ledger.dispatches }), "utf8");
+  await writeFile(
+    path,
+    stringify({ id: ledger.id, dispatches: ledger.dispatches, ...(ledger.spec ? { spec: ledger.spec } : {}) }),
+    "utf8",
+  );
   return path;
+}
+
+// Sets/updates the journey's Orientation Spec metadata, preserving dispatches.
+export async function setJourneySpec(workspaceDir: string, id: string, spec: JourneySpec): Promise<string> {
+  const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
+  return writeLedger(workspaceDir, { ...ledger, spec });
 }
 
 // Creates the ledger file for a journey if it doesn't exist yet; returns its id.

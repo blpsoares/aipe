@@ -45,6 +45,27 @@ which specialist owns which repo).
    into **waves**: everything in a wave can run at once; a later wave depends on
    an earlier one. Independent repos go in the same wave.
 
+3.5. **Write the Orientation Spec — and get the PE's approval (the gate).**
+   Before *any* dispatch, author a durable, cross-module spec for this demand.
+   Scaffold it (one scope section per unit in the batch):
+   ```bash
+   aipe journey spec --journey <id> --units <fqid,fqid,...> --workspace <workspace>
+   ```
+   Then fill in `.aipe/journeys/<id>/orientation.md`: the **Problem**, the
+   **Cross-module contracts** (from `graph.yaml` — who consumes/imports what, what
+   lands first), a **Per-module scope + acceptance** per unit, the **Sequencing**
+   (waves), and **Out of scope**. Keep it cross-module — implementation detail is
+   each specialist's own SDD, not this. Validate the structure, then present it to
+   the PE and **wait for approval**:
+   ```bash
+   aipe journey spec --journey <id> --check --units <fqid,...> --workspace <workspace>
+   # PE approves →
+   aipe journey spec --journey <id> --approve --workspace <workspace>
+   ```
+   Do **not** dispatch until `--show` reports `approved=true`. If an escalation
+   later changes the cross-module shape, `--amend` (bumps the version), edit, and
+   get re-approval before the next wave.
+
 4. **For each wave, in order:**
 
    a. **Assemble the batch** — the `{repo, specialist, module?}` entries for this
@@ -75,10 +96,14 @@ which specialist owns which repo).
 
    c. **Dispatch the specialist as a subagent.** Read that repo's persona body
    from `<repo>/.claude/skills/<slug>/SKILL.md` and start a subagent whose
-   prompt is: that persona identity, followed by the **hiring brief** (below),
-   and the instruction *"operate strictly inside `<worktree-path>`; when done,
-   commit, push `<branch>`, open a PR, and return the structured result."*
-   Dispatch all entries in a wave in parallel (one subagent each).
+   prompt is: that persona identity, followed by the **hiring brief** (below,
+   carrying **its slice** of the approved Orientation Spec — this unit's scope +
+   acceptance), and the instruction *"operate strictly inside `<worktree-path>`
+   (a monorepo module: stay within `<module-path>`); run spec-driven — first
+   check `aipe skill match --task-type <t> --size <s>` and, if an SDD kit matches,
+   derive a short module spec + plan and **commit it alongside the code**; then
+   TDD, push `<branch>`, open a PR, and return the structured result."* Dispatch
+   all entries in a wave in parallel (one subagent each).
 
    d. **Collect results.** Each subagent returns one of:
    - `{ "status": "delivered", "pr": "<url>", "summary": "…" }` — record it:
@@ -112,18 +137,22 @@ Hand the subagent this exact shape, filled from the data above:
 {
   "journey": "<id>",
   "repo": "<repo>",
+  "module": "<module or omit for a flat repo>",
+  "modulePath": "<repo-relative path the specialist must stay within>",
   "specialist": "<persona>",
   "role": "dev-fullstack | qa",
   "worktree": "<absolute worktree path>",
-  "branch": "aipe/<id>/<slug>",
-  "task": "One scoped paragraph: what to build/fix in THIS repo only.",
+  "branch": "aipe/<id>/<module>--<slug> (or aipe/<id>/<slug> when flat)",
+  "orientationSlice": "This unit's Scope + Acceptance, copied from the approved orientation.md.",
+  "task": "One scoped paragraph: what to build/fix in THIS unit only.",
+  "workingMethod": "Run `aipe skill match`; if an SDD kit matches, write a short module spec + plan and commit it before implementing (it travels in the PR). Then TDD.",
   "relevantFiles": ["<paths you already know are involved>"],
-  "relations": [ <the graph.yaml edges touching this repo> ],
+  "relations": [ <the graph.yaml edges touching this unit> ],
   "deliveryContract": {
-    "definitionOfDone": "A PR from <branch> with the change and green tests.",
+    "definitionOfDone": "A PR from <branch> with the change, its committed spec/plan (when SDD applied), and green tests.",
     "opensPr": true
   },
-  "escalation": "If this needs a change in another repo, STOP and return {status:escalate,…}; never edit another repo."
+  "escalation": "If this needs a change in another module/repo, STOP and return {status:escalate,…}; never edit another unit."
 }
 ```
 

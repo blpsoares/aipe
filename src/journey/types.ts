@@ -21,7 +21,16 @@ export interface JourneyDispatch {
   status: DispatchStatus;
 }
 
+// The coordinator's Orientation Spec for this journey (path relative to the
+// workspace), its version, and whether the PE has approved it (the dispatch gate).
+export interface JourneySpec {
+  path: string;
+  version: number;
+  approved: boolean;
+}
+
 export interface JourneyLedger {
   id: string;
   dispatches: JourneyDispatch[];
+  spec?: JourneySpec;
 }
