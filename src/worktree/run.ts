@@ -70,6 +70,31 @@ export async function listWorktrees(workspaceDir: string, journey?: string): Pro
   return rows;
 }
 
+export interface PruneRow {
+  repo: string;
+  slug: string;
+  status: "removed" | "blocked" | "error";
+  detail?: string;
+}
+
+// Sweeps every worktree of a journey, removing those whose work is safely in git
+// (clean + pushed) and reporting the rest — a batch teardown after a journey's
+// PRs merge. Guardrail-protected per worktree unless `force`.
+export async function pruneWorktrees(
+  workspaceDir: string,
+  journey: string,
+  force = false,
+): Promise<PruneRow[]> {
+  if (!isValidJourneyId(journey)) return [];
+  const rows: PruneRow[] = [];
+  for (const wt of await listWorktrees(workspaceDir, journey)) {
+    const result = await removeWorktree(workspaceDir, { repo: wt.repo, specialist: wt.slug, journey, force });
+    if (result.ok) rows.push({ repo: wt.repo, slug: wt.slug, status: "removed" });
+    else rows.push({ repo: wt.repo, slug: wt.slug, status: result.blocked ? "blocked" : "error", detail: result.error });
+  }
+  return rows;
+}
+
 export async function removeWorktree(
   workspaceDir: string,
   opts: { repo: string; specialist: string; journey: string; force?: boolean },

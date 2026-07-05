@@ -91,6 +91,10 @@ which specialist owns which repo).
    ```bash
    aipe worktree remove --repo <repo> --specialist <persona> --journey <id> --workspace <workspace>
    ```
+   Once the whole journey's PRs have merged, sweep them all at once instead:
+   ```bash
+   aipe worktree prune --journey <id> --workspace <workspace>
+   ```
    Record `--status merged` (or `removed`). Report the final set of PRs to the PE.
 
 ## The hiring brief (assemble per dispatch, never write to disk)

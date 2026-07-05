@@ -3,7 +3,7 @@ import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
-import { createWorktree, listWorktrees, removeWorktree } from "../run";
+import { createWorktree, listWorktrees, pruneWorktrees, removeWorktree } from "../run";
 import type { BrainFile } from "../types";
 
 async function sh(cmd: string[], cwd?: string): Promise<{ code: number; stdout: string }> {
@@ -128,6 +128,26 @@ test("removeWorktree blocks on uncommitted work, --force overrides", async () =>
 
     const forced = await removeWorktree(dir, { repo: "embark", specialist: "Joaquim", journey: "j1", force: true });
     expect(forced.ok).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("pruneWorktrees sweeps a journey's clean worktrees, keeps dirty ones", async () => {
+  const { dir, repoAbs } = await makeWorkspace();
+  try {
+    const clean = await createWorktree(dir, { repo: "embark", specialist: "Joaquim", journey: "jp" });
+    await createWorktree(dir, { repo: "embark", specialist: "Marina", journey: "jp" });
+    if (!clean.ok) throw new Error("setup");
+    // dirty one of them
+    await writeFile(join(repoAbs, ".worktrees", "jp-marina", "wip.txt"), "x", "utf8");
+
+    const rows = await pruneWorktrees(dir, "jp");
+    const byslug = Object.fromEntries(rows.map((r) => [r.slug, r.status]));
+    expect(byslug["joaquim"]).toBe("removed");
+    expect(byslug["marina"]).toBe("blocked");
+    // only the clean one is gone
+    expect((await listWorktrees(dir, "jp")).map((r) => r.slug)).toEqual(["marina"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

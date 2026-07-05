@@ -3,7 +3,7 @@
 // per-specialist git worktrees that isolate parallel dispatches. Deterministic
 // git plumbing; no LLM. Output convention mirrors the other subcommands
 // (OK/WT/BLOCKED/ERROR), one machine-readable line per fact.
-import { createWorktree, listWorktrees, removeWorktree } from "./run";
+import { createWorktree, listWorktrees, pruneWorktrees, removeWorktree } from "./run";
 import type { WorktreeRow } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -27,6 +27,7 @@ const USAGE = [
   "  create --repo <name> --specialist <persona> --journey <id> [--base <branch>] [--workspace <dir>]",
   "  list   [--journey <id>] [--workspace <dir>]",
   "  remove --repo <name> --specialist <persona> --journey <id> [--force] [--workspace <dir>]",
+  "  prune  --journey <id> [--force] [--workspace <dir>]",
 ].join("\n");
 
 async function createCommand(args: string[]): Promise<number> {
@@ -76,6 +77,24 @@ async function removeCommand(args: string[]): Promise<number> {
   return 1;
 }
 
+async function pruneCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const journey = getFlag(args, "--journey");
+  if (!journey) {
+    console.log("ERROR args: --journey <id> is required");
+    return 1;
+  }
+  const force = hasFlag(args, "--force");
+  const rows = await pruneWorktrees(workspace, journey, force);
+  for (const r of rows) {
+    console.log(`${r.status.toUpperCase()} ${r.repo} ${r.slug}${r.detail ? ` ${r.detail}` : ""}`);
+  }
+  const removed = rows.filter((r) => r.status === "removed").length;
+  const blocked = rows.filter((r) => r.status !== "removed").length;
+  console.log(`STATE pruned=${removed} kept=${blocked}`);
+  return blocked > 0 ? 1 : 0;
+}
+
 export async function run(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -85,6 +104,8 @@ export async function run(args: string[]): Promise<number> {
       return listCommand(rest);
     case "remove":
       return removeCommand(rest);
+    case "prune":
+      return pruneCommand(rest);
     default:
       console.log(`ERROR command: unknown worktree command "${sub ?? ""}"`);
       console.log(USAGE);
