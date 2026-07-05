@@ -35,9 +35,16 @@ at the end.
    re-analyze every existing pair:
    - Dispatch **one full read-only agent for the new repo** (its outgoing
      relations to all others), same schema as `/relationship`.
-   - Dispatch **targeted reverse-scans**: for each existing repo, a cheap agent
-     that looks *only* for references to the **new** repo (its name/package/URL)
-     — not a full re-analysis. Skip repos that clearly can't reference it.
+   - Dispatch **targeted reverse-scans for every existing repo** (default): a
+     cheap agent per repo that looks *only* for references to the **new** repo
+     (its name/package/URL) — a focused prompt, not a full re-analysis, but
+     covering *all* repos so no incoming edge is missed. Only skip a repo if the
+     PE explicitly accepts the cost/coverage trade-off.
+   - **When to prefer a full re-run instead:** `--merge` assumes the relations
+     *among the existing repos* haven't changed (true when you're only adding a
+     repo). If you suspect the existing graph is stale — the repos changed a lot
+     since onboarding — run the full `/relationship` (no `--merge`) to
+     re-discover everything from scratch.
    - Stage each result to `.aipe/relations/.reports/<repo>.json`, then fold them
      into the existing graph:
      ```bash
