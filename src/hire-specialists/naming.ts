@@ -1,3 +1,4 @@
+import { resolveGroups } from "../context-brain/modules";
 import type { BrainFile, NamingResult, PersonaAssignment, PersonaReport, ProvidedNames } from "./types";
 
 const NAME_POOL = [
@@ -20,10 +21,17 @@ export function resolveNames(brain: BrainFile, provided: ProvidedNames): NamingR
   const used = new Set<string>([brain.context.coordinator.toLowerCase()]);
   const personas: PersonaAssignment[] = [];
 
-  for (const repo of brain.repos) {
+  // One dev+QA pair per hiring *group* (a group is a repo's implicit whole-repo
+  // module, a single module, or several modules sharing a `group`). Provided
+  // names may be keyed by the group id ("repo/group") or, for a flat repo, the
+  // bare repo name.
+  for (const g of resolveGroups(brain)) {
+    const flat = g.group === g.repo;
+    const unitKey = flat ? g.repo : `${g.repo}/${g.group}`;
+    const rep = g.modules[0];
     for (const role of ["dev-fullstack", "qa"] as const) {
       const key = role === "dev-fullstack" ? "devFullstack" : "qa";
-      const suggested = provided[repo.name]?.[key];
+      const suggested = provided[unitKey]?.[key] ?? provided[g.repo]?.[key];
       let name = suggested && suggested.trim().length > 0 ? suggested.trim() : undefined;
 
       if (!name || used.has(name.toLowerCase())) {
@@ -31,7 +39,12 @@ export function resolveNames(brain: BrainFile, provided: ProvidedNames): NamingR
       }
 
       used.add(name.toLowerCase());
-      personas.push({ repo: repo.name, role, name });
+      personas.push({
+        repo: g.repo,
+        role,
+        name,
+        ...(flat ? {} : { module: rep?.module, group: g.group }),
+      });
     }
   }
 

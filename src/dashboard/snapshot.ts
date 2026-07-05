@@ -8,6 +8,7 @@
 // timestamps) is layered on additively so the TUI and its tests are unaffected.
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveModules } from "../context-brain/modules";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { listJourneys } from "../journey/ledger";
 import { readBrain } from "../make-workspace/read";
@@ -26,6 +27,17 @@ export interface WorkerView {
   status: WorkerStatus;
   journey?: string;
   pr?: string;
+  module?: string; // monorepo unit this persona covers (absent ⇒ whole repo)
+  group?: string;
+}
+
+export interface ModuleView {
+  repo: string;
+  module: string;
+  fqid: string;
+  group: string;
+  stack: string[];
+  implicit: boolean;
 }
 
 // Additive views the web console reads (the TUI ignores them).
@@ -76,6 +88,7 @@ export interface Snapshot {
   relations: RelationEdgeView[];
   toolboxDetail: { skills: ToolboxSkillView[]; mcps: ToolboxMcpView[] };
   worktreeRows: WorktreeView[];
+  modules: ModuleView[];
   generatedAt: string;
 }
 
@@ -127,6 +140,7 @@ function emptySnapshot(generatedAt: string): Snapshot {
     relations: [],
     toolboxDetail: { skills: [], mcps: [] },
     worktreeRows: [],
+    modules: [],
     generatedAt,
   };
 }
@@ -152,7 +166,14 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
       return { name: p.name, role: p.role, repo: p.repo, status: "active" as WorkerStatus };
     }
     const derived = deriveStatus(p.repo, p.name, journeys);
-    return { name: p.name, role: p.role, repo: p.repo, ...derived };
+    return {
+      name: p.name,
+      role: p.role,
+      repo: p.repo,
+      ...(p.module ? { module: p.module } : {}),
+      ...(p.group ? { group: p.group } : {}),
+      ...derived,
+    };
   });
 
   const specialists = workers.filter((w) => w.role !== "coordinator");
@@ -192,6 +213,7 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
       mcps: toolbox.mcps.map((m) => ({ name: m.name, scope: m.scope, repos: m.repos, description: m.description })),
     },
     worktreeRows: worktrees.map((w) => ({ repo: w.repo, slug: w.slug, journey: w.journey, branch: w.branch, path: w.path })),
+    modules: resolveModules(brain.brain).map((m) => ({ repo: m.repo, module: m.module, fqid: m.fqid, group: m.group, stack: m.stack, implicit: m.implicit })),
     generatedAt,
   };
 }

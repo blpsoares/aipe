@@ -107,3 +107,36 @@ test("snapshot carries a generatedAt stamp and journey updatedAt", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("snapshot resolves modules and carries them on workers (monorepo)", async () => {
+  const { mkdtemp } = await import("node:fs/promises");
+  const dir = await mkdtemp(join(tmpdir(), "aipe-mod-"));
+  try {
+    await mkdir(join(dir, ".aipe"), { recursive: true });
+    await writeFile(
+      join(dir, ".aipe", "brain.yaml"),
+      stringify({
+        context: { name: "co", coordinator: "Ana" },
+        repos: [{ name: "platform", url: "u", path: "./platform", modules: [{ name: "core", path: "packages/core" }, { name: "web", path: "apps/web" }] }],
+      }),
+      "utf8",
+    );
+    await writeFile(
+      join(dir, ".aipe", "personas.yaml"),
+      stringify({
+        personas: [
+          { name: "Ana", role: "coordinator", repo: null, path: null },
+          { name: "Bruno", role: "dev-fullstack", repo: "platform", module: "core", group: "core", path: "p" },
+        ],
+      }),
+      "utf8",
+    );
+    const s = await buildSnapshot(dir);
+    expect(s.modules.map((m) => m.fqid)).toEqual(["platform/core", "platform/web"]);
+    expect(s.modules[0]?.implicit).toBe(false);
+    const bruno = s.workers.find((w) => w.name === "Bruno");
+    expect(bruno?.module).toBe("core");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

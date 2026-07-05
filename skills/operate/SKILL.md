@@ -30,10 +30,14 @@ which specialist owns which repo).
    Use the returned `JOURNEY <id>` for every command below. One demand = one
    journey; several specialists may run under it.
 
-2. **Decompose the demand into per-repo tasks.** Decide *which repos* the demand
-   actually touches and *what each one must do*. A task is scoped to a single
-   repo. If the demand only touches one repo, there is exactly one task — do not
-   invent work in other repos.
+2. **Decompose the demand into per-module tasks.** Decide *which units* the
+   demand touches and *what each must do*. The unit of work is a **module**, not
+   the repo: a flat repo is one implicit module (`fqid` = the repo name); a
+   monorepo has one module per package/service (`fqid` = `repo/module`). Read the
+   modules from `brain.yaml` (`aipe read-state` also lists them). A task is scoped
+   to a single module. If the demand only touches one module, there is exactly
+   one task — don't invent work elsewhere. Distinct modules of one monorepo run
+   in **parallel** (the law serializes only the *same* module).
 
 3. **Sequence with the relations graph.** Read `graph.yaml`. If repo A's task
    depends on a contract that repo B must change first (A `consumes`/`imports`
@@ -43,26 +47,29 @@ which specialist owns which repo).
 
 4. **For each wave, in order:**
 
-   a. **Assemble the batch** — the `{repo, specialist}` pairs for this wave (the
-   specialist is the persona for that repo from `personas.yaml`). Write it to a
-   temp JSON file and adjudicate the law:
+   a. **Assemble the batch** — the `{repo, specialist, module?}` entries for this
+   wave (the specialist is the persona for that module from `personas.yaml`; add
+   `module` for a monorepo unit, omit it for a flat repo). Write it to a temp JSON
+   file and adjudicate the law:
    ```bash
    aipe dispatch validate --input <batch.json> --workspace <workspace>
    ```
    `OK batch=<n>` → proceed. Any `REJECT …` → fix and re-validate:
-   - `same-repo <repo>` — two tasks hit one repo in one wave; split them across
-     waves (the same-repo law serializes; you cannot parallelize within a repo).
+   - `same-module <fqid>` / `same-repo <repo>` — two tasks hit one unit in one
+     wave; split them across waves (the law serializes the same module; distinct
+     modules of one monorepo are fine in the same wave).
    - `cap-exceeded <n>` — more than 16 at once; split the wave.
    - `unknown-repo` / `unknown-specialist` — you named something not in
      `brain.yaml` / `personas.yaml`.
 
-   b. **Provision a worktree per entry:**
+   b. **Provision a worktree per entry** (pass `--module` for a monorepo unit so
+   two modules of one repo get distinct worktrees on the same clone):
    ```bash
-   aipe worktree create --repo <repo> --specialist <persona> --journey <id> --workspace <workspace>
+   aipe worktree create --repo <repo> [--module <module>] --specialist <persona> --journey <id> --workspace <workspace>
    ```
    Note the printed `OK <worktree-path> <branch>`. Record it:
    ```bash
-   aipe journey record --journey <id> --repo <repo> --specialist <persona> \
+   aipe journey record --journey <id> --repo <repo> [--module <module>] --specialist <persona> \
      --branch <branch> --worktree <path> --status dispatched --workspace <workspace>
    ```
 

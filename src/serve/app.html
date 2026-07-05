@@ -423,7 +423,8 @@ function renderOrg(s) {
       const sy = ySpec0 + i * specH;
       const selW = S.sel && S.sel.kind === "worker" && S.sel.id === w.name;
       const cl = statusCls(w.status);
-      P.push(box(c.cx, sy, Math.min(c.w - 8, 196), 48, `color-mix(in srgb, var(--${cl}) 7%, var(--panel))`, `var(--${cl})`, w.name, w.role, selW, `onclick="pick('worker','${esc(w.name)}')"`, toneVar[cl]));
+      const sub = w.module ? `${w.role} · ${w.module}` : w.role;
+      P.push(box(c.cx, sy, Math.min(c.w - 8, 196), 48, `color-mix(in srgb, var(--${cl}) 7%, var(--panel))`, `var(--${cl})`, w.name, sub, selW, `onclick="pick('worker','${esc(w.name)}')"`, toneVar[cl]));
     });
     if (specsByRepo[c.r].length === 0) P.push(`<text x="${c.cx}" y="${ySpec0 + 16}" text-anchor="middle" class="edge-label">no specialists</text>`);
   });
@@ -484,8 +485,10 @@ function renderDetail(s) {
     const rels = (s.relations || []).filter((e) => e.from === S.sel.id || e.to === S.sel.id);
     const skills = (s.toolboxDetail?.skills || []).filter((k) => k.repos.includes(S.sel.id));
     const wts = (s.worktreeRows || []).filter((r) => r.repo === S.sel.id);
-    box.innerHTML = `<h3>${esc(info.name)}</h3><div class="sub">${info.stack.length ? esc(info.stack.join(" · ")) : "repo"}</div>
-      <div class="section"><h4>Specialists</h4><div class="mini">${specs.length ? specs.map((w) => `<div class="row">${chip(w.status)}<b>${esc(w.name)}</b><span style="color:var(--ink-dim);font-size:12px">${esc(w.role)}</span></div>`).join("") : '<span class="hint">none hired</span>'}</div></div>
+    const mods = (s.modules || []).filter((m) => m.repo === S.sel.id && !m.implicit);
+    box.innerHTML = `<h3>${esc(info.name)}</h3><div class="sub">${info.stack.length ? esc(info.stack.join(" · ")) : "repo"}${mods.length ? ` · ${mods.length} modules` : ""}</div>
+      ${mods.length ? `<div class="section"><h4>Modules</h4><div class="mini">${mods.map((m) => `<div class="row"><b>${esc(m.module)}</b>${m.group !== m.module ? `<span class="chip c-available">${esc(m.group)}</span>` : ""}<span class="mono">${esc(m.stack.join(" · "))}</span></div>`).join("")}</div></div>` : ""}
+      <div class="section"><h4>Specialists</h4><div class="mini">${specs.length ? specs.map((w) => `<div class="row">${chip(w.status)}<b>${esc(w.name)}</b><span style="color:var(--ink-dim);font-size:12px">${esc(w.role)}${w.module ? ` · ${esc(w.module)}` : ""}</span></div>`).join("") : '<span class="hint">none hired</span>'}</div></div>
       ${rels.length ? `<div class="section"><h4>Relations</h4><div class="mini">${rels.map((e) => `<div class="row"><span class="mono">${esc(e.from)} → ${esc(e.to)}</span><span class="chip c-available">${esc(e.type)}</span></div>${e.detail ? `<div class="hint" style="margin:-2px 0 4px 2px">${esc(e.detail)}</div>` : ""}`).join("")}</div></div>` : ""}
       ${skills.length ? `<div class="section"><h4>Toolbox</h4><div class="mini">${skills.map((k) => `<div class="row"><b>${esc(k.name)}</b></div><div class="hint" style="margin:-2px 0 2px 2px">${esc(k.whenToUse)}</div>`).join("")}</div></div>` : ""}
       ${wts.length ? `<div class="section"><h4>Worktrees</h4><div class="mini">${wts.map((r) => `<div class="row"><span class="mono">${esc(r.branch)}</span></div>`).join("")}</div></div>` : ""}`;
@@ -510,7 +513,7 @@ function renderMobile(s) {
       const specs = s.workers.filter((w) => w.repo === r);
       const info = (s.repoInfos || []).find((x) => x.name === r) || { stack: [] };
       return `<details class="m-repo" open><summary><span class="rname">${esc(r)}</span><span class="stack">${esc(info.stack.join(" · "))}</span><span style="margin-left:auto" class="hint">${specs.length}</span></summary>
-        ${specs.length ? specs.map((w) => `<div class="worker" onclick="pick('worker','${esc(w.name)}')">${chip(w.status)}<span class="nm">${esc(w.name)}</span><span class="rl">${esc(w.role)}</span><span style="margin-left:auto" class="hint">${w.journey ? esc(w.journey) : ""}</span></div>`).join("") : '<div class="worker"><span class="hint">no specialists hired</span></div>'}
+        ${specs.length ? specs.map((w) => `<div class="worker" onclick="pick('worker','${esc(w.name)}')">${chip(w.status)}<span class="nm">${esc(w.name)}</span><span class="rl">${esc(w.role)}${w.module ? ` · ${esc(w.module)}` : ""}</span><span style="margin-left:auto" class="hint">${w.journey ? esc(w.journey) : ""}</span></div>`).join("") : '<div class="worker"><span class="hint">no specialists hired</span></div>'}
       </details>`;
     }).join("")}</div>
     ${S.sel ? `<section class="card detail" style="padding:16px" id="mdetail"></section>` : ""}`;
