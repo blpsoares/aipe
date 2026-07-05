@@ -38,9 +38,11 @@ may happen in another language, but the repository is English-only.)
 
 ### Roadmap (not yet built)
 
+- **AIPe Web Console** — responsive desktop+mobile visualization of the org
+  chart, workers, and pipeline (`specs/2026-07-05-web-console-design.md`).
+  **Build LAST**, once the pipeline data model is fully settled.
 - Persona load-order validation (needs a live session)
-- MCP-config secret validation; incremental relation discovery; skill/MCP uninstall
-- Harness adapters beyond Claude Code; release + Cloudflare wiring
+- Skill/MCP uninstall; harness adapters beyond Claude Code; release + Cloudflare
 
 See the foundation design at
 `docs/superpowers/specs/2026-07-01-aipe-context-brain-design.md`.

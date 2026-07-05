@@ -88,7 +88,9 @@ AIPe is meant to run for **anyone, in any agent harness, on any OS**. The
 portable core is a single CLI (`aipe`). Onboarding subcommands: `start |
 context-brain | make-workspace | relationship | hire-specialists | read-state |
 session-context`. Operation + growth subcommands: `worktree | dispatch |
-journey | rehydrate | skill | mcp | add-repo`.
+journey | dashboard | rehydrate | skill | mcp | add-repo`. A responsive web
+console (`aipe serve`) is the planned final surface — see
+`docs/superpowers/specs/2026-07-05-web-console-design.md`.
 
 - **End users need no runtime.** The CLI compiles to a standalone executable
   per OS/arch (`bun build --compile`), so there's **no Bun, Node, or npm**

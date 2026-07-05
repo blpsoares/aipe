@@ -92,6 +92,29 @@ each `run(args): Promise<number>` behind the established `import.meta.main`
 pattern, wired into `src/cli.ts`. New skills installed by `aipe start`:
 `operate`, `toolbox`, `aipe-add-repo` (6 → now 8 AIPe skills).
 
+## Follow-up in the same session (PE review)
+
+After review the PE asked to apply the improvements I'd recommended and add a
+live view; all shipped, tested, committed:
+
+- **`aipe dashboard`** — a colored live TUI (buildSnapshot/renderDashboard):
+  header, KPI row, workers-by-repo with status derived from the ledgers,
+  pipeline per journey.
+- **`aipe mcp add` refuses literal secrets** (findSecrets; `--allow-secrets`
+  overrides) — the catalog is published.
+- **Incremental `aipe relationship --merge`** (combineMergedEdges/pruneEdges/
+  runRelationshipMerge) — `/aipe-add-repo` now does 1 full agent for the new
+  repo + cheap targeted reverse-scans instead of N full agents.
+- **`aipe worktree prune --journey`** — batch teardown, guardrail-protected.
+- **Structured toolbox routing** — `SkillEntry.routing { taskTypes, skipFor,
+  minSize }` + `aipe skill match` for mechanical tool selection.
+- **Web Console spec** (`2026-07-05-web-console-design.md`) — the responsive
+  desktop+mobile visualization, planned as the **final** sub-project (build last,
+  once the pipeline data model is fully settled).
+
+Repo-wide after the follow-up: **all suites green except the one known
+env-only git-remote test**; `bunx tsc --noEmit` clean.
+
 ## Deferred / open (see docs/NEXT-SESSION-phase-b.md)
 
 - Load-order validation (still needs a live session).

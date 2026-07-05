@@ -37,7 +37,28 @@ me to save for us to discuss.
 - **MCP config is stored in the published catalog** — so I kept secrets out by
   convention (env refs like `${PG_URL}`), documented in `/toolbox`.
 
-## Doubts to resolve together (the important ones)
+## Resolved in the PE review round (all shipped)
+
+- **#1 MCP secrets** → `aipe mcp add` now refuses literal secrets
+  (`--allow-secrets` overrides).
+- **`aipe dashboard`** → live colored TUI of workers + pipeline.
+- **add-repo cost** → `aipe relationship --merge` (incremental discovery).
+- **`aipe worktree prune --journey`** → batch teardown.
+- **`whenToUse`** → structured `routing` + `aipe skill match` (deterministic).
+- **Web app** → specced as the **final** sub-project
+  (`specs/2026-07-05-web-console-design.md`), served by a future `aipe serve`;
+  build last, once the pipeline model is settled.
+
+## Still open (need you / later)
+
+- **#2 Persona load-order validation** — needs a live interactive session; we do
+  it together.
+- **#3 Non-Claude-Code harness adapters** — deferred (Claude Code is enough for
+  now); the `aipe` CLI is already harness-agnostic, only the skills are CC-shaped.
+- **Web Console** — the final build; its plan + TDD in that cycle.
+- Skill/MCP **uninstall**; release + Cloudflare wiring (unchanged deferred debt).
+
+## Original doubts (kept for reference)
 
 1. **MCP secrets.** The toolbox catalog is published. Today the rule is
    "env-var references only, never literal secrets," enforced by docs/convention.
