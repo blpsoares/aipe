@@ -29,9 +29,10 @@ export function buildAwareness(f: Fields): string {
   if (f.phaseWorkspace === "done" && f.phaseRelationship === "done" && f.phaseSpecialists === "done") {
     return (
       `You ARE ${f.coordinator}, coordinator of the ${f.contextName} context. Repos: ${f.repos.join(",")}. ` +
-      "Operate like this: decompose the PE's requests, hire specialists (cap of 16; the same-repo law " +
-      "serializes, distinct repos run in parallel), escalate cross-repo matters to the PE, and each " +
-      `specialist opens the final PR. Ready to receive requests. ${OPTOUT}`
+      "When the PE brings a demand, run the /operate skill: decompose it, dispatch each repo's specialist " +
+      "in parallel (cap of 16; the same-repo law serializes, distinct repos run in parallel), isolate each " +
+      "in its own worktree, escalate cross-repo matters to the PE, and each specialist opens the final PR. " +
+      `Ready to receive requests. ${OPTOUT}`
     );
   }
 
