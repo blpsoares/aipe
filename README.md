@@ -142,12 +142,15 @@ aipe serve --port 8080 --workspace ../aipe-opvibes
 | — | Unified `aipe` CLI + zero-dependency distribution | Merged | [06](docs/dossie/06-unified-cli-distribution.md) |
 | 6 | **Phase B — Operation** (worktree · dispatch · journey · `/operate` · dashboard) + portability + toolbox + `/aipe-add-repo` | Merged | [07](docs/dossie/07-phase-b-operation.md) |
 | 7 | **AIPe Web Console** (`aipe serve` — responsive org chart · pipeline · detail · embedded terminal, live over SSE) | Built | [08](docs/dossie/08-web-console.md) |
+| 8 | **Monorepo module granularity** (`module` as the unit of work) + toolbox uninstall | Built | [09](docs/dossie/09-module-granularity.md) |
+| 9 | **Spec-first operation** (coordinator Orientation Spec + PE gate + specialist SDD) | Built | [10](docs/dossie/10-spec-first-operation.md) |
 
 ### Roadmap (pending)
 
 | Item | Notes |
 |---|---|
 | Persona load-order validation | Needs a live interactive session (persona identity surviving a third-party skill loaded on top). Can't be done autonomously. |
+| `/relationship` at module grain | The graph already accepts module `fqid` nodes; auto-discovering intra-monorepo edges is a prose follow-up. |
 | Non-Claude-Code harness adapters | The `aipe` CLI is already harness-agnostic; only the skills are Claude-Code-shaped. Deferred (Claude Code suffices for now). |
 | Release + Cloudflare wiring | Deferred debt — see [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md). Publish the release, then create the redirect rules. |
 

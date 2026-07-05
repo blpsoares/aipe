@@ -36,11 +36,14 @@ may happen in another language, but the repository is English-only.)
 | — | Unified `aipe` CLI + zero-dependency distribution | Implemented | [06-unified-cli-distribution.md](06-unified-cli-distribution.md) |
 | 6 | Phase B (Operation): worktree, dispatch, journey, operate, dashboard + portability, toolbox, add-repo | Merged | [07-phase-b-operation.md](07-phase-b-operation.md) |
 | 7 | AIPe Web Console (`aipe serve` — responsive org chart, pipeline, detail, embedded terminal, live over SSE) | Built | [08-web-console.md](08-web-console.md) |
+| 8 | Monorepo module granularity (`module` as the unit of work) + toolbox uninstall | Built | [09-module-granularity.md](09-module-granularity.md) |
+| 9 | Spec-first operation (coordinator Orientation Spec + PE gate + specialist SDD) | Built | [10-spec-first-operation.md](10-spec-first-operation.md) |
 
 ### Roadmap (not yet built)
 
 - Persona load-order validation (needs a live session)
-- Skill/MCP uninstall; harness adapters beyond Claude Code; release + Cloudflare
+- Harness adapters beyond Claude Code; release + Cloudflare wiring
+- Follow-ups: `/relationship` discovery at module grain; per-module persona-body prose
 
 See the foundation design at
 `docs/superpowers/specs/2026-07-01-aipe-context-brain-design.md`.
