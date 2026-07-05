@@ -7,243 +7,263 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%236c4cf1'/%3E%3Ctext x='16' y='22' font-size='17' font-family='monospace' fill='white' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E" />
 <style>
 /* ── Design system ─────────────────────────────────────────────────────────
-   One coherent, theme-aware system. Status semantics match the TUI:
-   active=blue, delivered=green, escalated=amber, available=muted,
-   coordinator=violet. Light and dark are both first-class.                    */
+   One coherent, theme-aware system with a real type hierarchy. Status semantics
+   match the TUI: active=blue, delivered=green, escalated=amber, available=muted,
+   coordinator=violet. Light and dark are both first-class, deliberately tuned.  */
 :root {
   color-scheme: light dark;
-  --bg: #f6f7fb;
-  --panel: #ffffff;
-  --panel-2: #f0f1f7;
-  --ink: #1a1c25;
-  --ink-dim: #5b606f;
-  --ink-faint: #8b90a0;
-  --line: #e2e4ee;
-  --line-strong: #cdd0dd;
-  --accent: #6c4cf1;
-  --active: #2f76e6;
-  --delivered: #1f9d57;
-  --escalated: #d98a12;
-  --available: #9aa0b0;
-  --coord: #7d3ff0;
-  --shadow: 0 1px 2px rgba(20,22,35,.06), 0 8px 24px rgba(20,22,35,.06);
-  --radius: 14px;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* dark is the default (also applied when data-theme is absent) */
+  --bg: #090a0e; --bg-2: #0e1016;
+  --panel: #131621; --panel-2: #1a1e2a; --panel-3: #232838;
+  --ink: #e9ebf4; --ink-dim: #a1a8bc; --ink-faint: #656d82;
+  --line: #21242f; --line-2: #2e3342;
+  --accent: #8f7cff; --accent-ink: #b8abff;
+  --active: #5c9dff; --delivered: #40cf8e; --escalated: #f6b545;
+  --available: #6b7288; --coord: #a78cff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.36);
+  --shadow: 0 2px 6px rgba(0,0,0,.30), 0 16px 40px rgba(0,0,0,.42);
+  --ring: color-mix(in srgb, var(--accent) 55%, transparent);
+  --radius: 16px; --radius-sm: 11px;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
 }
-:root[data-theme="dark"], :root:not([data-theme="light"]) {
-  --bg: #0c0d12;
-  --panel: #14161e;
-  --panel-2: #1b1e28;
-  --ink: #eceef6;
-  --ink-dim: #a3a9bb;
-  --ink-faint: #6b7080;
-  --line: #262a37;
-  --line-strong: #333849;
-  --accent: #8f77ff;
-  --active: #5aa0ff;
-  --delivered: #35c47b;
-  --escalated: #f2b23c;
-  --available: #6f7688;
-  --coord: #a98bff;
-  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+:root[data-theme="light"] {
+  --bg: #f4f6fb; --bg-2: #eceff6;
+  --panel: #ffffff; --panel-2: #f5f7fb; --panel-3: #eaedf5;
+  --ink: #131722; --ink-dim: #535b6d; --ink-faint: #8990a1;
+  --line: #e8ebf3; --line-2: #d6dae5;
+  --accent: #5b46e0; --accent-ink: #4a37c9;
+  --active: #2f6fe0; --delivered: #10a15b; --escalated: #c9820f;
+  --available: #9ba2b2; --coord: #6a45dd;
+  --shadow-sm: 0 1px 2px rgba(22,26,44,.05);
+  --shadow: 0 1px 2px rgba(22,26,44,.05), 0 12px 34px rgba(22,26,44,.09);
+  --ring: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #f6f7fb; --panel: #fff; --panel-2: #f0f1f7; --ink: #1a1c25;
-    --ink-dim: #5b606f; --ink-faint: #8b90a0; --line: #e2e4ee; --line-strong: #cdd0dd;
-    --accent: #6c4cf1; --active: #2f76e6; --delivered: #1f9d57; --escalated: #d98a12;
-    --available: #9aa0b0; --coord: #7d3ff0;
-    --shadow: 0 1px 2px rgba(20,22,35,.06), 0 8px 24px rgba(20,22,35,.06);
+    --bg: #f4f6fb; --bg-2: #eceff6;
+    --panel: #ffffff; --panel-2: #f5f7fb; --panel-3: #eaedf5;
+    --ink: #131722; --ink-dim: #535b6d; --ink-faint: #8990a1;
+    --line: #e8ebf3; --line-2: #d6dae5;
+    --accent: #5b46e0; --accent-ink: #4a37c9;
+    --active: #2f6fe0; --delivered: #10a15b; --escalated: #c9820f;
+    --available: #9ba2b2; --coord: #6a45dd;
+    --shadow-sm: 0 1px 2px rgba(22,26,44,.05);
+    --shadow: 0 1px 2px rgba(22,26,44,.05), 0 12px 34px rgba(22,26,44,.09);
+    --ring: color-mix(in srgb, var(--accent) 40%, transparent);
   }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
-  margin: 0; background: var(--bg); color: var(--ink);
-  font-family: var(--sans); font-size: 14px; line-height: 1.45;
-  -webkit-font-smoothing: antialiased;
+  margin: 0; color: var(--ink);
+  background: radial-gradient(1100px 620px at 78% -12%, var(--bg-2), var(--bg)) fixed;
+  font-family: var(--sans); font-size: 14px; line-height: 1.5;
+  font-feature-settings: "cv02" 1, "cv11" 1, "ss01" 1;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
-a { color: var(--accent); text-decoration: none; }
+.num { font-variant-numeric: tabular-nums; }
+a { color: var(--accent-ink); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); background-clip: padding-box; border: 3px solid transparent; }
 
 /* ── Top bar ─────────────────────────────────────────────────────────────── */
 .topbar {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 12px 18px; background: var(--panel);
-  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 11px 20px; position: sticky; top: 0; z-index: 30;
+  background: color-mix(in srgb, var(--panel) 76%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: baseline; gap: 10px; }
-.brand b { font-size: 16px; letter-spacing: .2px; }
-.brand .ctx { color: var(--accent); font-weight: 700; }
+.brand { display: flex; align-items: baseline; gap: 9px; }
+.brand .logo {
+  font-weight: 800; font-size: 17px; letter-spacing: -.03em;
+  background: linear-gradient(135deg, var(--ink), color-mix(in srgb, var(--accent) 70%, var(--ink)));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.brand .ctx { color: var(--accent-ink); font-weight: 700; letter-spacing: -.01em; }
 .brand .coord { color: var(--ink-dim); font-size: 12.5px; }
-.kpis { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.kpis { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-left: auto; }
 .kpi {
-  display: flex; align-items: baseline; gap: 5px; padding: 4px 10px;
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px;
-  font-size: 12px; color: var(--ink-dim); white-space: nowrap;
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 11px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm); white-space: nowrap;
 }
-.kpi b { font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.kpi b { font-size: 15px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.kpi .l { font-size: 11.5px; color: var(--ink-dim); }
 .kpi.s-active b { color: var(--active); }
 .kpi.s-delivered b { color: var(--delivered); }
 .kpi.s-escalated b { color: var(--escalated); }
 .kpi.s-available b { color: var(--available); }
-.tb-actions { display: flex; align-items: center; gap: 8px; }
-.conn { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-dim); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--available); }
-.conn.live .dot { background: var(--delivered); box-shadow: 0 0 0 3px color-mix(in srgb, var(--delivered) 25%, transparent); }
-.conn.down .dot { background: var(--escalated); }
+.kpi-div { width: 1px; height: 20px; background: var(--line-2); margin: 0 3px; }
+.tb-actions { display: flex; align-items: center; gap: 9px; }
+.conn { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-dim); font-weight: 500; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--available); transition: background .2s; }
+.conn.live .dot { background: var(--delivered); box-shadow: 0 0 0 4px color-mix(in srgb, var(--delivered) 20%, transparent); }
+.conn.down .dot { background: var(--escalated); box-shadow: 0 0 0 4px color-mix(in srgb, var(--escalated) 20%, transparent); }
 .icon-btn {
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
-  width: 34px; height: 34px; display: grid; place-items: center; font-size: 15px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  width: 36px; height: 36px; display: grid; place-items: center; font-size: 15px;
+  box-shadow: var(--shadow-sm); transition: border-color .15s, transform .1s;
 }
-.icon-btn:hover { border-color: var(--line-strong); }
+.icon-btn:hover { border-color: var(--line-2); }
+.icon-btn:active { transform: scale(.94); }
 
-/* ── Layout: desktop cockpit ───────────────────────────────────────────────
-   grid → [main org+pipeline | detail], terminal drawer docked at the bottom.  */
-.shell { display: flex; flex-direction: column; height: calc(100dvh - 59px); }
+/* ── Layout: desktop cockpit ─────────────────────────────────────────────── */
+.shell { display: flex; flex-direction: column; height: calc(100dvh - 60px); }
 .cockpit {
-  display: grid; grid-template-columns: 1fr 340px; gap: 14px;
-  padding: 14px; overflow: hidden; flex: 1; min-height: 0;
+  display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 16px;
+  padding: 16px; overflow: hidden; flex: 1; min-height: 0;
 }
-.main-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow: auto; }
+.main-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; overflow: auto; padding-right: 2px; }
 .side-col { overflow: auto; min-height: 0; }
 .card {
   background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow);
 }
 .card > h2 {
-  margin: 0; padding: 12px 16px; font-size: 12px; letter-spacing: .12em;
-  text-transform: uppercase; color: var(--ink-faint); border-bottom: 1px solid var(--line);
-  display: flex; align-items: center; gap: 8px;
+  margin: 0; padding: 13px 18px; font-size: 10.5px; letter-spacing: .16em;
+  text-transform: uppercase; font-weight: 600; color: var(--ink-faint);
+  border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px;
 }
-.card > h2 .count { margin-left: auto; color: var(--ink-dim); letter-spacing: 0; text-transform: none; font-weight: 600; }
+.card > h2 .count { margin-left: auto; color: var(--ink-dim); letter-spacing: 0; text-transform: none; font-weight: 550; font-size: 12px; }
 
-/* ── Org chart (SVG) ───────────────────────────────────────────────────────*/
-.org-wrap { overflow: auto; padding: 6px; }
+/* ── Org chart (SVG) ─────────────────────────────────────────────────────── */
+.org-wrap { overflow: auto; padding: 10px 6px; }
 .org svg { display: block; }
 .node-box { cursor: pointer; }
-.node-box rect { transition: filter .12s; }
-.node-box:hover rect { filter: brightness(1.06); }
+.node-box rect { transition: filter .14s, stroke-width .14s; }
+.node-box:hover rect { filter: brightness(1.05) saturate(1.05); }
 .node-box.sel rect { stroke-width: 2.5px; }
-.edge { fill: none; stroke: var(--line-strong); stroke-dasharray: 4 4; opacity: .8; }
-.edge-label { fill: var(--ink-faint); font-size: 10px; }
-.link { fill: none; stroke: var(--line-strong); }
+.node-title { font-family: var(--sans); font-weight: 650; letter-spacing: -.01em; }
+.node-sub { font-family: var(--sans); }
+.edge { fill: none; stroke: var(--line-2); stroke-dasharray: 5 4; opacity: .85; }
+.edge-label { fill: var(--ink-faint); font-size: 10px; font-weight: 500; letter-spacing: .02em; }
+.link { fill: none; stroke: var(--line-2); stroke-width: 1.4px; }
 
-/* ── Pipeline board (kanban) ───────────────────────────────────────────────*/
-.board { display: flex; gap: 12px; padding: 12px; overflow-x: auto; }
-.lane { flex: 1 0 190px; min-width: 190px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; }
-.lane > header { padding: 9px 12px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
+/* ── Pipeline board (kanban) ─────────────────────────────────────────────── */
+.board { display: flex; gap: 13px; padding: 14px; overflow-x: auto; }
+.lane { flex: 1 0 195px; min-width: 195px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 13px; display: flex; flex-direction: column; }
+.lane > header { padding: 10px 13px; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--ink-dim); display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); }
 .lane > header .pip { width: 8px; height: 8px; border-radius: 50%; }
-.lane .cards { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 30px; }
-.pcard { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--available); border-radius: 10px; padding: 9px 11px; cursor: pointer; }
-.pcard:hover { border-color: var(--line-strong); }
-.pcard .who { font-weight: 600; font-size: 13px; }
-.pcard .meta { color: var(--ink-dim); font-size: 12px; display: flex; gap: 6px; align-items: center; margin-top: 2px; }
+.lane > header .lc { margin-left: auto; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.lane .cards { padding: 11px; display: flex; flex-direction: column; gap: 9px; min-height: 34px; }
+.pcard { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--available); border-radius: 11px; padding: 10px 12px; cursor: pointer; transition: border-color .14s, transform .1s, box-shadow .14s; }
+.pcard:hover { border-color: var(--line-2); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.pcard .who { font-weight: 650; font-size: 13.5px; letter-spacing: -.01em; }
+.pcard .meta { color: var(--ink-dim); font-size: 12px; display: flex; gap: 6px; align-items: center; margin-top: 3px; flex-wrap: wrap; }
 .pcard .repo-tag { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
-.empty { color: var(--ink-faint); font-size: 12.5px; padding: 6px 2px; }
+.empty { color: var(--ink-faint); font-size: 12.5px; padding: 8px 2px; }
 
 /* status accents (shared) */
-.s-active { color: var(--active); } .bd-active { border-left-color: var(--active); } .bg-active { background: var(--active); }
-.s-delivered { color: var(--delivered); } .bd-delivered { border-left-color: var(--delivered); } .bg-delivered { background: var(--delivered); }
-.s-escalated { color: var(--escalated); } .bd-escalated { border-left-color: var(--escalated); } .bg-escalated { background: var(--escalated); }
-.s-available { color: var(--available); } .bd-available { border-left-color: var(--available); } .bg-available { background: var(--available); }
-.s-merged { color: var(--delivered); } .bd-merged { border-left-color: var(--delivered); } .bg-merged { background: var(--delivered); }
-.s-removed { color: var(--ink-faint); } .bd-removed { border-left-color: var(--ink-faint); } .bg-removed { background: var(--ink-faint); }
+.bd-active { border-left-color: var(--active); } .bg-active { background: var(--active); }
+.bd-delivered { border-left-color: var(--delivered); } .bg-delivered { background: var(--delivered); }
+.bd-escalated { border-left-color: var(--escalated); } .bg-escalated { background: var(--escalated); }
+.bd-available { border-left-color: var(--available); } .bg-available { background: var(--available); }
+.bd-merged { border-left-color: var(--delivered); } .bg-merged { background: var(--delivered); }
+.bd-removed { border-left-color: var(--ink-faint); } .bg-removed { background: var(--ink-faint); }
+.c-active { color: var(--active); } .c-delivered { color: var(--delivered); }
+.c-escalated { color: var(--escalated); } .c-available { color: var(--available); }
+.c-merged { color: var(--delivered); } .c-removed { color: var(--ink-faint); }
 
-.chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid currentColor; }
-.chip .pip { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+/* chips — tinted, not harsh outlines */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: .01em; line-height: 1.65;
+  color: var(--available); background: color-mix(in srgb, currentColor 13%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 26%, transparent);
+}
+.chip .pip { width: 6.5px; height: 6.5px; border-radius: 50%; background: currentColor; }
 
-/* ── Detail panel ──────────────────────────────────────────────────────────*/
-.detail h3 { margin: 0 0 2px; font-size: 16px; }
-.detail .sub { color: var(--ink-dim); font-size: 12.5px; margin-bottom: 12px; }
-.detail dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
-.detail dt { color: var(--ink-faint); font-size: 12px; }
+/* ── Detail panel ────────────────────────────────────────────────────────── */
+.detail h3 { margin: 0 0 3px; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.detail .sub { color: var(--ink-dim); font-size: 12.5px; margin-bottom: 14px; }
+.detail dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; align-items: baseline; }
+.detail dt { color: var(--ink-faint); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; font-weight: 600; }
 .detail dd { margin: 0; font-size: 12.5px; word-break: break-word; }
-.detail .section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
-.detail .section h4 { margin: 0 0 8px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); }
-.mini { display: flex; flex-direction: column; gap: 7px; }
+.detail .section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.detail .section h4 { margin: 0 0 9px; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--ink-faint); }
+.mini { display: flex; flex-direction: column; gap: 8px; }
 .mini .row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
 .mono { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); }
-.hint { color: var(--ink-faint); font-size: 12.5px; }
+.hint { color: var(--ink-faint); font-size: 12.5px; line-height: 1.55; }
 
-/* ── Terminal drawer ───────────────────────────────────────────────────────*/
-.term {
-  border-top: 1px solid var(--line); background: var(--panel);
-  display: flex; flex-direction: column; transition: height .16s ease;
-  overflow: hidden;
-}
-.term.closed { height: 42px; }
-.term.open { height: 300px; }
+/* ── Terminal drawer ─────────────────────────────────────────────────────── */
+.term { border-top: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; transition: height .18s ease; overflow: hidden; }
+.term.closed { height: 44px; }
+.term.open { height: 320px; }
 .term header {
-  height: 42px; flex: 0 0 42px; display: flex; align-items: center; gap: 10px;
-  padding: 0 14px; cursor: pointer; user-select: none; border-bottom: 1px solid transparent;
+  height: 44px; flex: 0 0 44px; display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; cursor: pointer; user-select: none; border-bottom: 1px solid transparent;
 }
 .term.open header { border-bottom-color: var(--line); }
-.term header b { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim); }
+.term header .ti { color: var(--accent-ink); font-family: var(--mono); font-weight: 700; }
+.term header b { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); font-weight: 600; }
 .term header .tstate { font-size: 11.5px; color: var(--ink-faint); font-family: var(--mono); }
-.term header .chev { margin-left: auto; color: var(--ink-faint); transition: transform .16s; }
+.term header .chev { margin-left: auto; color: var(--ink-faint); transition: transform .18s; }
 .term.open header .chev { transform: rotate(180deg); }
 .term-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .term-out {
-  flex: 1; overflow: auto; margin: 0; padding: 10px 14px; white-space: pre-wrap; word-break: break-word;
-  font-family: var(--mono); font-size: 12.5px; line-height: 1.5; color: var(--ink);
-  background: color-mix(in srgb, var(--panel) 82%, #000 18%);
+  flex: 1; overflow: auto; margin: 0; padding: 12px 16px; white-space: pre-wrap; word-break: break-word;
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.55; color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 90%, #000 10%);
 }
-:root[data-theme="light"] .term-out, .term-out { background: color-mix(in srgb, var(--panel) 92%, #000 8%); }
-.term-inline { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--line); }
-.term-inline .ps { color: var(--delivered); font-family: var(--mono); font-size: 12.5px; }
-.term-inline input {
-  flex: 1; background: transparent; border: none; outline: none; color: var(--ink);
-  font-family: var(--mono); font-size: 12.5px;
-}
+:root[data-theme="light"] .term-out { background: #fafbfe; }
+.term-inline { display: flex; align-items: center; gap: 9px; padding: 9px 16px; border-top: 1px solid var(--line); }
+.term-inline .ps { color: var(--delivered); font-family: var(--mono); font-size: 12.5px; font-weight: 700; }
+.term-inline input { flex: 1; background: transparent; border: none; outline: none; color: var(--ink); font-family: var(--mono); font-size: 12.5px; }
+.term-inline input::placeholder { color: var(--ink-faint); }
 .a-1{font-weight:700}.a-2{opacity:.7}.a-3{font-style:italic}.a-4{text-decoration:underline}
-.a-30{color:#555}.a-31{color:#e06c75}.a-32{color:#98c379}.a-33{color:#e5c07b}
-.a-34{color:#61afef}.a-35{color:#c678dd}.a-36{color:#56b6c2}.a-37{color:#dcdfe4}
+.a-30{color:#7a8290}.a-31{color:#e06c75}.a-32{color:#98c379}.a-33{color:#e5c07b}
+.a-34{color:#61afef}.a-35{color:#c678dd}.a-36{color:#56b6c2}.a-37{color:#c8cdd8}
 .a-90{color:var(--ink-faint)}.a-91{color:#e06c75}.a-92{color:#98c379}.a-93{color:#e5c07b}
 .a-94{color:#61afef}.a-95{color:#c678dd}.a-96{color:#56b6c2}.a-97{color:var(--ink)}
 
-/* ── Mobile ────────────────────────────────────────────────────────────────*/
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
 .mobile { display: none; }
 .tabbar { display: none; }
 @media (max-width: 899px) {
   .cockpit { display: none; }
   .desktop-only { display: none; }
-  .mobile { display: block; padding: 12px; padding-bottom: 76px; overflow: auto; flex: 1; }
-  .shell { height: calc(100dvh - 0px); }
+  .mobile { display: block; padding: 14px; padding-bottom: 82px; overflow: auto; flex: 1; }
+  .shell { height: 100dvh; }
   .tabbar {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px;
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
-    background: var(--panel); border-top: 1px solid var(--line);
-    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(14px);
+    border-top: 1px solid var(--line); padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
   }
   .tabbar button {
-    background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 2px;
-    padding: 5px 0; font-size: 10.5px; color: var(--ink-faint); border-radius: 10px;
+    background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 6px 0; font-size: 10.5px; font-weight: 550; color: var(--ink-faint); border-radius: 11px; transition: background .15s, color .15s;
   }
   .tabbar button .ic { font-size: 17px; }
-  .tabbar button.on { color: var(--accent); background: var(--panel-2); }
+  .tabbar button.on { color: var(--accent-ink); background: var(--panel-3); }
   .kpis { width: 100%; margin-left: 0; }
-  .topbar { padding: 10px 14px; }
-  .m-section { margin-bottom: 14px; }
-  .m-repo { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; box-shadow: var(--shadow); }
-  .m-repo > summary { list-style: none; padding: 12px 14px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .topbar { padding: 11px 15px; }
+  .m-section { margin-bottom: 15px; }
+  .m-repo { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 11px; box-shadow: var(--shadow); overflow: hidden; }
+  .m-repo > summary { list-style: none; padding: 13px 15px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
   .m-repo > summary::-webkit-details-marker { display: none; }
-  .m-repo > summary .rname { font-weight: 700; }
+  .m-repo > summary .rname { font-weight: 700; letter-spacing: -.01em; }
   .m-repo > summary .stack { color: var(--ink-faint); font-size: 11px; font-family: var(--mono); }
-  .m-repo .worker { padding: 10px 14px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
-  .m-repo .worker .nm { font-weight: 600; }
+  .m-repo .worker { padding: 11px 15px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  .m-repo .worker .nm { font-weight: 650; }
   .m-repo .worker .rl { color: var(--ink-dim); font-size: 12px; }
-  .timeline { position: relative; padding-left: 20px; }
-  .timeline .ev { position: relative; padding: 8px 0; }
-  .timeline .ev::before { content: ""; position: absolute; left: -14px; top: 14px; width: 9px; height: 9px; border-radius: 50%; background: var(--available); }
-  .timeline::before { content: ""; position: absolute; left: -10px; top: 4px; bottom: 4px; width: 2px; background: var(--line); }
-  .term.open { height: 62vh; }
-  .m-tree ul { list-style: none; margin: 0; padding-left: 16px; }
+  .timeline { position: relative; padding-left: 22px; }
+  .timeline .ev { position: relative; padding: 9px 0; cursor: pointer; }
+  .timeline .ev::before { content: ""; position: absolute; left: -15px; top: 15px; width: 9px; height: 9px; border-radius: 50%; background: var(--available); box-shadow: 0 0 0 3px var(--bg); }
+  .timeline::before { content: ""; position: absolute; left: -11px; top: 5px; bottom: 5px; width: 2px; background: var(--line-2); }
+  .term.open { height: 64vh; }
+  .m-tree ul { list-style: none; margin: 0; padding-left: 17px; }
   .m-tree > ul { padding-left: 0; }
-  .m-tree li { padding: 3px 0; }
-  .m-tree .tnode { display: inline-flex; align-items: center; gap: 8px; }
+  .m-tree li { padding: 4px 0; }
+  .m-tree .tnode { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
 }
 @media (min-width: 900px) { .m-only { display: none; } }
 </style>
@@ -251,13 +271,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
 <body>
 <div class="topbar">
   <div class="brand">
-    <b>AIPe</b><span class="ctx" id="ctxName">—</span>
+    <span class="logo">AIPe</span><span class="ctx" id="ctxName">—</span>
     <span class="coord" id="coordName"></span>
   </div>
   <div class="kpis" id="kpis"></div>
   <div class="tb-actions">
     <div class="conn" id="conn"><span class="dot"></span><span id="connLabel">connecting</span></div>
-    <button class="icon-btn" id="themeBtn" title="Toggle theme">◐</button>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
   </div>
 </div>
 
@@ -275,7 +295,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
       </section>
     </div>
     <aside class="side-col">
-      <section class="card detail" style="padding:16px" id="detail"></section>
+      <section class="card detail" style="padding:18px" id="detail"></section>
     </aside>
   </div>
 
@@ -285,7 +305,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   <!-- Terminal drawer (shared) -->
   <div class="term closed" id="term">
     <header id="termHead">
-      <b>Terminal</b>
+      <span class="ti">›_</span><b>Terminal</b>
       <span class="tstate" id="termState">disconnected</span>
       <span class="chev">▲</span>
     </header>
@@ -319,9 +339,10 @@ const STAGES = [
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const el = (id) => document.getElementById(id);
 
-// worker status → shared status class
 function statusCls(st) { return ["active", "delivered", "escalated", "available"].includes(st) ? st : "available"; }
 function stageOf(status) { const s = STAGES.find((g) => g.match.includes(status)); return s ? s.key : status === "removed" ? "removed" : "dispatched"; }
+function chipCls(st) { return st === "merged" ? "merged" : st === "removed" ? "removed" : st === "dispatched" ? "active" : statusCls(st); }
+function chip(st) { return `<span class="chip c-${chipCls(st)}"><span class="pip"></span>${esc(st)}</span>`; }
 
 // ── Theme ──────────────────────────────────────────────────────────────────
 function applyTheme() {
@@ -333,24 +354,21 @@ el("themeBtn").onclick = () => {
   S.theme = cur === "dark" ? "light" : cur === "light" ? "" : "dark";
   localStorage.setItem("aipe-theme", S.theme);
   applyTheme();
+  if (S.snap) renderOrg(S.snap);
 };
 applyTheme();
 
 // ── Top bar ────────────────────────────────────────────────────────────────
+function statPill(cls, n, l) { return `<span class="kpi ${cls}"><b class="num">${n}</b><span class="l">${l}</span></span>`; }
 function renderTop(s) {
   el("ctxName").textContent = s.context.name;
   el("coordName").textContent = "· coordinator " + s.context.coordinator;
   const c = s.counts;
-  el("kpis").innerHTML = [
-    ["", c.hired, "hired"],
-    ["s-active", c.active, "active"],
-    ["s-available", c.available, "available"],
-    ["s-delivered", c.delivered, "delivered"],
-    ["s-escalated", c.escalated, "escalated"],
-    ["", s.worktrees, "worktrees"],
-    ["", s.skills, "skills"],
-    ["", s.mcps, "mcps"],
-  ].map(([cls, n, lbl]) => `<span class="kpi ${cls}"><b>${n}</b>${lbl}</span>`).join("");
+  el("kpis").innerHTML =
+    statPill("", c.hired, "hired") + statPill("s-active", c.active, "active") + statPill("s-available", c.available, "available") +
+    statPill("s-delivered", c.delivered, "delivered") + statPill("s-escalated", c.escalated, "escalated") +
+    `<span class="kpi-div"></span>` +
+    statPill("", s.worktrees, "worktrees") + statPill("", s.skills, "skills") + statPill("", s.mcps, "mcps");
 }
 
 // ── Org chart (desktop SVG) ─────────────────────────────────────────────────
@@ -359,60 +377,57 @@ function renderOrg(s) {
   const repos = s.repos;
   const specsByRepo = {};
   repos.forEach((r) => (specsByRepo[r] = s.workers.filter((w) => w.repo === r)));
-  const COLW = (r) => Math.max(150, specsByRepo[r].length * 128 || 150);
-  const gap = 30;
-  let x = 20, cols = [];
+  const COLW = (r) => Math.max(158, specsByRepo[r].length * 130 || 158);
+  const gap = 34;
+  let x = 24, cols = [];
   repos.forEach((r) => { const w = COLW(r); cols.push({ r, x, w, cx: x + w / 2 }); x += w + gap; });
-  const totalW = Math.max(560, x + 20);
-  const yCoord = 44, yRepo = 150, ySpec0 = 250, specH = 62;
+  const totalW = Math.max(600, x + 24);
+  const yCoord = 48, yRepo = 158, ySpec0 = 262, specH = 64;
   const maxSpecs = Math.max(1, ...repos.map((r) => specsByRepo[r].length));
-  const totalH = ySpec0 + maxSpecs * specH + 20;
+  const totalH = ySpec0 + maxSpecs * specH + 24;
   const cxAll = totalW / 2;
   const P = [];
-  // relation edges (repo → repo), drawn as arcs above the repo row
   (s.relations || []).forEach((e) => {
     const a = cols.find((c) => c.r === e.from), b = cols.find((c) => c.r === e.to);
     if (!a || !b) return;
-    const y = yRepo - 8, midx = (a.cx + b.cx) / 2, lift = 46 + Math.abs(a.cx - b.cx) * 0.06;
+    const y = yRepo - 10, midx = (a.cx + b.cx) / 2, lift = 48 + Math.abs(a.cx - b.cx) * 0.06;
     P.push(`<path class="edge" d="M ${a.cx} ${y} Q ${midx} ${y - lift} ${b.cx} ${y}" />`);
     P.push(`<text class="edge-label" x="${midx}" y="${y - lift + 4}" text-anchor="middle">${esc(e.type)}</text>`);
   });
-  // coordinator → repo links + repo → specialist links
   cols.forEach((c) => {
-    P.push(`<path class="link" d="M ${cxAll} ${yCoord + 20} C ${cxAll} ${yRepo}, ${c.cx} ${yCoord + 20}, ${c.cx} ${yRepo - 14}" />`);
+    P.push(`<path class="link" d="M ${cxAll} ${yCoord + 22} C ${cxAll} ${yRepo}, ${c.cx} ${yCoord + 22}, ${c.cx} ${yRepo - 16}" />`);
     specsByRepo[c.r].forEach((w, i) => {
       const sy = ySpec0 + i * specH;
-      P.push(`<path class="link" d="M ${c.cx} ${yRepo + 34} L ${c.cx} ${sy - 2}" />`);
+      P.push(`<path class="link" d="M ${c.cx} ${yRepo + 36} L ${c.cx} ${sy - 3}" />`);
     });
   });
   const box = (cx, y, w, h, fill, stroke, label, sub, sel, click, tone) => {
     const x0 = cx - w / 2;
-    return `<g class="node-box ${sel ? "sel" : ""}" ${click} tabindex="0">
-      <rect x="${x0}" y="${y}" width="${w}" height="${h}" rx="11" fill="${fill}" stroke="${stroke}" />
-      ${tone ? `<circle cx="${x0 + 13}" cy="${y + h / 2}" r="4.5" fill="${tone}"/>` : ""}
-      <text x="${cx}" y="${y + (sub ? 20 : h / 2 + 4)}" text-anchor="middle" fill="var(--ink)" font-size="13" font-weight="600">${esc(label)}</text>
-      ${sub ? `<text x="${cx}" y="${y + 36}" text-anchor="middle" fill="var(--ink-dim)" font-size="11">${esc(sub)}</text>` : ""}
+    return `<g class="node-box ${sel ? "sel" : ""}" ${click} tabindex="0" role="button">
+      <rect x="${x0}" y="${y}" width="${w}" height="${h}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.4" filter="url(#soft)" />
+      ${tone ? `<circle cx="${x0 + 14}" cy="${y + h / 2}" r="4.5" fill="${tone}"/>` : ""}
+      <text class="node-title" x="${cx + (tone ? 6 : 0)}" y="${y + (sub ? 21 : h / 2 + 4)}" text-anchor="middle" fill="var(--ink)" font-size="13">${esc(label)}</text>
+      ${sub ? `<text class="node-sub" x="${cx + (tone ? 6 : 0)}" y="${y + 37}" text-anchor="middle" fill="var(--ink-dim)" font-size="11">${esc(sub)}</text>` : ""}
     </g>`;
   };
   const toneVar = { active: "var(--active)", delivered: "var(--delivered)", escalated: "var(--escalated)", available: "var(--available)" };
-  // coordinator
   const coord = s.workers.find((w) => w.role === "coordinator");
   const selC = S.sel && S.sel.kind === "coordinator";
-  P.push(box(cxAll, yCoord, 200, 40, "var(--panel-2)", "var(--coord)", coord ? coord.name : "coordinator", "coordinator", selC, `onclick="pick('coordinator')"`, "var(--coord)"));
-  // repos + specialists
+  const defs = `<defs><filter id="soft" x="-20%" y="-30%" width="140%" height="170%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.16"/></filter></defs>`;
+  P.push(box(cxAll, yCoord, 210, 44, "color-mix(in srgb, var(--coord) 12%, var(--panel))", "var(--coord)", coord ? coord.name : "coordinator", "coordinator", selC, `onclick="pick('coordinator')"`, "var(--coord)"));
   cols.forEach((c) => {
     const selR = S.sel && S.sel.kind === "repo" && S.sel.id === c.r;
-    P.push(box(c.cx, yRepo - 14, Math.min(c.w - 8, 190), 48, "var(--panel)", "var(--line-strong)", c.r, (s.repoInfos.find((ri) => ri.name === c.r) || {}).stack?.join(" · ") || "repo", selR, `onclick="pick('repo','${esc(c.r)}')"`, ""));
+    const stack = (s.repoInfos.find((ri) => ri.name === c.r) || {}).stack;
+    P.push(box(c.cx, yRepo - 16, Math.min(c.w - 8, 196), 50, "var(--panel-2)", "var(--line-2)", c.r, (stack && stack.join(" · ")) || "repo", selR, `onclick="pick('repo','${esc(c.r)}')"`, ""));
     specsByRepo[c.r].forEach((w, i) => {
       const sy = ySpec0 + i * specH;
       const selW = S.sel && S.sel.kind === "worker" && S.sel.id === w.name;
-      P.push(box(c.cx, sy, Math.min(c.w - 8, 190), 46, "var(--panel-2)", `var(--${statusCls(w.status)})`, w.name, w.role, selW, `onclick="pick('worker','${esc(w.name)}')"`, toneVar[statusCls(w.status)]));
+      const cl = statusCls(w.status);
+      P.push(box(c.cx, sy, Math.min(c.w - 8, 196), 48, `color-mix(in srgb, var(--${cl}) 7%, var(--panel))`, `var(--${cl})`, w.name, w.role, selW, `onclick="pick('worker','${esc(w.name)}')"`, toneVar[cl]));
     });
-    if (specsByRepo[c.r].length === 0) {
-      P.push(`<text x="${c.cx}" y="${ySpec0 + 16}" text-anchor="middle" class="edge-label">no specialists</text>`);
-    }
+    if (specsByRepo[c.r].length === 0) P.push(`<text x="${c.cx}" y="${ySpec0 + 16}" text-anchor="middle" class="edge-label">no specialists</text>`);
   });
-  el("org").innerHTML = `<svg width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">${P.join("")}</svg>`;
+  el("org").innerHTML = `<svg width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">${defs}${P.join("")}</svg>`;
 }
 
 // ── Pipeline board ──────────────────────────────────────────────────────────
@@ -426,7 +441,7 @@ function renderBoard(s) {
   el("pipeCount").textContent = `${(s.journeys || []).length} journeys · ${disp.length} dispatches`;
   el("board").innerHTML = STAGES.map((g) => {
     const cards = disp.filter((d) => stageOf(d.status) === g.key);
-    return `<div class="lane"><header><span class="pip bg-${g.cls}"></span>${g.label}<span style="margin-left:auto;color:var(--ink-faint)">${cards.length}</span></header>
+    return `<div class="lane"><header><span class="pip bg-${g.cls}"></span>${g.label}<span class="lc">${cards.length}</span></header>
       <div class="cards">${cards.length ? cards.map(pcard).join("") : '<div class="empty">—</div>'}</div></div>`;
   }).join("");
 }
@@ -434,7 +449,7 @@ function pcard(d) {
   const cls = stageOf(d.status);
   return `<div class="pcard bd-${cls}" onclick="pickDispatch('${esc(d.journey)}','${esc(d.repo)}','${esc(d.specialist)}')">
     <div class="who">${esc(d.specialist)}</div>
-    <div class="meta"><span class="repo-tag">${esc(d.repo)}</span><span>·</span><span>${esc(d.journey)}</span>${d.pr ? `<span>·</span><a href="${esc(d.pr)}" target="_blank" rel="noreferrer">PR</a>` : ""}</div>
+    <div class="meta"><span class="repo-tag">${esc(d.repo)}</span><span>·</span><span>${esc(d.journey)}</span>${d.pr ? `<span>·</span><a href="${esc(d.pr)}" target="_blank" rel="noreferrer">PR ↗</a>` : ""}</div>
   </div>`;
 }
 
@@ -443,15 +458,14 @@ function pick(kind, id) { S.sel = { kind, id }; renderDetail(S.snap); renderOrg(
 function pickDispatch(journey, repo, specialist) { S.sel = { kind: "dispatch", journey, repo, specialist }; renderDetail(S.snap); renderMobile(S.snap); }
 window.pick = pick; window.pickDispatch = pickDispatch;
 
-function chip(st) { const c = statusCls(st); return `<span class="chip s-${c === "available" && st === "removed" ? "removed" : c}"><span class="pip"></span>${esc(st)}</span>`; }
 function renderDetail(s) {
   const box = el("detail");
-  if (!S.sel) { box.innerHTML = `<h3>Detail</h3><div class="sub">Select a node, worker, or dispatch.</div><p class="hint">The org chart, pipeline cards and mobile lists are all clickable. The selected entity's full detail appears here.</p>`; return; }
+  if (!S.sel) { box.innerHTML = `<h3>Detail</h3><div class="sub">Nothing selected</div><p class="hint">Click any node in the org chart, a pipeline card, or a worker in the mobile list — its full detail appears here.</p>`; return; }
   if (S.sel.kind === "coordinator") {
     const c = s.workers.find((w) => w.role === "coordinator");
     box.innerHTML = `<h3>${esc(c ? c.name : "Coordinator")}</h3><div class="sub">coordinator · ${esc(s.context.name)}</div>
-      <dl><dt>repos</dt><dd>${esc(s.repos.join(", "))}</dd><dt>specialists</dt><dd>${s.counts.hired}</dd></dl>
-      <div class="hint" style="margin-top:12px">The coordinator decomposes demands and dispatches specialists. It has no worktree of its own.</div>`;
+      <dl><dt>repos</dt><dd>${esc(s.repos.join(", "))}</dd><dt>team</dt><dd>${s.counts.hired} specialists</dd></dl>
+      <div class="hint" style="margin-top:14px">The coordinator decomposes demands and dispatches specialists. It has no worktree of its own.</div>`;
     return;
   }
   if (S.sel.kind === "worker") {
@@ -459,8 +473,8 @@ function renderDetail(s) {
     const wts = (s.worktreeRows || []).filter((r) => r.repo === w.repo);
     const disp = allDispatches(s).filter((d) => d.repo === w.repo && d.specialist.toLowerCase() === w.name.toLowerCase());
     box.innerHTML = `<h3>${esc(w.name)}</h3><div class="sub">${esc(w.role)} · ${esc(w.repo || "")}</div>
-      <dl><dt>status</dt><dd>${chip(w.status)}</dd>${w.journey ? `<dt>journey</dt><dd>${esc(w.journey)}</dd>` : ""}${w.pr ? `<dt>PR</dt><dd><a href="${esc(w.pr)}" target="_blank" rel="noreferrer">${esc(w.pr)}</a></dd>` : ""}</dl>
-      ${disp.length ? `<div class="section"><h4>Dispatches</h4><div class="mini">${disp.map((d) => `<div class="row">${chip(d.status)}<span>${esc(d.journey)}</span>${d.pr ? `<a href="${esc(d.pr)}" target="_blank" rel="noreferrer">PR</a>` : ""}</div>`).join("")}</div></div>` : ""}
+      <dl><dt>status</dt><dd>${chip(w.status)}</dd>${w.journey ? `<dt>journey</dt><dd>${esc(w.journey)}</dd>` : ""}${w.pr ? `<dt>PR</dt><dd><a href="${esc(w.pr)}" target="_blank" rel="noreferrer">${esc(w.pr)} ↗</a></dd>` : ""}</dl>
+      ${disp.length ? `<div class="section"><h4>Dispatches</h4><div class="mini">${disp.map((d) => `<div class="row">${chip(d.status)}<span>${esc(d.journey)}</span>${d.pr ? `<a href="${esc(d.pr)}" target="_blank" rel="noreferrer">PR ↗</a>` : ""}</div>`).join("")}</div></div>` : ""}
       ${wts.length ? `<div class="section"><h4>Worktrees (${wts.length})</h4><div class="mini">${wts.map((r) => `<div class="row"><span class="mono">${esc(r.branch)}</span></div>`).join("")}</div></div>` : ""}`;
     return;
   }
@@ -471,8 +485,8 @@ function renderDetail(s) {
     const skills = (s.toolboxDetail?.skills || []).filter((k) => k.repos.includes(S.sel.id));
     const wts = (s.worktreeRows || []).filter((r) => r.repo === S.sel.id);
     box.innerHTML = `<h3>${esc(info.name)}</h3><div class="sub">${info.stack.length ? esc(info.stack.join(" · ")) : "repo"}</div>
-      <div class="section"><h4>Specialists</h4><div class="mini">${specs.length ? specs.map((w) => `<div class="row">${chip(w.status)}<b>${esc(w.name)}</b><span class="rl" style="color:var(--ink-dim)">${esc(w.role)}</span></div>`).join("") : '<span class="hint">none hired</span>'}</div></div>
-      ${rels.length ? `<div class="section"><h4>Relations</h4><div class="mini">${rels.map((e) => `<div class="row"><span class="mono">${esc(e.from)} → ${esc(e.to)}</span><span class="chip s-available" style="border-color:var(--line-strong)">${esc(e.type)}</span></div>${e.detail ? `<div class="hint" style="margin:-2px 0 4px 2px">${esc(e.detail)}</div>` : ""}`).join("")}</div></div>` : ""}
+      <div class="section"><h4>Specialists</h4><div class="mini">${specs.length ? specs.map((w) => `<div class="row">${chip(w.status)}<b>${esc(w.name)}</b><span style="color:var(--ink-dim);font-size:12px">${esc(w.role)}</span></div>`).join("") : '<span class="hint">none hired</span>'}</div></div>
+      ${rels.length ? `<div class="section"><h4>Relations</h4><div class="mini">${rels.map((e) => `<div class="row"><span class="mono">${esc(e.from)} → ${esc(e.to)}</span><span class="chip c-available">${esc(e.type)}</span></div>${e.detail ? `<div class="hint" style="margin:-2px 0 4px 2px">${esc(e.detail)}</div>` : ""}`).join("")}</div></div>` : ""}
       ${skills.length ? `<div class="section"><h4>Toolbox</h4><div class="mini">${skills.map((k) => `<div class="row"><b>${esc(k.name)}</b></div><div class="hint" style="margin:-2px 0 2px 2px">${esc(k.whenToUse)}</div>`).join("")}</div></div>` : ""}
       ${wts.length ? `<div class="section"><h4>Worktrees</h4><div class="mini">${wts.map((r) => `<div class="row"><span class="mono">${esc(r.branch)}</span></div>`).join("")}</div></div>` : ""}`;
     return;
@@ -482,7 +496,7 @@ function renderDetail(s) {
     const d = j && j.dispatches.find((x) => x.repo === S.sel.repo && x.specialist === S.sel.specialist);
     if (!d) { box.innerHTML = "—"; return; }
     box.innerHTML = `<h3>${esc(d.specialist)}</h3><div class="sub">${esc(d.repo)} · journey ${esc(j.id)}</div>
-      <dl><dt>stage</dt><dd>${chip(d.status)}</dd><dt>branch</dt><dd class="mono">${esc(d.branch)}</dd>${d.worktree ? `<dt>worktree</dt><dd class="mono">${esc(d.worktree)}</dd>` : ""}${d.pr ? `<dt>PR</dt><dd><a href="${esc(d.pr)}" target="_blank" rel="noreferrer">${esc(d.pr)}</a></dd>` : ""}</dl>
+      <dl><dt>stage</dt><dd>${chip(d.status)}</dd><dt>branch</dt><dd class="mono">${esc(d.branch)}</dd>${d.worktree ? `<dt>worktree</dt><dd class="mono">${esc(d.worktree)}</dd>` : ""}${d.pr ? `<dt>PR</dt><dd><a href="${esc(d.pr)}" target="_blank" rel="noreferrer">${esc(d.pr)} ↗</a></dd>` : ""}</dl>
       <div class="section"><h4>Journey ${esc(j.id)}</h4><div class="mini">${j.dispatches.map((x) => `<div class="row">${chip(x.status)}<span class="repo-tag">${esc(x.repo)}</span><span>${esc(x.specialist)}</span></div>`).join("")}</div></div>`;
     return;
   }
@@ -503,7 +517,7 @@ function renderMobile(s) {
     if (S.sel) el("mdetail") && (el("mdetail").innerHTML = el("detail").innerHTML);
   } else if (S.tab === "org") {
     const coord = s.workers.find((w) => w.role === "coordinator");
-    m.innerHTML = `<div class="m-tree"><ul><li><span class="tnode"><span class="chip s-available" style="border-color:var(--coord);color:var(--coord)"><span class="pip"></span>${esc(coord ? coord.name : "coordinator")}</span></span>
+    m.innerHTML = `<div class="m-tree"><ul><li><span class="tnode"><span class="chip c-available" style="color:var(--coord)"><span class="pip"></span>${esc(coord ? coord.name : "coordinator")}</span></span>
       <ul>${s.repos.map((r) => {
         const specs = s.workers.filter((w) => w.repo === r);
         return `<li><span class="tnode" onclick="pick('repo','${esc(r)}')"><b>${esc(r)}</b></span>
@@ -512,12 +526,11 @@ function renderMobile(s) {
       ${S.sel ? `<section class="card detail" style="padding:16px;margin-top:12px" id="mdetail"></section>` : ""}`;
     if (S.sel) el("mdetail") && (el("mdetail").innerHTML = el("detail").innerHTML);
   } else if (S.tab === "pipeline") {
-    const disp = allDispatches(s);
     m.innerHTML = (s.journeys || []).length === 0 ? '<p class="hint">No journeys yet.</p>' :
-      (s.journeys || []).map((j) => `<div class="m-section"><h4 style="margin:4px 2px;font-size:12px;letter-spacing:.08em;color:var(--ink-faint)">${esc(j.id)}</h4>
+      (s.journeys || []).map((j) => `<div class="m-section"><h4 style="margin:4px 2px 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)">${esc(j.id)}</h4>
         <div class="timeline">${(j.dispatches || []).map((d) => `<div class="ev" onclick="pickDispatch('${esc(j.id)}','${esc(d.repo)}','${esc(d.specialist)}')">
           <div style="display:flex;align-items:center;gap:8px">${chip(d.status)}<b>${esc(d.specialist)}</b><span class="repo-tag">${esc(d.repo)}</span></div>
-          <div class="mono">${esc(d.branch)}${d.pr ? ` · <a href="${esc(d.pr)}" target="_blank" rel="noreferrer">PR</a>` : ""}</div></div>`).join("")}</div></div>`).join("") +
+          <div class="mono" style="margin-top:2px">${esc(d.branch)}${d.pr ? ` · <a href="${esc(d.pr)}" target="_blank" rel="noreferrer">PR ↗</a>` : ""}</div></div>`).join("")}</div></div>`).join("") +
       (S.sel && S.sel.kind === "dispatch" ? `<section class="card detail" style="padding:16px" id="mdetail"></section>` : "");
     if (S.sel && S.sel.kind === "dispatch") el("mdetail") && (el("mdetail").innerHTML = el("detail").innerHTML);
   } else if (S.tab === "terminal") {
@@ -540,33 +553,25 @@ function render() {
 }
 
 // ── Live: SSE ───────────────────────────────────────────────────────────────
-function setConn(state) {
-  const c = el("conn"); c.className = "conn " + state;
-  el("connLabel").textContent = state === "live" ? "live" : state === "down" ? "reconnecting" : "connecting";
-}
+function setConn(state) { el("conn").className = "conn " + state; el("connLabel").textContent = state === "live" ? "live" : state === "down" ? "reconnecting" : "connecting"; }
 function connect() {
   const es = new EventSource("/api/stream");
   es.addEventListener("snapshot", (e) => { S.snap = JSON.parse(e.data); setConn("live"); render(); });
   es.onopen = () => setConn("live");
-  // Only surface "reconnecting" on a real drop (CLOSED); transient connect
-  // blips (readyState CONNECTING) shouldn't flip a working indicator.
   es.onerror = () => { if (es.readyState === 2) setConn("down"); };
 }
-// initial paint (in case SSE is slow) + stream
 fetch("/api/snapshot").then((r) => r.json()).then((s) => { if (!S.snap) { S.snap = s; render(); } }).catch(() => {});
 connect();
 
 // ── Terminal (WebSocket) ────────────────────────────────────────────────────
-let TW = null, termBusy = false;
+let TW = null;
 function openTerm(open) { el("term").className = "term " + (open ? "open" : "closed"); if (open) { connectTerm(); el("termIn").focus(); } }
 el("termHead").onclick = () => openTerm(!el("term").classList.contains("open"));
 function termWrite(html) { const o = el("termOut"); o.insertAdjacentHTML("beforeend", html); o.scrollTop = o.scrollHeight; }
 
-// minimal ANSI SGR → span renderer; strips cursor/OSC noise (no PTY, so this is
-// enough for aipe/git/test colored output).
 function ansi(text) {
-  text = text.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, ""); // OSC
-  text = text.replace(/\x1b\[[0-9;?]*[A-HJKlh]/g, ""); // cursor/erase/mode
+  text = text.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, "");
+  text = text.replace(/\x1b\[[0-9;?]*[A-HJKlh]/g, "");
   let out = "", open = 0;
   const parts = text.split(/(\x1b\[[0-9;]*m)/);
   for (const p of parts) {
@@ -574,8 +579,7 @@ function ansi(text) {
     if (!m) { out += esc(p); continue; }
     const codes = (m[1] || "0").split(";").filter(Boolean).map(Number);
     if (codes.length === 0 || codes.includes(0)) { out += "</span>".repeat(open); open = 0; continue; }
-    const cls = codes.map((c) => `a-${c}`).join(" ");
-    out += `<span class="${cls}">`; open++;
+    out += `<span class="${codes.map((c) => `a-${c}`).join(" ")}">`; open++;
   }
   return out + "</span>".repeat(open);
 }
@@ -588,7 +592,7 @@ function connectTerm() {
     const msg = JSON.parse(ev.data);
     if (msg.t === "ready") { el("termState").textContent = msg.shell + " · " + msg.cwd; el("termPs").textContent = "$"; }
     else if (msg.t === "out") termWrite(ansi(msg.d));
-    else if (msg.t === "end") { termBusy = false; el("termPs").textContent = "$"; if (msg.code) termWrite(`<span class="a-90">[exit ${msg.code}]</span>\n`); }
+    else if (msg.t === "end") { el("termPs").textContent = "$"; if (msg.code) termWrite(`<span class="a-90">[exit ${msg.code}]</span>\n`); }
     else if (msg.t === "exit") { el("termState").textContent = "shell exited"; }
   };
   TW.onclose = () => { el("termState").textContent = "disconnected"; };
@@ -599,7 +603,7 @@ el("termIn").addEventListener("keydown", (e) => {
   const cmd = e.target.value; e.target.value = "";
   if (!TW || TW.readyState !== 1) { connectTerm(); return; }
   termWrite(`<span class="a-92">$</span> ${esc(cmd)}\n`);
-  termBusy = true; el("termPs").textContent = "…";
+  el("termPs").textContent = "…";
   TW.send(JSON.stringify({ t: "run", d: cmd }));
 });
 </script>
