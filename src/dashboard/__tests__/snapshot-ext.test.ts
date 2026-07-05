@@ -65,8 +65,8 @@ test("snapshot exposes per-repo stacks", async () => {
   try {
     const s = await buildSnapshot(dir);
     expect(s.repoInfos).toEqual([
-      { name: "embark", stack: ["TypeScript", "Bun"] },
-      { name: "api", stack: ["Go"] },
+      { name: "embark", stack: ["TypeScript", "Bun"], kind: "service" },
+      { name: "api", stack: ["Go"], kind: "api" },
     ]);
   } finally {
     await rm(dir, { recursive: true, force: true });

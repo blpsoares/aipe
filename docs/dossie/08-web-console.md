@@ -135,3 +135,20 @@ monorepo workspace (Chromium): real context/KPIs/org/workers render, `api` shows
 as **monorepo** with Gustavo on the `gateway` module, the CV cards + drawer show
 competences and deliveries, the terminal ran `echo … && pwd`, the connection
 reads **live**, and no view overflows horizontally on mobile.
+
+### Descriptive labels, unit "kind", and a mobile org tree
+
+Refinement after PE feedback that the unit labels read as opaque `·`-joined
+strings:
+- **`kind` field** — repos and modules gained an optional `kind` (api / web / lib
+  / service) in `brain.yaml`; when undeclared it is inferred from the stack and
+  name (`src/context-brain/kind.ts`), so existing workspaces get a sensible value
+  with no edit. The snapshot exposes it on `RepoInfo` and `ModuleView`.
+- **Labeled unit block** — the Team cards and the worker drawer now show a
+  compact key/value block (**repo · type · worktree**, or **monorepo · module ·
+  type · worktree**) instead of the terse subtitle; the long bio moved to the
+  drawer only to keep the card uncluttered.
+- **Mobile organogram** — on phones the wide SVG (which forced horizontal scroll
+  inside its card) is replaced by a **vertical tree**: coordinator → repo/monorepo
+  cards (with the kind badge) → specialist rows, colored by state and updating
+  live over SSE like the desktop SVG. Verified: zero horizontal overflow at 390px.

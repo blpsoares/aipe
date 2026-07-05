@@ -8,6 +8,7 @@
 // timestamps) is layered on additively so the TUI and its tests are unaffected.
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { inferKind } from "../context-brain/kind";
 import { resolveModules } from "../context-brain/modules";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { listJourneys } from "../journey/ledger";
@@ -39,12 +40,14 @@ export interface ModuleView {
   group: string;
   stack: string[];
   implicit: boolean;
+  kind: string; // functional category: api | web | lib | service
 }
 
 // Additive views the web console reads (the TUI ignores them).
 export interface RepoInfo {
   name: string;
   stack: string[];
+  kind: string; // functional category: api | web | lib | service
 }
 export interface RelationEdgeView {
   from: string;
@@ -262,7 +265,21 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     detail: e.perspectives[0]?.detail,
   }));
 
-  const repoInfos: RepoInfo[] = brain.brain.repos.map((r) => ({ name: r.name, stack: r.stack ?? [] }));
+  const repoInfos: RepoInfo[] = brain.brain.repos.map((r) => ({
+    name: r.name,
+    stack: r.stack ?? [],
+    kind: inferKind(r.name, r.stack ?? [], r.kind),
+  }));
+  // Declared kind per fqid: a module's own `kind`, or the repo's for an implicit
+  // (whole-repo) module. Anything undeclared is inferred from name + stack.
+  const declaredKind = new Map<string, string | undefined>();
+  for (const r of brain.brain.repos) {
+    if (r.modules && r.modules.length > 0) {
+      for (const m of r.modules) declaredKind.set(`${r.name}/${m.name}`, m.kind ?? r.kind);
+    } else {
+      declaredKind.set(r.name, r.kind);
+    }
+  }
   const moduleViews: ModuleView[] = resolveModules(brain.brain).map((m) => ({
     repo: m.repo,
     module: m.module,
@@ -270,6 +287,7 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     group: m.group,
     stack: m.stack,
     implicit: m.implicit,
+    kind: inferKind(m.implicit ? m.repo : m.module, m.stack, declaredKind.get(m.fqid)),
   }));
   const personaCVs = await buildPersonaCVs(workspaceDir, roster, repoInfos, moduleViews);
 

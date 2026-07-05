@@ -6,6 +6,7 @@ export interface ModuleEntry {
   path: string; // relative to the repo root (e.g. "packages/core")
   stack?: string[];
   group?: string; // optional "area": modules sharing a group share one specialist pair
+  kind?: string; // functional category of the unit: api | web | lib | service | …
 }
 
 export interface RepoEntry {
@@ -14,6 +15,7 @@ export interface RepoEntry {
   path: string;
   stack?: string[];
   modules?: ModuleEntry[];
+  kind?: string; // functional category of the repo: api | web | lib | service | …
 }
 
 export interface ContextMeta {

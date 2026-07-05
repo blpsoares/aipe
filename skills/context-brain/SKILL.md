@@ -23,7 +23,9 @@ the writing to the typed CLI, which validates and serializes it.
      optional) and a relative `path`
      (starting with `./`). `stack` is optional — only fill it in if the PE knows it;
      otherwise leave it out (it will be filled in during later phases). The PE may paste a
-     whole list at once.
+     whole list at once. `kind` is also optional — the functional category of the
+     unit (`api`, `web`, `lib`, `service`), shown as the "type" in the web console;
+     when omitted it is inferred from the stack/name, so only set it to override.
 
 3. **Assemble the JSON** in `ContextInput` format (`name` = the folder name
    minus `aipe-`):
@@ -38,9 +40,9 @@ the writing to the typed CLI, which validates and serializes it.
    below the repo (each gets its own specialists, worktree, PR and dispatch, and
    distinct modules run in parallel):
    ```json
-   { "name": "platform", "url": "...", "path": "./platform", "modules": [
-       { "name": "core",    "path": "packages/core",    "stack": ["TypeScript"] },
-       { "name": "billing", "path": "services/billing", "stack": ["Go"], "group": "backend" }
+   { "name": "platform", "url": "...", "path": "./platform", "kind": "web", "modules": [
+       { "name": "core",    "path": "packages/core",    "stack": ["TypeScript"], "kind": "lib" },
+       { "name": "billing", "path": "services/billing", "stack": ["Go"], "group": "backend", "kind": "api" }
    ] }
    ```
    A repo with no `modules` is one implicit module (the whole repo) — flat repos

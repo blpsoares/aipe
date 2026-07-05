@@ -130,6 +130,28 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 /* org chart (SVG tree) */
 .orgwrap { overflow-x: auto; overflow-y: hidden; padding: 10px 6px; }
 .orgwrap svg { display: block; }
+/* vertical org tree — the mobile-friendly rendering of the organogram */
+.org-mobile { display: none; }
+.otree { display: flex; flex-direction: column; }
+.ot-coord { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--accent); border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.ot-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.ot-name { font-weight: 720; letter-spacing: -.01em; } .ot-sub { font-size: 11.5px; color: var(--ink-3); }
+.ot-branches { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; position: relative; padding-left: 15px; }
+.ot-branches::before { content: ""; position: absolute; left: 1px; top: -12px; bottom: 26px; width: 2px; background: var(--line-2); }
+.ot-repo { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; position: relative; }
+.ot-repo::before { content: ""; position: absolute; left: -15px; top: 24px; width: 15px; height: 2px; background: var(--line-2); }
+.ot-repo.mono { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.ot-rhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.ot-rname { font-weight: 700; }
+.ot-kind { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.ot-repo.mono .ot-kind { color: var(--accent-ink); }
+.ot-people { display: flex; flex-direction: column; }
+.ot-person { display: flex; align-items: center; gap: 10px; padding: 9px 13px; border: 0; border-top: 1px solid var(--line); background: transparent; width: 100%; text-align: left; cursor: pointer; }
+.ot-person:first-child { border-top: 0; }
+.ot-pdot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.ot-pmeta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ot-pname { font-weight: 640; font-size: 13.5px; }
+.ot-prole { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .onode { cursor: pointer; }
 .onode rect { transition: filter .14s; }
 .onode:hover rect { filter: brightness(1.07); }
@@ -248,6 +270,11 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .cvtitle { color: var(--ink-3); font-size: 12.5px; margin-top: 1px; }
 .cvtags { display: flex; gap: 6px; flex-wrap: wrap; }
 .tag.alt { color: var(--accent-ink); background: var(--accent-wash); }
+/* labeled key/value block (repo · type · worktree) — descriptive, uncluttered */
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 5px 16px; margin: 0; align-items: baseline; }
+.kv dt { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.kv dd { margin: 0; font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.drawer .kv { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
 .cvbio { color: var(--ink-2); font-size: 13px; line-height: 1.5; margin: 0; }
 .cvcomp { display: flex; gap: 6px; flex-wrap: wrap; }
 .comp { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; color: var(--accent-ink); background: var(--accent-wash); border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent); }
@@ -350,6 +377,9 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
   .cols-2a, .cols-2 { grid-template-columns: 1fr; }
   .kpis { grid-template-columns: repeat(3, minmax(0,1fr)); }
   .board { grid-template-columns: 1fr; }
+  /* org chart: the wide SVG is replaced by a vertical tree on phones */
+  .org-desktop { display: none; }
+  .org-mobile { display: block; }
   .drawer { width: 100%; }
   .cmdk { min-width: 0; padding: 8px 10px; } .cmdk .lbl2, .cmdk .kbd { display: none; }
   .view { padding: 16px 15px 86px; }
@@ -452,6 +482,7 @@ const STR = {
     pipe_sub:"{a} journeys · {b} dispatches", filter:"Filter",
     work_sub:"{h} hired · {a} active · {i} available", all:"All", dispatch:"+ Dispatch",
     cv_competences:"Competences", cv_delivered:"delivered", cv_inprog:"in progress", cv_total:"dispatches",
+    f_repo:"repo", f_monorepo:"monorepo", f_module:"module", f_type:"type", f_worktree:"worktree",
     tb_sub:"Frameworks & MCP servers the team can reach for", skillpkgs:"Skill packages", mcps:"MCP servers",
     act_sub:"Every state change, live", streaming:"streaming",
     conn_wait:"connecting", conn_down:"offline",
@@ -485,6 +516,7 @@ const STR = {
     pipe_sub:"{a} jornadas · {b} dispatches", filter:"Filtrar",
     work_sub:"{h} contratados · {a} ativos · {i} disponíveis", all:"Todos", dispatch:"+ Despachar",
     cv_competences:"Competências", cv_delivered:"entregues", cv_inprog:"em andamento", cv_total:"dispatches",
+    f_repo:"repo", f_monorepo:"monorepo", f_module:"módulo", f_type:"tipo", f_worktree:"worktree",
     tb_sub:"Frameworks e servidores MCP que o time pode usar", skillpkgs:"Pacotes de skill", mcps:"Servidores MCP",
     act_sub:"Cada mudança de estado, ao vivo", streaming:"transmitindo",
     conn_wait:"conectando", conn_down:"offline",
@@ -528,9 +560,9 @@ function setSnap(s){
   DATA.context = s.context || DATA.context;
   const bc = $("#brandCtx"); if (bc) bc.textContent = DATA.context.name || "—";
   DATA.repos = (s.repos||[]).map(name=>{
-    const info = (s.repoInfos||[]).find(r=>r.name===name) || { stack:[] };
-    const mods = (s.modules||[]).filter(m=>m.repo===name && !m.implicit).map(m=>({ name:m.module, stack:m.stack||[], group: m.group!==m.module ? m.group : undefined }));
-    return { name, stack: info.stack||[], modules: mods };
+    const info = (s.repoInfos||[]).find(r=>r.name===name) || { stack:[], kind:"" };
+    const mods = (s.modules||[]).filter(m=>m.repo===name && !m.implicit).map(m=>({ name:m.module, stack:m.stack||[], kind:m.kind||"", group: m.group!==m.module ? m.group : undefined }));
+    return { name, stack: info.stack||[], kind: info.kind||"", modules: mods };
   });
   DATA.workers = (s.workers||[]).filter(w=>w.role!=="coordinator").map(w=>({ name:w.name, role:w.role, repo:w.repo, module:w.module||null, status:w.status, journey:w.journey, pr:w.pr }));
   DATA.relations = s.relations||[];
@@ -656,7 +688,8 @@ const views = {
   org() {
     return `<div class="view-in grid" style="gap:16px">
       <div class="between"><div><h1 class="view-h">${t("nav_org")}</h1><div class="sub">${t("org_sub")}</div></div><span class="conn"><span class="dot"></span>${t("live")}</span></div>
-      <div class="card"><div class="orgwrap" id="orgwrap">${renderOrgSvg()}</div></div>
+      <div class="card org-desktop"><div class="orgwrap" id="orgwrap">${renderOrgSvg()}</div></div>
+      <div class="org-mobile">${renderOrgTree()}</div>
       ${orgLegend()}
     </div>`;
   },
@@ -769,6 +802,19 @@ function rowHTML(w){
 // deliveries and in-progress work are derived from the live journeys.
 function cvOf(name){ return DATA.cvs.find(c=>c.name===name) || { title:"", bio:"", competences:[] }; }
 function dispatchesOf(name){ return dispatches.filter(d=>(d.specialist||"").toLowerCase()===(name||"").toLowerCase()); }
+// The unit a worker covers: a plain repo, or a monorepo + module. `kind` is the
+// functional category (api/web/lib/service); `worktree` is where the work lives.
+function repoOf(name){ return DATA.repos.find(r=>r.name===name); }
+function kindOf(w){ if(w.module){ const m=DATA.modules.find(x=>x.repo===w.repo&&x.module===w.module); return m?m.kind:""; } const r=repoOf(w.repo); return r?r.kind:""; }
+function worktreeOf(name){ const ds=dispatchesOf(name); const d=ds.find(x=>x.worktree)||ds[0]; if(!d) return null; if(d.worktree) return d.worktree.split("/").pop(); return d.branch||null; }
+function unitBlock(w){
+  const r=repoOf(w.repo), mono=r&&r.modules.length>0, wt=worktreeOf(w.name), rows=[];
+  if(mono){ rows.push(["monorepo",w.repo]); if(w.module) rows.push(["module",w.module]); }
+  else rows.push(["repo",w.repo]);
+  rows.push(["type", kindOf(w)||"—"]);
+  rows.push(["worktree", wt||"—"]);
+  return `<dl class="kv">${rows.map(([k,v])=>`<dt>${t("f_"+k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+}
 function cvWork(name){
   const ds = dispatchesOf(name);
   return {
@@ -782,13 +828,11 @@ function cvCard(w){
   const cv = cvOf(w.name), work = cvWork(w.name);
   return `<button class="cvcard" onclick="openWorker('${esc(w.name)}')">
     <div class="cvhead">${avatar(w.name)}<div class="cvid"><div class="cvname">${esc(w.name)}</div><div class="cvtitle">${esc(cv.title||w.role)}</div></div>${chip(w.status)}</div>
-    <div class="cvtags"><span class="tag">${esc(fqid(w))}</span>${w.module?`<span class="tag alt">${t("t_module")}</span>`:""}</div>
-    <p class="cvbio">${esc(cv.bio||"")}</p>
-    <div class="cvcomp">${compChips(cv.competences,5)||`<span class="sub">${t("none")}</span>`}</div>
+    ${unitBlock(w)}
+    <div class="cvcomp">${compChips(cv.competences,4)||`<span class="sub">${t("none")}</span>`}</div>
     <div class="cvstats">
       <span class="cvstat"><b>${work.delivered.length}</b>${t("cv_delivered")}</span>
       <span class="cvstat"><b>${work.inprog.length}</b>${t("cv_inprog")}</span>
-      <span class="cvstat"><b>${dispatchesOf(w.name).length}</b>${t("cv_total")}</span>
     </div>
   </button>`;
 }
@@ -823,13 +867,33 @@ function renderOrgSvg(){
     // A repo that declares modules is a monorepo — label it as such (its border
     // is tinted to set it apart from a plain single-package repo).
     const mono = info.modules && info.modules.length>0;
-    const kind = mono ? t("t_monorepo") : t("t_repo");
-    const rsub = info.stack.length ? `${kind} · ${info.stack.join(" · ")}` : kind;
+    const cat = info.kind || "";
+    const rsub = mono ? (cat ? `${t("t_monorepo")} · ${cat}` : t("t_monorepo")) : (cat || t("t_repo"));
     P.push(node(c.cx,yR-14,Math.min(c.w-8,198),48,"var(--panel-2)",mono?"var(--accent)":"var(--line-2)",c.r,rsub,"", mono?"var(--accent)":"",false));
     specsBy[c.r].forEach((w,i)=>{ const sy=yS0+i*sH, col=orgColor(w.status), sub=w.module?`${w.role} · ${w.module}`:w.role;
       P.push(node(c.cx,sy,Math.min(c.w-8,198),48,`color-mix(in srgb, ${col} 8%, var(--panel))`,col,w.name,sub,`onclick="openWorker('${esc(w.name)}')"`,col,w.status==="active")); });
     if(specsBy[c.r].length===0) P.push(`<text x="${c.cx}" y="${yS0+14}" text-anchor="middle" class="oedge-l">${t("nospec")}</text>`); });
   return `<svg width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">${P.join("")}</svg>`;
+}
+// The mobile organogram: a vertical tree (coordinator → repo/monorepo cards →
+// specialist rows), colored by state and updating live like the SVG. Avoids the
+// wide SVG's horizontal scroll on a phone.
+function renderOrgTree(){
+  const coord = DATA.context.coordinator || "coordinator";
+  return `<div class="otree">
+    <div class="ot-coord"><span class="ot-dot" style="background:var(--accent)"></span><div><div class="ot-name">${esc(coord)}</div><div class="ot-sub">coordinator</div></div></div>
+    <div class="ot-branches">
+      ${DATA.repos.map(r=>{
+        const mono = r.modules.length>0;
+        const people = DATA.workers.filter(w=>w.repo===r.name);
+        const kindLbl = mono ? `${t("t_monorepo")}${r.kind?" · "+r.kind:""}` : (r.kind||t("t_repo"));
+        return `<div class="ot-repo ${mono?"mono":""}">
+          <div class="ot-rhead"><span class="ot-rname">${esc(r.name)}</span><span class="ot-kind">${esc(kindLbl)}</span></div>
+          <div class="ot-people">${people.length?people.map(w=>`<button class="ot-person" onclick="openWorker('${esc(w.name)}')"><span class="ot-pdot" style="background:${orgColor(w.status)}"></span>${avatar(w.name)}<span class="ot-pmeta"><span class="ot-pname">${esc(w.name)}</span><span class="ot-prole">${esc(w.module?`${w.role} · ${w.module}`:w.role)}</span></span>${chip(w.status)}</button>`).join(""):`<div class="sub" style="padding:8px 13px">${t("nospec")}</div>`}</div>
+        </div>`;
+      }).join("")}
+    </div>
+  </div>`;
 }
 // Compact legend under the org chart — spells out what each node type means.
 function orgLegend(){
@@ -880,18 +944,17 @@ function openWorker(name){
   const rel = DATA.relations.filter(e=>e.from===w.repo||e.to===w.repo);
   const disp = dispatches.filter(d=> d.repo===w.repo && (d.module||null)===(w.module||null) && (d.specialist||"").toLowerCase()===w.name.toLowerCase());
   const wts = DATA.worktrees.filter(r=> r.repo===w.repo);
-  const branch = disp[0]?.branch;
   const workRow = (d)=>`<div class="row" style="gap:8px;justify-content:space-between;padding:6px 0"><span class="row" style="gap:8px">${chip(d.status)}<span class="sub">${esc(d.journey)}</span></span>${d.pr?`<a class="link" href="${esc(d.pr)}" target="_blank" rel="noreferrer">PR ↗</a>`:""}</div>`;
   $("#drawerContent").innerHTML = `
     <header>${avatar(w.name)}<div style="flex:1"><h3>${esc(w.name)}</h3><div class="sub2">${esc(cv.title||w.role)} · ${esc(fqid(w))}</div></div>
       <button class="icon-btn" onclick="closeDrawer()">✕</button></header>
     <div class="body">
-      ${cv.bio?`<p class="cvbio" style="margin:0 0 4px">${esc(cv.bio)}</p>`:""}
-      <div><h4 class="sec-h">${t("cv_competences")}</h4><div class="cvcomp">${compChips(cv.competences)||`<span class="sub">${t("none")}</span>`}</div></div>
+      ${unitBlock(w)}
       <dl class="dl"><dt>${t("d_status")}</dt><dd>${chip(w.status)}</dd>
         ${w.journey?`<dt>${t("d_journey")}</dt><dd>${esc(w.journey)}</dd>`:""}
-        ${w.pr?`<dt>${t("d_pr")}</dt><dd><a class="link" href="${esc(w.pr)}" target="_blank" rel="noreferrer">PR ↗</a></dd>`:""}
-        ${branch?`<dt>${t("d_branch")}</dt><dd class="mono" style="font-size:12px">${esc(branch)}</dd>`:""}</dl>
+        ${w.pr?`<dt>${t("d_pr")}</dt><dd><a class="link" href="${esc(w.pr)}" target="_blank" rel="noreferrer">PR ↗</a></dd>`:""}</dl>
+      ${cv.bio?`<p class="cvbio" style="margin:2px 0 0">${esc(cv.bio)}</p>`:""}
+      <div><h4 class="sec-h">${t("cv_competences")}</h4><div class="cvcomp">${compChips(cv.competences)||`<span class="sub">${t("none")}</span>`}</div></div>
       <div><h4 class="sec-h">${t("cv_inprog")} · ${work.inprog.length}</h4>${work.inprog.length?`<div class="mini">${work.inprog.map(workRow).join("")}</div>`:`<div class="sub">${t("none")}</div>`}</div>
       <div><h4 class="sec-h">${t("cv_delivered")} · ${work.delivered.length}</h4>${work.delivered.length?`<div class="mini">${work.delivered.map(workRow).join("")}</div>`:`<div class="sub">${t("none")}</div>`}</div>
       <div><h4 class="sec-h">${t("relations")}</h4>${rel.length?rel.map(e=>`<div class="row" style="justify-content:space-between;padding:7px 0"><span class="mono" style="font-size:12px">${esc(e.from)} → ${esc(e.to)}</span><span class="chip available"><span class="d"></span>${esc(e.type)}</span></div>`).join(""):`<div class="sub">${t("none")}</div>`}</div>
