@@ -43,7 +43,7 @@ what's missing.
 | 4 | `/relationship` — cross-repo relationship discovery | Merged | [docs/dossie/04-relationship.md](docs/dossie/04-relationship.md) |
 | 5 | `/hire-specialists` — persona skills | Merged | [docs/dossie/05-hire-specialists.md](docs/dossie/05-hire-specialists.md) |
 | — | Unified `aipe` CLI + zero-dependency distribution | Merged | [docs/dossie/06-unified-cli-distribution.md](docs/dossie/06-unified-cli-distribution.md) |
-| 6 | Phase B — Operation (worktree, dispatch, journey, operate) + portability, toolbox, `/aipe-add-repo` | Implemented (branch `claude/phase-b-operation-design-17ytcc`) | [docs/dossie/07-phase-b-operation.md](docs/dossie/07-phase-b-operation.md) |
+| 6 | Phase B — Operation (worktree, dispatch, journey, operate, dashboard) + portability, toolbox, `/aipe-add-repo` | Merged | [docs/dossie/07-phase-b-operation.md](docs/dossie/07-phase-b-operation.md) |
 
 With sub-project 5 the onboarding pipeline (steps 1-4) is complete; Phase B —
 Operation is now implemented: the coordinator receives a demand, dispatches

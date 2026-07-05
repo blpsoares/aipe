@@ -1,6 +1,6 @@
 # Dossier 07 — Phase B (Operation) + portability, toolbox, incremental add-repo
 
-**Status:** Implemented on `claude/phase-b-operation-design-17ytcc`.
+**Status:** Merged to `main` (built on `claude/phase-b-operation-design-17ytcc`).
 **Specs:** `2026-07-05-phase-b-operation-design.md`,
 `2026-07-05-workspace-portability-design.md`, `2026-07-05-toolbox-design.md`.
 **Plan:** `2026-07-05-phase-b-operation.md`.

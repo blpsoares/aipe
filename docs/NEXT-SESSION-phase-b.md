@@ -1,10 +1,26 @@
 # Next session — after the Phase B autonomous build (2026-07-05)
 
-Everything below was built autonomously overnight on branch
-`claude/phase-b-operation-design-17ytcc`, per your "implemente TODAS elas" +
-"modo automático" directive. It is committed, tested (169 pass / 1 known
-env-only fail), and type-clean. This note is the handoff + the doubts you asked
-me to save for us to discuss.
+Everything below was built on branch `claude/phase-b-operation-design-17ytcc`
+and **merged to `main`**, per your "implemente TODAS elas" + "modo automático"
+directive. It is committed, tested (185 pass / 1 known env-only fail), and
+type-clean. This note is the handoff + the doubts you asked me to save.
+
+---
+
+## Paste this to start the next session
+
+> Continuing the AIPe project. Phase B (Operation) + portability + toolbox +
+> `/aipe-add-repo` + the `aipe dashboard` are done and merged to `main`. Read,
+> in order: `README.md`, `docs/NEXT-SESSION-phase-b.md`, and
+> `docs/superpowers/specs/2026-07-05-web-console-design.md`. Then build the
+> **AIPe Web Console** — the responsive desktop+mobile visualization served by a
+> new `aipe serve` (Bun's built-in HTTP server, self-contained SPA, zero
+> dependencies) reading an extended `buildSnapshot`. Follow the repo methodology
+> (brainstorm → spec/plan → TDD → dossier); commit English-only, talk to me in
+> Portuguese. Don't touch the deferred release/Cloudflare debt. It's the final
+> planned sub-project — take it end to end.
+
+---
 
 ## What got built (all of this session's demands)
 
