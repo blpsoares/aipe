@@ -10,6 +10,7 @@ import {
   type Harness,
 } from "./start";
 import { installClaudeCode } from "./install";
+import { scaffoldWorkspace } from "./scaffold";
 import { askLine, selectInteractive } from "./prompt";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -75,6 +76,10 @@ export async function run(args: string[]): Promise<number> {
   const folder = `aipe-${slug}`;
   const workspaceDir = join(parent, folder);
   await mkdir(workspaceDir, { recursive: true });
+
+  // Make the workspace a publishable git repo (allowlist .gitignore: brain in,
+  // cloned repos + secrets out) — harness-agnostic.
+  await scaffoldWorkspace(workspaceDir);
 
   if (harness.id === "claude-code") {
     const code = await installClaudeCode(workspaceDir);

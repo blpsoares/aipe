@@ -81,6 +81,10 @@ test("all (repo, role) pairs reported → phase done, SKILL.md files written, pe
     expect(skillMd).toContain("You are Joaquim.");
     expect(skillMd).toContain("Fullstack specialist for the embark repo (typescript).");
 
+    // dual-write: a committed source-of-truth copy under .aipe/personas/ for portability
+    const source = await readFile(join(dir, ".aipe", "personas", "embark", "joaquim", "SKILL.md"), "utf8");
+    expect(source).toContain("You are Joaquim.");
+
     const registry = parse(await readFile(join(dir, ".aipe", "personas.yaml"), "utf8"));
     expect(registry.personas).toHaveLength(5); // coordinator + 4 personas
 

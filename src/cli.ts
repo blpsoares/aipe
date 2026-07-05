@@ -17,6 +17,7 @@ import { run as start } from "./start/cli";
 import { run as worktree } from "./worktree/cli";
 import { run as dispatchCmd } from "./dispatch/cli";
 import { run as journey } from "./journey/cli";
+import { run as rehydrate } from "./rehydrate/cli";
 
 export const VERSION = "0.1.0";
 
@@ -33,6 +34,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   worktree: worktree,
   dispatch: dispatchCmd,
   journey: journey,
+  rehydrate: rehydrate,
 };
 
 const HELP = [
@@ -49,6 +51,7 @@ const HELP = [
   "  worktree           Provision/list/remove per-specialist git worktrees",
   "  dispatch           Adjudicate the parallel-dispatch law for a batch",
   "  journey            Track a work session's dispatches (durable ledger)",
+  "  rehydrate          Restore per-repo persona skills from .aipe/personas/",
   "  read-state         Print the coordinator awareness fields (used by hooks)",
   "  session-context    Emit the SessionStart hook JSON (coordinator awareness)",
   "",

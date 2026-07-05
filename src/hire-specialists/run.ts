@@ -56,9 +56,17 @@ export async function runHireSpecialists(workspaceDir: string): Promise<RunResul
   for (const report of reports) {
     const repo = brain.repos.find((r) => r.name === report.repo);
     if (!repo) continue;
-    const skillDir = join(workspaceDir, repo.path, ".claude", "skills", personaSlug(report.name));
+    const slug = personaSlug(report.name);
+    const content = renderSkillMd(report, repo.stack ?? []);
+    // (1) install into the repo, so opening a session there loads the persona.
+    const skillDir = join(workspaceDir, repo.path, ".claude", "skills", slug);
     await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), renderSkillMd(report, repo.stack ?? []), "utf8");
+    await writeFile(join(skillDir, "SKILL.md"), content, "utf8");
+    // (2) keep a committed copy in .aipe/personas/ (the repo dir isn't published),
+    // so `aipe rehydrate` can restore it on another machine after re-cloning.
+    const sourceDir = join(workspaceDir, ".aipe", "personas", report.repo, slug);
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(join(sourceDir, "SKILL.md"), content, "utf8");
   }
 
   const registry = buildRegistry(brain, reports);
