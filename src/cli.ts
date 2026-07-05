@@ -20,6 +20,7 @@ import { run as journey } from "./journey/cli";
 import { run as rehydrate } from "./rehydrate/cli";
 import { runSkill, runMcp } from "./toolbox/cli";
 import { run as addRepo } from "./add-repo/cli";
+import { run as dashboard } from "./dashboard/cli";
 
 export const VERSION = "0.1.0";
 
@@ -40,6 +41,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   skill: runSkill,
   mcp: runMcp,
   "add-repo": addRepo,
+  dashboard: dashboard,
 };
 
 const HELP = [
@@ -57,6 +59,7 @@ const HELP = [
   "  worktree           Provision/list/remove per-specialist git worktrees",
   "  dispatch           Adjudicate the parallel-dispatch law for a batch",
   "  journey            Track a work session's dispatches (durable ledger)",
+  "  dashboard          Live terminal view of workers, pipeline & worktrees",
   "  rehydrate          Restore per-repo persona skills from .aipe/personas/",
   "  skill              Add/list toolbox skill-packages (frameworks) per repo",
   "  mcp                Add/list MCP servers (workspace-shared or per-repo)",

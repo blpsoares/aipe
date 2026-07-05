@@ -1,10 +1,28 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
 import type { JourneyDispatch, JourneyLedger } from "./types";
 
 function ledgerPath(workspaceDir: string, id: string): string {
   return join(workspaceDir, ".aipe", "journeys", `${id}.yaml`);
+}
+
+// Reads every journey ledger in the workspace (sorted by id). Missing dir → [].
+export async function listJourneys(workspaceDir: string): Promise<JourneyLedger[]> {
+  const dir = join(workspaceDir, ".aipe", "journeys");
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const ids = files.filter((f) => f.endsWith(".yaml")).map((f) => f.replace(/\.yaml$/, "")).sort();
+  const ledgers: JourneyLedger[] = [];
+  for (const id of ids) {
+    const ledger = await readLedger(workspaceDir, id);
+    if (ledger) ledgers.push(ledger);
+  }
+  return ledgers;
 }
 
 export async function readLedger(workspaceDir: string, id: string): Promise<JourneyLedger | null> {
