@@ -17,6 +17,15 @@ direction. Updated after your install/onboarding clarifications.
   for the next step. Just opening the workspace and saying "hi" is enough —
   no slash commands after the first.
 
+## Phase B (2026-07-05) — new open items
+
+Phase B (Operation) + portability + toolbox + `/aipe-add-repo` were built
+autonomously this session. The doubts to resolve together are collected in
+[`docs/NEXT-SESSION-phase-b.md`](docs/NEXT-SESSION-phase-b.md) — most notably
+**MCP-config secret validation** (the toolbox catalog is published; today
+secrets are kept out by convention only) and the still-pending **persona
+load-order live check**.
+
 ## Still need your input
 
 ### 1. `aipe start` — which harnesses, and how it installs

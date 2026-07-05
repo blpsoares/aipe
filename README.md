@@ -41,15 +41,17 @@ what's missing.
 | 2 | `/make-workspace` — clone the repos | Merged | [docs/dossie/02-make-workspace.md](docs/dossie/02-make-workspace.md) |
 | 3 | `SessionStart` hook — coordinator context injection | Merged | [docs/dossie/03-session-hook.md](docs/dossie/03-session-hook.md) |
 | 4 | `/relationship` — cross-repo relationship discovery | Merged | [docs/dossie/04-relationship.md](docs/dossie/04-relationship.md) |
-| 5 | `/hire-specialists` — persona skills | Implemented (branch `claude/project-understanding-review-66rt1w`) | [docs/dossie/05-hire-specialists.md](docs/dossie/05-hire-specialists.md) |
-| — | Unified `aipe` CLI + zero-dependency distribution | Implemented (same branch) | [docs/dossie/06-unified-cli-distribution.md](docs/dossie/06-unified-cli-distribution.md) |
-| 6 | Worktree-per-journey (foundational) | Not started | — |
-| 7 | `/aipe-add-repo` — incremental repo addition | Not started | — |
+| 5 | `/hire-specialists` — persona skills | Merged | [docs/dossie/05-hire-specialists.md](docs/dossie/05-hire-specialists.md) |
+| — | Unified `aipe` CLI + zero-dependency distribution | Merged | [docs/dossie/06-unified-cli-distribution.md](docs/dossie/06-unified-cli-distribution.md) |
+| 6 | Phase B — Operation (worktree, dispatch, journey, operate) + portability, toolbox, `/aipe-add-repo` | Implemented (branch `claude/phase-b-operation-design-17ytcc`) | [docs/dossie/07-phase-b-operation.md](docs/dossie/07-phase-b-operation.md) |
 
-With sub-project 5 done, the full onboarding pipeline (steps 1-4 above) is
-complete; sub-projects 6-7 (Phase B — Operation) are future work beyond
-onboarding. See [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md) for the handoff
-prompt that starts Phase B.
+With sub-project 5 the onboarding pipeline (steps 1-4) is complete; Phase B —
+Operation is now implemented: the coordinator receives a demand, dispatches
+per-repo specialists in isolated git worktrees under the parallel-dispatch law,
+each delivers a PR, and cross-repo matters escalate to the PE. Workspaces are
+also publishable/portable, can be equipped with extra skill-packages + MCPs
+(the "toolbox"), and grow one repo at a time via `/aipe-add-repo`. See
+[`docs/dossie/07-phase-b-operation.md`](docs/dossie/07-phase-b-operation.md).
 
 ## Install & use
 
@@ -83,9 +85,10 @@ required.
 ## Requirements & distribution
 
 AIPe is meant to run for **anyone, in any agent harness, on any OS**. The
-portable core is a single CLI (`aipe`) with one subcommand per onboarding
-step (`aipe start | context-brain | make-workspace | relationship |
-hire-specialists | read-state | session-context`).
+portable core is a single CLI (`aipe`). Onboarding subcommands: `start |
+context-brain | make-workspace | relationship | hire-specialists | read-state |
+session-context`. Operation + growth subcommands: `worktree | dispatch |
+journey | rehydrate | skill | mcp | add-repo`.
 
 - **End users need no runtime.** The CLI compiles to a standalone executable
   per OS/arch (`bun build --compile`), so there's **no Bun, Node, or npm**

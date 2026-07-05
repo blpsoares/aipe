@@ -34,11 +34,13 @@ may happen in another language, but the repository is English-only.)
 | 4 | `/relationship` — cross-repo relationship discovery (also backfills `stack`) | Ready to merge | [04-relationship.md](04-relationship.md) |
 | 5 | `/hire-specialists` — persona skills (renamed from `/context-brain-generator`) | Implemented | [05-hire-specialists.md](05-hire-specialists.md) |
 | — | Unified `aipe` CLI + zero-dependency distribution | Implemented | [06-unified-cli-distribution.md](06-unified-cli-distribution.md) |
+| 6 | Phase B (Operation): worktree, dispatch, journey, operate + portability, toolbox, add-repo | Implemented | [07-phase-b-operation.md](07-phase-b-operation.md) |
 
 ### Roadmap (not yet built)
 
-- Worktree-per-journey (foundational)
-- `/aipe-add-repo` — incremental repo addition
+- Persona load-order validation (needs a live session)
+- MCP-config secret validation; incremental relation discovery; skill/MCP uninstall
+- Harness adapters beyond Claude Code; release + Cloudflare wiring
 
 See the foundation design at
 `docs/superpowers/specs/2026-07-01-aipe-context-brain-design.md`.
