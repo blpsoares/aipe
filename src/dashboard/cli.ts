@@ -23,9 +23,10 @@ function stamp(): string {
 
 export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
-  const once = args.includes("--once") || !process.stdout.isTTY;
+  const isTty = process.stdout.isTTY === true;
+  const once = args.includes("--once") || !isTty;
   const interval = Math.max(500, Number(getFlag(args, "--interval") ?? "2000") || 2000);
-  const color = process.stdout.isTTY;
+  const color = isTty && !args.includes("--no-color");
 
   if (once) {
     const snapshot = await buildSnapshot(workspace);
