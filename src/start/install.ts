@@ -9,12 +9,14 @@ import contextBrainSkill from "../../skills/context-brain/SKILL.md" with { type:
 import makeWorkspaceSkill from "../../skills/make-workspace/SKILL.md" with { type: "text" };
 import relationshipSkill from "../../skills/relationship/SKILL.md" with { type: "text" };
 import hireSpecialistsSkill from "../../skills/hire-specialists/SKILL.md" with { type: "text" };
+import operateSkill from "../../skills/operate/SKILL.md" with { type: "text" };
 
 const SKILLS: Record<string, string> = {
   "context-brain": contextBrainSkill,
   "make-workspace": makeWorkspaceSkill,
   relationship: relationshipSkill,
   "hire-specialists": hireSpecialistsSkill,
+  operate: operateSkill,
 };
 
 const SESSION_START_HOOK = {
@@ -70,6 +72,6 @@ export async function installClaudeCode(workspace: string): Promise<number> {
 
   console.log(`aipe: installed the Claude Code integration into ${claudeDir}`);
   console.log("aipe:  - .claude/settings.json (SessionStart hook → aipe session-context)");
-  console.log(`aipe:  - .claude/skills/ (${Object.keys(SKILLS).length} onboarding skills)`);
+  console.log(`aipe:  - .claude/skills/ (${Object.keys(SKILLS).length} AIPe skills)`);
   return 0;
 }
