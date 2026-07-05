@@ -1,6 +1,7 @@
 import { readBrain } from "./read";
 import { materializeRepo, type Cloner, type Inspector } from "./clone";
 import { rehydratePersonas } from "../rehydrate/personas";
+import { rehydrateToolbox } from "../rehydrate/toolbox";
 import { updateWorkspacePhase } from "./state";
 import type { RepoResult, WorkspacePhase } from "./types";
 
@@ -28,9 +29,10 @@ export async function makeWorkspace(
   await updateWorkspacePhase(workspaceDir, phase);
 
   // If this is a re-clone of a published workspace, restore each repo's persona
-  // skills from the committed .aipe/personas/ (no-op on first onboarding, when
-  // personas haven't been hired yet).
+  // skills and toolbox (skill-packages + .mcp.json) from the committed .aipe/
+  // sources (no-op on first onboarding, when nothing has been hired/added yet).
   await rehydratePersonas(workspaceDir);
+  await rehydrateToolbox(workspaceDir);
 
   return { ok: true, results, phase };
 }

@@ -3,6 +3,7 @@
 // the (re-cloned) repos, so a workspace opened on a new machine has its
 // specialists back without re-running /hire-specialists.
 import { rehydratePersonas } from "./personas";
+import { rehydrateToolbox } from "./toolbox";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -14,10 +15,12 @@ function getFlag(args: string[], name: string): string | undefined {
 
 export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
-  const rows = await rehydratePersonas(workspace);
-  for (const r of rows) console.log(`${r.status.toUpperCase()} ${r.repo} ${r.slug}`);
-  const restored = rows.filter((r) => r.status === "restored").length;
-  console.log(`STATE rehydrated=${restored} of ${rows.length}`);
+  const personas = await rehydratePersonas(workspace);
+  for (const r of personas) console.log(`${r.status.toUpperCase()} persona ${r.repo} ${r.slug}`);
+  const toolbox = await rehydrateToolbox(workspace);
+  for (const r of toolbox) console.log(`${r.status.toUpperCase()} ${r.kind} ${r.name}`);
+  const restored = personas.filter((r) => r.status === "restored").length + toolbox.filter((r) => r.status === "restored").length;
+  console.log(`STATE rehydrated=${restored}`);
   return 0;
 }
 

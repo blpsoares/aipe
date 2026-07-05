@@ -10,6 +10,7 @@ import makeWorkspaceSkill from "../../skills/make-workspace/SKILL.md" with { typ
 import relationshipSkill from "../../skills/relationship/SKILL.md" with { type: "text" };
 import hireSpecialistsSkill from "../../skills/hire-specialists/SKILL.md" with { type: "text" };
 import operateSkill from "../../skills/operate/SKILL.md" with { type: "text" };
+import toolboxSkill from "../../skills/toolbox/SKILL.md" with { type: "text" };
 
 const SKILLS: Record<string, string> = {
   "context-brain": contextBrainSkill,
@@ -17,6 +18,7 @@ const SKILLS: Record<string, string> = {
   relationship: relationshipSkill,
   "hire-specialists": hireSpecialistsSkill,
   operate: operateSkill,
+  toolbox: toolboxSkill,
 };
 
 const SESSION_START_HOOK = {
