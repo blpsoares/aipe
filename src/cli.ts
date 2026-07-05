@@ -15,6 +15,8 @@ import { run as relationship } from "./relationship/cli";
 import { run as readState, runSessionContext } from "./session-hook/read-state";
 import { run as start } from "./start/cli";
 import { run as worktree } from "./worktree/cli";
+import { run as dispatchCmd } from "./dispatch/cli";
+import { run as journey } from "./journey/cli";
 
 export const VERSION = "0.1.0";
 
@@ -29,6 +31,8 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "read-state": readState,
   "session-context": runSessionContext,
   worktree: worktree,
+  dispatch: dispatchCmd,
+  journey: journey,
 };
 
 const HELP = [
@@ -43,6 +47,8 @@ const HELP = [
   "  relationship       Discover cross-repo relations + backfill stack",
   "  hire-specialists   Generate the per-repo persona skills + personas.yaml",
   "  worktree           Provision/list/remove per-specialist git worktrees",
+  "  dispatch           Adjudicate the parallel-dispatch law for a batch",
+  "  journey            Track a work session's dispatches (durable ledger)",
   "  read-state         Print the coordinator awareness fields (used by hooks)",
   "  session-context    Emit the SessionStart hook JSON (coordinator awareness)",
   "",
