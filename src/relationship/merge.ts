@@ -49,9 +49,41 @@ export function mergeEdges(reports: RepoReport[]): MergedEdge[] {
     }
   }
 
-  return [...byKey.values()].sort((a, b) => {
+  return sortEdges([...byKey.values()]);
+}
+
+function sortEdges(edges: MergedEdge[]): MergedEdge[] {
+  return edges.sort((a, b) => {
     if (a.from !== b.from) return a.from.localeCompare(b.from);
     if (a.to !== b.to) return a.to.localeCompare(b.to);
     return a.type.localeCompare(b.type);
   });
+}
+
+// Combines two already-merged edge lists (both canonicalized by mergeEdges),
+// unioning perspectives for edges that share from|to|type and deduping
+// identical perspectives. Used by incremental /relationship: fold a new repo's
+// freshly-discovered edges into the existing graph without a full re-run.
+export function combineMergedEdges(existing: MergedEdge[], incoming: MergedEdge[]): MergedEdge[] {
+  const byKey = new Map<string, MergedEdge>();
+  for (const edge of [...existing, ...incoming]) {
+    const key = `${edge.from}|${edge.to}|${edge.type}`;
+    const current = byKey.get(key);
+    if (!current) {
+      byKey.set(key, { ...edge, perspectives: [...edge.perspectives] });
+      continue;
+    }
+    for (const p of edge.perspectives) {
+      if (!current.perspectives.some((q) => q.detail === p.detail && q.evidence === p.evidence)) {
+        current.perspectives.push(p);
+      }
+    }
+  }
+  return sortEdges([...byKey.values()]);
+}
+
+// Drops every edge that touches a repo no longer present in the context. Keeps
+// an incremental merge from resurrecting stale edges if a repo was removed.
+export function pruneEdges(edges: MergedEdge[], repoNames: Set<string>): MergedEdge[] {
+  return edges.filter((e) => repoNames.has(e.from) && repoNames.has(e.to));
 }

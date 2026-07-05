@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { runRelationship, type RepoRelationshipStatus } from "./run";
+import { runRelationship, runRelationshipMerge, type RepoRelationshipStatus } from "./run";
 import type { RelationshipPhase } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -24,7 +24,10 @@ export function renderReport(results: RepoRelationshipStatus[], phase: Relations
 export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
 
-  const result = await runRelationship(workspace);
+  // --merge folds staged reports into the existing graph (incremental, used by
+  // /aipe-add-repo); the default overwrites the whole graph (onboarding).
+  const merge = args.includes("--merge");
+  const result = merge ? await runRelationshipMerge(workspace) : await runRelationship(workspace);
   if (!result.ok) {
     console.log(`ERROR brain: ${result.error}`);
     return 1;

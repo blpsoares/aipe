@@ -30,9 +30,21 @@ at the end.
    and clones only the new one, then rehydrates existing personas/toolbox):
    follow the `/make-workspace` skill.
 
-4. **Re-discover relations** (a new repo can relate to existing ones in both
-   directions, so this is a full re-run that overwrites `graph.yaml` and
-   backfills `stack`): follow the `/relationship` skill.
+4. **Re-discover relations incrementally** (cheaper than a full re-run). A new
+   repo relates to existing ones in both directions, but you don't need to
+   re-analyze every existing pair:
+   - Dispatch **one full read-only agent for the new repo** (its outgoing
+     relations to all others), same schema as `/relationship`.
+   - Dispatch **targeted reverse-scans**: for each existing repo, a cheap agent
+     that looks *only* for references to the **new** repo (its name/package/URL)
+     — not a full re-analysis. Skip repos that clearly can't reference it.
+   - Stage each result to `.aipe/relations/.reports/<repo>.json`, then fold them
+     into the existing graph:
+     ```bash
+     aipe relationship --merge --workspace <workspace>
+     ```
+     `--merge` unions the new edges into `graph.yaml` (never overwriting the
+     existing ones) and backfills `stack` for the new repo only.
 
 5. **Hire only the new repo's personas — without renaming existing ones.**
    - Read `.aipe/personas.yaml`; note every existing persona's name.
