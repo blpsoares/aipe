@@ -1,7 +1,11 @@
 import type { ContextInput, ValidationError, ValidationResult } from "./types";
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const GIT_URL = /^(git@[\w.-]+:[\w./-]+\.git|https?:\/\/[\w.-]+\/[\w./-]+?(?:\.git)?)$/;
+// Accepts remote git URLs (ssh scp-like or http(s)) AND local repos — a `file://`
+// URL or an absolute filesystem path — because `make-workspace` clones fine from a
+// local path (`git clone <path> <dest>`). Local-only repos are a first-class case.
+const REPO_URL =
+  /^(git@[\w.-]+:[\w./-]+\.git|https?:\/\/[\w.-]+\/[\w./-]+?(?:\.git)?|file:\/\/\/?\S+|\/\S+)$/;
 const RELATIVE_PATH = /^\.\/[^/]+(?:\/[^/]+)*$/;
 
 function isValidRelativePath(path: string): boolean {
@@ -45,8 +49,8 @@ export function validateContext(input: ContextInput): ValidationResult {
     const url = repo.url?.trim() ?? "";
     if (!url) {
       errors.push({ field: `${at}.url`, message: "url is required" });
-    } else if (!GIT_URL.test(url)) {
-      errors.push({ field: `${at}.url`, message: `invalid url: ${url}` });
+    } else if (!REPO_URL.test(url)) {
+      errors.push({ field: `${at}.url`, message: `invalid url (use git@…, https://…, file://… or an absolute local path): ${url}` });
     }
 
     const path = repo.path?.trim() ?? "";

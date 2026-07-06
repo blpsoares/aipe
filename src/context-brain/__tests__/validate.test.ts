@@ -63,6 +63,16 @@ test("accepts an https url with .git", () => {
   expect(r.ok).toBe(true);
 });
 
+test("accepts a file:// url for a local repo", () => {
+  const r = validateContext({ ...base, repos: [{ name: "x", url: "file:///home/user/src/x", path: "./x" }] });
+  expect(r.ok).toBe(true);
+});
+
+test("accepts an absolute local path as url", () => {
+  const r = validateContext({ ...base, repos: [{ name: "x", url: "/home/user/src/x", path: "./x" }] });
+  expect(r.ok).toBe(true);
+});
+
 test("rejects path './' (no segment)", () => {
   const r = validateContext({ ...base, repos: [{ name: "x", url: "git@github.com:o/x.git", path: "./" }] });
   expect(r.ok).toBe(false);
