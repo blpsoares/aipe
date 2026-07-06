@@ -22,8 +22,8 @@ the writing to the typed CLI, which validates and serializes it.
      (it is injected at SessionStart as "You ARE <name>" and is reserved so no
      hired persona reuses it). This is *your* name as the AI, **not** the PE's own
      name: the PE is the human running the session; the coordinator is you.
-   - The **repositories**: for each one, `name`, `url` (git@, or https with `.git`
-     optional) and a relative `path`
+   - The **repositories**: for each one, `name`, `url` (git@, https with `.git`
+     optional, **or a local filesystem path** for a local-only repo) and a relative `path`
      (starting with `./`). `stack` is optional — only fill it in if the PE knows it;
      otherwise leave it out (it will be filled in during later phases). The PE may paste a
      whole list at once. `kind` is also optional — the functional category of the
@@ -75,3 +75,8 @@ the writing to the typed CLI, which validates and serializes it.
 - One question at a time; don't dump them all at once.
 - If the workspace doesn't exist or doesn't look like an `aipe-<context>`, ask before
   writing.
+- **Never fabricate a repo `url`.** When the PE gives only a path (or a repo has no git
+  remote — `git -C <path> remote get-url origin` comes back empty), use the **local path**
+  as the `url`: `make-workspace` clones fine from a local path. If a url is genuinely
+  unknown and there is no remote, **ask the PE** — never invent a plausible-looking URL
+  such as `https://github.com/<context>/<repo>.git`.
