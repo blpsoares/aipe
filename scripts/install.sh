@@ -2,7 +2,7 @@
 # AIPe installer. Downloads the standalone `aipe` binary for this OS/arch and
 # puts it on the PATH — no Bun/Node/npm required.
 #
-#   curl -fsSL https://aipe.blpsoares.dev/cli | sh
+#   curl -fsSL https://aipe.openvibes.tech/cli | sh
 #
 # Env overrides:
 #   AIPE_DOWNLOAD_BASE  where to fetch binaries (default the AIPe domain)
@@ -11,7 +11,7 @@
 set -eu
 
 AIPE_VERSION="${AIPE_VERSION:-0.1.0}"
-AIPE_DOWNLOAD_BASE="${AIPE_DOWNLOAD_BASE:-https://aipe.blpsoares.dev/cli}"
+AIPE_DOWNLOAD_BASE="${AIPE_DOWNLOAD_BASE:-https://aipe.openvibes.tech/cli}"
 INSTALL_DIR="${AIPE_INSTALL_DIR:-$HOME/.local/bin}"
 
 os="$(uname -s 2>/dev/null || echo unknown)"

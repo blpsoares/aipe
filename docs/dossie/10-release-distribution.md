@@ -44,14 +44,13 @@ runbook, without touching the PE-owned decisions.
 
 ## Left to the PE (unchanged by this session)
 
-1. **Download domain — still the PE's call.** `blpsoares.dev` is the committed
-   default (and is recorded as chosen in `OPEN-DECISIONS.md`); the open fork is
-   whether to keep it or switch to `openvibes.tech`. Switching is a single
-   find/replace across `bin/aipe`, `bin/aipe.cmd`, `scripts/install.sh`,
-   `install.ps1`, `README.md`, `RELEASING.md`. This session did **not** change
-   the domain — it only made the runbook concrete for the current default and
-   documented the switch. (The finalization session tried to confirm this
-   interactively but the session was non-interactive, so nothing was changed.)
-2. **Publishing the tag/release.** A session has no tag-push permission. The PE
-   runs `git tag v0.1.0 && git push origin v0.1.0` (after merge to `main`); CI
-   does the rest. Then create the Cloudflare rules (release first, rules second).
+1. **Download domain — RESOLVED to `openvibes.tech`.** The PE chose the
+   open-source umbrella `openvibes.tech` over the personal portfolio
+   `blpsoares.dev` (which keeps the authorship credit link). The default
+   `AIPE_DOWNLOAD_BASE` was switched to `https://aipe.openvibes.tech/cli` across
+   `bin/aipe`, `bin/aipe.cmd`, `scripts/install.sh`, `install.ps1`, `README.md`,
+   `RELEASING.md`, and `OPEN-DECISIONS.md`; the GitHub slug stays `blpsoares/aipe`.
+2. **Publishing the tag/release — still the PE.** A session has no tag-push
+   permission. The PE runs `git tag v0.1.0 && git push origin v0.1.0` (after merge
+   to `main`); CI does the rest. Then create the Cloudflare rules on
+   `openvibes.tech` (release first, rules second) — exact values in `RELEASING.md`.

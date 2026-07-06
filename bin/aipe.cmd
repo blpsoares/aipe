@@ -4,7 +4,7 @@ rem execs it — no Bun/Node required at runtime. Resolution order mirrors the
 rem POSIX launcher: %AIPE_BIN% -> dist\ -> cache -> Bun dev fallback -> download.
 setlocal
 set "AIPE_VERSION=0.1.0"
-if not defined AIPE_DOWNLOAD_BASE set "AIPE_DOWNLOAD_BASE=https://aipe.blpsoares.dev/cli"
+if not defined AIPE_DOWNLOAD_BASE set "AIPE_DOWNLOAD_BASE=https://aipe.openvibes.tech/cli"
 set "BIN_DIR=%~dp0"
 for %%I in ("%BIN_DIR%..") do set "ROOT=%%~fI"
 

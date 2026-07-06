@@ -121,7 +121,7 @@ Add one repo to an already-onboarded context without redoing onboarding:
 | Persona load-order — **live** check | Preflight (`aipe validate-personas`) + exact steps shipped (dossier 09); the live observation still needs a real interactive session. |
 | Non-Claude-Code harness adapters | `HarnessAdapter` seam + a `generic` (AGENTS.md) adapter shipped (dossier 11); `aipe start --harness generic` works. The generic adapter needs a **live** non-Claude session to validate; `rehydrate` + toolbox-skill install are the remaining surfaces. |
 | Skill/MCP uninstall | Toolbox supports add + list + match; removal not yet. |
-| Release tag + Cloudflare rules | Runbook ready in [`RELEASING.md`](RELEASING.md); domain (`blpsoares.dev` vs `openvibes.tech`) and the tag push are the PE's. |
+| Release tag + Cloudflare rules | Runbook ready in [`RELEASING.md`](RELEASING.md); the download domain is `openvibes.tech`. Only the tag push (no session permission) is the PE's. |
 
 ## Laws & conventions
 
@@ -159,7 +159,7 @@ The rules the framework enforces (most as tested CLI, a few as skill prose):
 
 ```sh
 # 1. Install the aipe binary (no Bun/Node/npm needed)
-curl -fsSL https://aipe.blpsoares.dev/cli | sh
+curl -fsSL https://aipe.openvibes.tech/cli | sh
 
 # 2. Create a workspace. `aipe start` is a plain terminal program (no AI):
 #    it shows an arrow-key list of harnesses, asks the workspace name,
