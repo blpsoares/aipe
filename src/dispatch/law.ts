@@ -1,4 +1,4 @@
-import { moduleFqid } from "../context-brain/modules";
+import { packageFqid } from "../context-brain/packages";
 import { MAX_CONCURRENT } from "./types";
 import type { Batch, PersonaRegistryEntry, Verdict } from "./types";
 
@@ -6,7 +6,7 @@ import type { Batch, PersonaRegistryEntry, Verdict } from "./types";
 // The coordinator owns *sequencing* (which batch runs before which, derived
 // from graph.yaml); this only enforces the physical constraints on one batch:
 //   - the same *module* (unit of work) must not appear twice — same-unit work
-//     serializes, while distinct modules of one monorepo run in parallel,
+//     serializes, while distinct packages of one monorepo run in parallel,
 //   - at most MAX_CONCURRENT entries,
 //   - every repo and specialist must exist.
 // A module-less entry is the implicit whole-repo module, so its key is the bare
@@ -26,7 +26,7 @@ export function validateBatch(
 
   const seenKeys = new Set<string>();
   for (const entry of batch) {
-    const key = moduleFqid(entry.repo, entry.module);
+    const key = packageFqid(entry.repo, entry.module);
     if (seenKeys.has(key)) {
       rejects.push(entry.module && entry.module !== entry.repo ? `same-module ${key}` : `same-repo ${entry.repo}`);
     }

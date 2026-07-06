@@ -52,7 +52,7 @@ the earlier onboarding steps.
      `relations` may be an empty array. `type` must be exactly one of the five
      listed values — nothing else.
 
-   **Monorepos (module-grain relations).** If a repo declares `modules`, discover
+   **Monorepos (module-grain relations).** If a repo declares `packages`, discover
    relations at **module** granularity: dispatch one read-only agent per module
    (scoped to that module's `path`) and use the module's fully-qualified id
    `repo/module` as the node id — both in the report's `repo` field and in any
@@ -60,7 +60,7 @@ the earlier onboarding steps.
    repo keeps its bare name (its implicit module). This makes an intra-monorepo
    edge (`platform/web` → `platform/core`) and a cross-repo edge the *same*
    mechanism — graph nodes are plain fqid strings, so nothing else changes. Run
-   `aipe detect-modules --repo <name>` first if you need the module list.
+   `aipe detect-packages --repo <name>` first if you need the module list.
 
 5. **Save each result** to `<workspace>/.aipe/relations/.reports/<repo-name>.json`
    (create the directory if needed). One file per repo, exactly as the agent

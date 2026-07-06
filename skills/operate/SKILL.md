@@ -34,9 +34,9 @@ which specialist owns which repo).
    demand touches and *what each must do*. The unit of work is a **module**, not
    the repo: a flat repo is one implicit module (`fqid` = the repo name); a
    monorepo has one module per package/service (`fqid` = `repo/module`). Read the
-   modules from `brain.yaml` (`aipe read-state` also lists them). A task is scoped
+   packages from `brain.yaml` (`aipe read-state` also lists them). A task is scoped
    to a single module. If the demand only touches one module, there is exactly
-   one task — don't invent work elsewhere. Distinct modules of one monorepo run
+   one task — don't invent work elsewhere. Distinct packages of one monorepo run
    in **parallel** (the law serializes only the *same* module).
 
 3. **Sequence with the relations graph.** Read `graph.yaml`. If repo A's task
@@ -78,13 +78,13 @@ which specialist owns which repo).
    `OK batch=<n>` → proceed. Any `REJECT …` → fix and re-validate:
    - `same-module <fqid>` / `same-repo <repo>` — two tasks hit one unit in one
      wave; split them across waves (the law serializes the same module; distinct
-     modules of one monorepo are fine in the same wave).
+     packages of one monorepo are fine in the same wave).
    - `cap-exceeded <n>` — more than 16 at once; split the wave.
    - `unknown-repo` / `unknown-specialist` — you named something not in
      `brain.yaml` / `personas.yaml`.
 
    b. **Provision a worktree per entry** (pass `--module` for a monorepo unit so
-   two modules of one repo get distinct worktrees on the same clone):
+   two packages of one repo get distinct worktrees on the same clone):
    ```bash
    aipe worktree create --repo <repo> [--module <module>] --specialist <persona> --journey <id> --workspace <workspace>
    ```

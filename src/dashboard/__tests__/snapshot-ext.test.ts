@@ -153,7 +153,7 @@ test("persona CV reads the bio from the skill's description front-matter when pr
   }
 });
 
-test("snapshot resolves modules and carries them on workers (monorepo)", async () => {
+test("snapshot resolves packages and carries them on workers (monorepo)", async () => {
   const { mkdtemp } = await import("node:fs/promises");
   const dir = await mkdtemp(join(tmpdir(), "aipe-mod-"));
   try {
@@ -162,7 +162,7 @@ test("snapshot resolves modules and carries them on workers (monorepo)", async (
       join(dir, ".aipe", "brain.yaml"),
       stringify({
         context: { name: "co", coordinator: "Ana" },
-        repos: [{ name: "platform", url: "u", path: "./platform", modules: [{ name: "core", path: "packages/core" }, { name: "web", path: "apps/web" }] }],
+        repos: [{ name: "platform", url: "u", path: "./platform", packages: [{ name: "core", path: "packages/core" }, { name: "web", path: "apps/web" }] }],
       }),
       "utf8",
     );
@@ -177,8 +177,8 @@ test("snapshot resolves modules and carries them on workers (monorepo)", async (
       "utf8",
     );
     const s = await buildSnapshot(dir);
-    expect(s.modules.map((m) => m.fqid)).toEqual(["platform/core", "platform/web"]);
-    expect(s.modules[0]?.implicit).toBe(false);
+    expect(s.packages.map((m) => m.fqid)).toEqual(["platform/core", "platform/web"]);
+    expect(s.packages[0]?.implicit).toBe(false);
     const bruno = s.workers.find((w) => w.name === "Bruno");
     expect(bruno?.module).toBe("core");
   } finally {

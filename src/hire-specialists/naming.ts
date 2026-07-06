@@ -1,4 +1,4 @@
-import { resolveGroups } from "../context-brain/modules";
+import { resolveGroups } from "../context-brain/packages";
 import type { BrainFile, NamingResult, PersonaAssignment, PersonaReport, ProvidedNames } from "./types";
 
 const NAME_POOL = [
@@ -22,13 +22,13 @@ export function resolveNames(brain: BrainFile, provided: ProvidedNames): NamingR
   const personas: PersonaAssignment[] = [];
 
   // One dev+QA pair per hiring *group* (a group is a repo's implicit whole-repo
-  // module, a single module, or several modules sharing a `group`). Provided
+  // module, a single module, or several packages sharing a `group`). Provided
   // names may be keyed by the group id ("repo/group") or, for a flat repo, the
   // bare repo name.
   for (const g of resolveGroups(brain)) {
     const flat = g.group === g.repo;
     const unitKey = flat ? g.repo : `${g.repo}/${g.group}`;
-    const rep = g.modules[0];
+    const rep = g.packages[0];
     for (const role of ["dev-fullstack", "qa"] as const) {
       const key = role === "dev-fullstack" ? "devFullstack" : "qa";
       const suggested = provided[unitKey]?.[key] ?? provided[g.repo]?.[key];

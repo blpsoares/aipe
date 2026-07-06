@@ -1,4 +1,4 @@
-// Proposes a monorepo's modules by reading its *own* workspace manifests, so the
+// Proposes a monorepo's packages by reading its *own* workspace manifests, so the
 // PE confirms a real list instead of hand-writing one. Deterministic + tested;
 // the coordinator folds the confirmed result into brain.yaml. Supports the common
 // JS/TS, Go and Rust monorepo layouts; unknown layouts return [].
@@ -91,7 +91,7 @@ function goWorkUses(text: string): string[] {
   return uses;
 }
 
-export async function detectModules(repoDir: string): Promise<DetectedModule[]> {
+export async function detectPackages(repoDir: string): Promise<DetectedModule[]> {
   const globs: string[] = [];
 
   const pnpm = await readText(join(repoDir, "pnpm-workspace.yaml"));
@@ -122,14 +122,14 @@ export async function detectModules(repoDir: string): Promise<DetectedModule[]> 
   if (cargo) globs.push(...tomlMembers(cargo));
 
   const seen = new Set<string>();
-  const modules: DetectedModule[] = [];
+  const packages: DetectedModule[] = [];
   for (const glob of globs) {
     for (const rel of await expandGlob(repoDir, glob)) {
       if (seen.has(rel)) continue;
       seen.add(rel);
       const mod = await moduleAt(repoDir, rel);
-      if (mod) modules.push(mod);
+      if (mod) packages.push(mod);
     }
   }
-  return modules;
+  return packages;
 }

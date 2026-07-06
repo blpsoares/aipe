@@ -9,7 +9,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { inferKind } from "../context-brain/kind";
-import { resolveModules } from "../context-brain/modules";
+import { resolvePackages } from "../context-brain/packages";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { listJourneys } from "../journey/ledger";
 import { readBrain } from "../make-workspace/read";
@@ -104,7 +104,7 @@ export interface Snapshot {
   relations: RelationEdgeView[];
   toolboxDetail: { skills: ToolboxSkillView[]; mcps: ToolboxMcpView[] };
   worktreeRows: WorktreeView[];
-  modules: ModuleView[];
+  packages: ModuleView[];
   personaCVs: PersonaCV[];
   generatedAt: string;
 }
@@ -157,7 +157,7 @@ function emptySnapshot(generatedAt: string): Snapshot {
     relations: [],
     toolboxDetail: { skills: [], mcps: [] },
     worktreeRows: [],
-    modules: [],
+    packages: [],
     personaCVs: [],
     generatedAt,
   };
@@ -195,13 +195,13 @@ async function buildPersonaCVs(
   workspaceDir: string,
   roster: PersonaRegistryEntry[],
   repoInfos: RepoInfo[],
-  modules: ModuleView[],
+  packages: ModuleView[],
 ): Promise<PersonaCV[]> {
   return Promise.all(
     roster.map(async (p) => {
       const title = ROLE_TITLE[p.role] ?? p.role;
       const stack = p.module
-        ? modules.find((m) => m.repo === p.repo && m.module === p.module)?.stack ?? []
+        ? packages.find((m) => m.repo === p.repo && m.module === p.module)?.stack ?? []
         : repoInfos.find((r) => r.name === p.repo)?.stack ?? [];
       const competences = [...new Set([...(ROLE_COMPETENCES[p.role] ?? []), ...stack])];
       const bio =
@@ -274,13 +274,13 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
   // (whole-repo) module. Anything undeclared is inferred from name + stack.
   const declaredKind = new Map<string, string | undefined>();
   for (const r of brain.brain.repos) {
-    if (r.modules && r.modules.length > 0) {
-      for (const m of r.modules) declaredKind.set(`${r.name}/${m.name}`, m.kind ?? r.kind);
+    if (r.packages && r.packages.length > 0) {
+      for (const m of r.packages) declaredKind.set(`${r.name}/${m.name}`, m.kind ?? r.kind);
     } else {
       declaredKind.set(r.name, r.kind);
     }
   }
-  const moduleViews: ModuleView[] = resolveModules(brain.brain).map((m) => ({
+  const moduleViews: ModuleView[] = resolvePackages(brain.brain).map((m) => ({
     repo: m.repo,
     module: m.module,
     fqid: m.fqid,
@@ -308,7 +308,7 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
       mcps: toolbox.mcps.map((m) => ({ name: m.name, scope: m.scope, repos: m.repos, description: m.description })),
     },
     worktreeRows: worktrees.map((w) => ({ repo: w.repo, slug: w.slug, journey: w.journey, branch: w.branch, path: w.path })),
-    modules: moduleViews,
+    packages: moduleViews,
     personaCVs,
     generatedAt,
   };

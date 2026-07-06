@@ -9,7 +9,7 @@ export interface PersonaAssignment {
   role: PersonaRole;
   name: string;
   module?: string; // representative module of the hiring group (absent ⇒ whole repo)
-  group?: string; // hiring group/area; modules sharing it share this pair
+  group?: string; // hiring group/area; packages sharing it share this pair
 }
 
 export interface NamingResult {

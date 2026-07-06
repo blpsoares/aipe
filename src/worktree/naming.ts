@@ -10,8 +10,8 @@ export function isValidJourneyId(id: string): boolean {
   return /^[a-z0-9][a-z0-9-]*$/.test(id);
 }
 
-// Encodes the module (when present) into the branch/path so two modules of one
-// monorepo get distinct worktrees on the same clone. Implicit modules (module
+// Encodes the module (when present) into the branch/path so two packages of one
+// monorepo get distinct worktrees on the same clone. Implicit packages (module
 // absent or equal to the repo) keep the pre-module naming exactly:
 //   implicit: aipe/<journey>/<persona>            · .worktrees/<journey>-<persona>
 //   module:   aipe/<journey>/<module>--<persona>  · .worktrees/<journey>-<module>--<persona>

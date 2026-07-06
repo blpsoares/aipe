@@ -22,7 +22,7 @@ import { runSkill, runMcp } from "./toolbox/cli";
 import { run as addRepo } from "./add-repo/cli";
 import { run as dashboard } from "./dashboard/cli";
 import { run as serve } from "./serve/cli";
-import { run as detectModules } from "./detect-modules/cli";
+import { run as detectPackages } from "./detect-packages/cli";
 
 export const VERSION = "0.1.0";
 
@@ -45,7 +45,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "add-repo": addRepo,
   dashboard: dashboard,
   serve: serve,
-  "detect-modules": detectModules,
+  "detect-packages": detectPackages,
 };
 
 const HELP = [
@@ -58,7 +58,7 @@ const HELP = [
   "  context-brain      Declare the context's repos → .aipe/brain.yaml",
   "  make-workspace     Clone the declared repos on disk",
   "  add-repo           Add one repo to an existing context (incremental)",
-  "  detect-modules     Propose a monorepo's modules from its workspace manifests",
+  "  detect-packages     Propose a monorepo's packages from its workspace manifests",
   "  relationship       Discover cross-repo relations + backfill stack",
   "  hire-specialists   Generate the per-repo persona skills + personas.yaml",
   "  worktree           Provision/list/remove per-specialist git worktrees",

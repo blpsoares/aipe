@@ -39,20 +39,20 @@ the writing to the typed CLI, which validates and serializes it.
    }
    ```
 
-   **Monorepos.** If a repo is a monorepo, give it `modules` — the units of work
+   **Monorepos.** If a repo is a monorepo, give it `packages` — the units of work
    below the repo (each gets its own specialists, worktree, PR and dispatch, and
-   distinct modules run in parallel):
+   distinct packages run in parallel):
    ```json
-   { "name": "platform", "url": "...", "path": "./platform", "kind": "web", "modules": [
+   { "name": "platform", "url": "...", "path": "./platform", "kind": "web", "packages": [
        { "name": "core",    "path": "packages/core",    "stack": ["TypeScript"], "kind": "lib" },
        { "name": "billing", "path": "services/billing", "stack": ["Go"], "group": "backend", "kind": "api" }
    ] }
    ```
-   A repo with no `modules` is one implicit module (the whole repo) — flat repos
+   A repo with no `packages` is one implicit module (the whole repo) — flat repos
    are unchanged. Modules sharing a `group` share one specialist pair (use it to
    keep a big monorepo's roster small). Don't fold **separate** products into one
    monorepo entry — genuinely separate git repos stay separate repo entries.
-   After the clone, `aipe detect-modules --repo <name>` proposes modules from the
+   After the clone, `aipe detect-packages --repo <name>` proposes packages from the
    monorepo's own workspace manifests for the PE to confirm.
 
 4. **Write via the CLI.** Write the JSON to a temporary file and run:

@@ -478,7 +478,7 @@ const STR = {
     pipeline:"Pipeline", openboard:"Open board", liveact:"Live activity",
     s_dispatched:"Dispatched", s_delivered:"Delivered", s_escalated:"Escalated", s_merged:"Merged",
     org_sub:"Coordinator → repo · monorepo → module → specialist", t_repo:"repo", t_monorepo:"monorepo", t_module:"module", t_group:"group", nospec:"no specialists yet",
-    legend:"Legend", lg_coord:"Coordinator — plans journeys & authors the spec", lg_repo:"Repo — a single-package repository", lg_monorepo:"Monorepo — a repo split into modules", lg_module:"Module — a unit of work inside a monorepo", lg_group:"Group — modules hired together", lg_specialist:"Specialist — a hired dev/QA persona", lg_relation:"Relation — a dependency between units",
+    legend:"Legend", lg_coord:"Coordinator — plans journeys & authors the spec", lg_repo:"Repo — a single-package repository", lg_monorepo:"Monorepo — a repo split into packages", lg_module:"Module — a unit of work inside a monorepo", lg_group:"Group — packages hired together", lg_specialist:"Specialist — a hired dev/QA persona", lg_relation:"Relation — a dependency between units",
     pipe_sub:"{a} journeys · {b} dispatches", filter:"Filter",
     work_sub:"{h} hired · {a} active · {i} available", all:"All", dispatch:"+ Dispatch",
     cv_competences:"Competences", cv_delivered:"delivered", cv_inprog:"in progress", cv_total:"dispatches",
@@ -549,7 +549,7 @@ const STAGES = [
   { key:"escalated", label:"Escalated", cls:"escalated" },
   { key:"merged", label:"Merged", cls:"merged" },
 ];
-let DATA = { ok:false, context:{name:"—",coordinator:"—"}, workers:[], repos:[], relations:[], toolbox:{skills:[],mcps:[]}, activity:[], modules:[], worktrees:[], journeys:[], cvs:[] };
+let DATA = { ok:false, context:{name:"—",coordinator:"—"}, workers:[], repos:[], relations:[], toolbox:{skills:[],mcps:[]}, activity:[], packages:[], worktrees:[], journeys:[], cvs:[] };
 let dispatches = [];
 let counts = { hired:0, active:0, delivered:0, escalated:0, idle:0, journeys:0, repos:0 };
 const DKEY = (d) => `${d.repo}${d.module?"/"+d.module:""}::${(d.specialist||"").toLowerCase()}`;
@@ -561,13 +561,13 @@ function setSnap(s){
   const bc = $("#brandCtx"); if (bc) bc.textContent = DATA.context.name || "—";
   DATA.repos = (s.repos||[]).map(name=>{
     const info = (s.repoInfos||[]).find(r=>r.name===name) || { stack:[], kind:"" };
-    const mods = (s.modules||[]).filter(m=>m.repo===name && !m.implicit).map(m=>({ name:m.module, stack:m.stack||[], kind:m.kind||"", group: m.group!==m.module ? m.group : undefined }));
-    return { name, stack: info.stack||[], kind: info.kind||"", modules: mods };
+    const mods = (s.packages||[]).filter(m=>m.repo===name && !m.implicit).map(m=>({ name:m.module, stack:m.stack||[], kind:m.kind||"", group: m.group!==m.module ? m.group : undefined }));
+    return { name, stack: info.stack||[], kind: info.kind||"", packages: mods };
   });
   DATA.workers = (s.workers||[]).filter(w=>w.role!=="coordinator").map(w=>({ name:w.name, role:w.role, repo:w.repo, module:w.module||null, status:w.status, journey:w.journey, pr:w.pr }));
   DATA.relations = s.relations||[];
   DATA.toolbox = { skills:(s.toolboxDetail?.skills||[]).map(k=>({ name:k.name, when:k.whenToUse, repos:k.repos||[] })), mcps:(s.toolboxDetail?.mcps||[]).map(m=>({ name:m.name, scope:m.scope })) };
-  DATA.modules = s.modules||[];
+  DATA.packages = s.packages||[];
   DATA.worktrees = s.worktreeRows||[];
   DATA.journeys = s.journeys||[];
   DATA.cvs = s.personaCVs||[];
@@ -805,10 +805,10 @@ function dispatchesOf(name){ return dispatches.filter(d=>(d.specialist||"").toLo
 // The unit a worker covers: a plain repo, or a monorepo + module. `kind` is the
 // functional category (api/web/lib/service); `worktree` is where the work lives.
 function repoOf(name){ return DATA.repos.find(r=>r.name===name); }
-function kindOf(w){ if(w.module){ const m=DATA.modules.find(x=>x.repo===w.repo&&x.module===w.module); return m?m.kind:""; } const r=repoOf(w.repo); return r?r.kind:""; }
+function kindOf(w){ if(w.module){ const m=DATA.packages.find(x=>x.repo===w.repo&&x.module===w.module); return m?m.kind:""; } const r=repoOf(w.repo); return r?r.kind:""; }
 function worktreeOf(name){ const ds=dispatchesOf(name); const d=ds.find(x=>x.worktree)||ds[0]; if(!d) return null; if(d.worktree) return d.worktree.split("/").pop(); return d.branch||null; }
 function unitBlock(w){
-  const r=repoOf(w.repo), mono=r&&r.modules.length>0, wt=worktreeOf(w.name), rows=[];
+  const r=repoOf(w.repo), mono=r&&r.packages.length>0, wt=worktreeOf(w.name), rows=[];
   if(mono){ rows.push(["monorepo",w.repo]); if(w.module) rows.push(["module",w.module]); }
   else rows.push(["repo",w.repo]);
   rows.push(["type", kindOf(w)||"—"]);
@@ -864,9 +864,9 @@ function renderOrgSvg(){
     ${sub?`<text x="${cx+(tone?7:0)}" y="${y+37}" text-anchor="middle" fill="var(--ink-3)" font-size="11">${esc(sub)}</text>`:""}</g>`; };
   P.push(node(cxAll,yC,208,44,"color-mix(in srgb, var(--accent) 11%, var(--panel))","var(--accent)",DATA.context.coordinator||"coordinator","coordinator","",'var(--accent)',false));
   cols.forEach(c=>{ const info=DATA.repos.find(r=>r.name===c.r);
-    // A repo that declares modules is a monorepo — label it as such (its border
+    // A repo that declares packages is a monorepo — label it as such (its border
     // is tinted to set it apart from a plain single-package repo).
-    const mono = info.modules && info.modules.length>0;
+    const mono = info.packages && info.packages.length>0;
     const cat = info.kind || "";
     const rsub = mono ? (cat ? `${t("t_monorepo")} · ${cat}` : t("t_monorepo")) : (cat || t("t_repo"));
     P.push(node(c.cx,yR-14,Math.min(c.w-8,198),48,"var(--panel-2)",mono?"var(--accent)":"var(--line-2)",c.r,rsub,"", mono?"var(--accent)":"",false));
@@ -884,7 +884,7 @@ function renderOrgTree(){
     <div class="ot-coord"><span class="ot-dot" style="background:var(--accent)"></span><div><div class="ot-name">${esc(coord)}</div><div class="ot-sub">coordinator</div></div></div>
     <div class="ot-branches">
       ${DATA.repos.map(r=>{
-        const mono = r.modules.length>0;
+        const mono = r.packages.length>0;
         const people = DATA.workers.filter(w=>w.repo===r.name);
         const kindLbl = mono ? `${t("t_monorepo")}${r.kind?" · "+r.kind:""}` : (r.kind||t("t_repo"));
         return `<div class="ot-repo ${mono?"mono":""}">

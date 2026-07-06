@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectModules } from "../detect";
+import { detectPackages } from "../detect";
 
 async function repo(): Promise<string> {
   return mkdtemp(join(tmpdir(), "aipe-detect-"));
@@ -18,7 +18,7 @@ test("detects pnpm-workspace packages globs", async () => {
     await mkdir(join(dir, "packages", "utils"), { recursive: true });
     await writeFile(join(dir, "packages", "utils", "package.json"), JSON.stringify({ name: "utils" }), "utf8");
 
-    const mods = await detectModules(dir);
+    const mods = await detectPackages(dir);
     expect(mods.map((m) => `${m.name}@${m.path}`).sort()).toEqual(["core@packages/core", "utils@packages/utils"]);
     expect(mods.find((m) => m.name === "core")?.stack).toEqual(["TypeScript"]);
     expect(mods.find((m) => m.name === "utils")?.stack).toEqual(["JavaScript"]);
@@ -33,7 +33,7 @@ test("detects package.json workspaces", async () => {
     await writeFile(join(dir, "package.json"), JSON.stringify({ workspaces: ["apps/*"] }), "utf8");
     await mkdir(join(dir, "apps", "web"), { recursive: true });
     await writeFile(join(dir, "apps", "web", "package.json"), JSON.stringify({ name: "web" }), "utf8");
-    const mods = await detectModules(dir);
+    const mods = await detectPackages(dir);
     expect(mods).toEqual([{ name: "web", path: "apps/web", stack: ["JavaScript"] }]);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -47,7 +47,7 @@ test("detects go.work use directories", async () => {
     await mkdir(join(dir, "cmd", "gateway"), { recursive: true });
     await mkdir(join(dir, "cmd", "workers"), { recursive: true });
     await writeFile(join(dir, "cmd", "gateway", "go.mod"), "module gateway\n", "utf8");
-    const mods = await detectModules(dir);
+    const mods = await detectPackages(dir);
     expect(mods.map((m) => m.path).sort()).toEqual(["cmd/gateway", "cmd/workers"]);
     expect(mods.find((m) => m.path === "cmd/gateway")?.stack).toEqual(["Go"]);
   } finally {
@@ -55,11 +55,11 @@ test("detects go.work use directories", async () => {
   }
 });
 
-test("a non-monorepo returns no modules", async () => {
+test("a non-monorepo returns no packages", async () => {
   const dir = await repo();
   try {
     await writeFile(join(dir, "package.json"), JSON.stringify({ name: "flat" }), "utf8");
-    expect(await detectModules(dir)).toEqual([]);
+    expect(await detectPackages(dir)).toEqual([]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

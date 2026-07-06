@@ -59,7 +59,7 @@ test("specialist match is case-insensitive", () => {
   expect(verdict.ok).toBe(true);
 });
 
-test("distinct modules of one monorepo run in parallel (module-keyed law)", () => {
+test("distinct packages of one monorepo run in parallel (module-keyed law)", () => {
   const monoRoster: PersonaRegistryEntry[] = [
     { name: "Ana", role: "dev-fullstack", repo: "platform", path: "p" },
     { name: "Bruno", role: "dev-fullstack", repo: "platform", path: "p" },

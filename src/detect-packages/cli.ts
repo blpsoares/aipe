@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
-// `aipe detect-modules --repo <name> [--workspace <dir>]` — proposes a monorepo's
-// modules from its own workspace manifests (pnpm/npm/yarn workspaces, go.work,
+// `aipe detect-packages --repo <name> [--workspace <dir>]` — proposes a monorepo's
+// packages from its own workspace manifests (pnpm/npm/yarn workspaces, go.work,
 // Cargo). Prints one `MODULE <name> <path> [stack]` line per unit plus a machine
-// `STATE modules=<n>`; `--json` emits the array the coordinator folds into
+// `STATE packages=<n>`; `--json` emits the array the coordinator folds into
 // brain.yaml (after the PE confirms).
 import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
-import { detectModules } from "./detect";
+import { detectPackages } from "./detect";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -34,13 +34,13 @@ export async function run(args: string[]): Promise<number> {
     return 1;
   }
 
-  const modules = await detectModules(join(workspace, repo.path));
+  const packages = await detectPackages(join(workspace, repo.path));
   if (args.includes("--json")) {
-    console.log(JSON.stringify(modules, null, 2));
+    console.log(JSON.stringify(packages, null, 2));
     return 0;
   }
-  for (const m of modules) console.log(`MODULE ${m.name} ${m.path}${m.stack?.length ? ` [${m.stack.join(",")}]` : ""}`);
-  console.log(`STATE modules=${modules.length}`);
+  for (const m of packages) console.log(`MODULE ${m.name} ${m.path}${m.stack?.length ? ` [${m.stack.join(",")}]` : ""}`);
+  console.log(`STATE packages=${packages.length}`);
   return 0;
 }
 
