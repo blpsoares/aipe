@@ -22,6 +22,7 @@ import { runSkill, runMcp } from "./toolbox/cli";
 import { run as addRepo } from "./add-repo/cli";
 import { run as dashboard } from "./dashboard/cli";
 import { run as validatePersonas } from "./validate-personas/cli";
+import { run as model } from "./model/cli";
 
 export const VERSION = "0.1.0";
 
@@ -44,6 +45,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "add-repo": addRepo,
   dashboard: dashboard,
   "validate-personas": validatePersonas,
+  model: model,
 };
 
 const HELP = [
@@ -63,6 +65,7 @@ const HELP = [
   "  journey            Track a work session's dispatches (durable ledger)",
   "  dashboard          Live terminal view of workers, pipeline & worktrees",
   "  validate-personas  Preflight persona load-order readiness + live-check steps",
+  "  model              Resolve model by tier + adjudicate authorization/volume gates",
   "  rehydrate          Restore per-repo persona skills from .aipe/personas/",
   "  skill              Add/list toolbox skill-packages (frameworks) per repo",
   "  mcp                Add/list MCP servers (workspace-shared or per-repo)",

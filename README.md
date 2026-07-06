@@ -112,6 +112,7 @@ Add one repo to an already-onboarded context without redoing onboarding:
 | 8 | Persona load-order — `aipe validate-personas` preflight + live-step protocol | Preflight done; live step pending | [09](docs/dossie/09-persona-load-order.md) |
 | 9 | Release + distribution readiness — version guard, hardened `release.yml`, [`RELEASING.md`](RELEASING.md) | Prepared; domain + tag pending | [10](docs/dossie/10-release-distribution.md) |
 | 10 | Harness adapters — `HarnessAdapter` seam + Claude Code extraction + `generic` adapter | Implemented; generic live-check pending | [11](docs/dossie/11-harness-adapters.md) |
+| 11 | Model policy — coordinator picks the model by task tier; Fable-authorization + Opus-volume gates | Implemented | [12](docs/dossie/12-model-policy.md) |
 
 ### Roadmap (pending)
 
@@ -191,7 +192,7 @@ portable core is a single CLI (`aipe`):
 - Onboarding: `start · context-brain · make-workspace · relationship ·
   hire-specialists · read-state · session-context`
 - Operation & growth: `worktree · dispatch · journey · dashboard · rehydrate ·
-  skill · mcp · add-repo · validate-personas` (and the planned `serve`)
+  skill · mcp · add-repo · validate-personas · model` (and the planned `serve`)
 
 - **End users need no runtime.** The CLI compiles to a standalone executable
   per OS/arch (`bun build --compile`), so there's **no Bun, Node, or npm**

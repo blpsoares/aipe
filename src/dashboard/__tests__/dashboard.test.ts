@@ -116,6 +116,22 @@ test("renderDashboard shows the module tag for a monorepo module persona", async
   }
 });
 
+test("renderDashboard shows the model/tier a dispatch ran on", async () => {
+  const dir = await ws();
+  try {
+    await writeFile(
+      join(dir, ".aipe", "journeys", "j1.yaml"),
+      stringify({ id: "j1", dispatches: [{ repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w", status: "dispatched", tier: "reasoning", model: "claude-opus-4-8" }] }),
+      "utf8",
+    );
+    const snap = await buildSnapshot(dir);
+    const frame = renderDashboard(snap, { color: false });
+    expect(frame).toContain("reasoning:claude-opus-4-8");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("buildSnapshot reports not-onboarded without a brain", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-dash-"));
   try {

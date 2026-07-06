@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import type { JourneyDispatch, JourneyLedger } from "./types";
+import type { JourneyAuthorization, JourneyDispatch, JourneyLedger } from "./types";
 
 function ledgerPath(workspaceDir: string, id: string): string {
   return join(workspaceDir, ".aipe", "journeys", `${id}.yaml`);
@@ -30,7 +30,10 @@ export async function readLedger(workspaceDir: string, id: string): Promise<Jour
     const raw = await readFile(ledgerPath(workspaceDir, id), "utf8");
     const parsed = parse(raw);
     if (parsed && typeof parsed === "object" && Array.isArray(parsed.dispatches)) {
-      return { id, dispatches: parsed.dispatches as JourneyDispatch[] };
+      const authorizations = Array.isArray(parsed.authorizations)
+        ? (parsed.authorizations as JourneyAuthorization[])
+        : [];
+      return { id, dispatches: parsed.dispatches as JourneyDispatch[], authorizations };
     }
   } catch {
     // missing or malformed → treated as absent
@@ -41,7 +44,11 @@ export async function readLedger(workspaceDir: string, id: string): Promise<Jour
 async function writeLedger(workspaceDir: string, ledger: JourneyLedger): Promise<string> {
   const path = ledgerPath(workspaceDir, ledger.id);
   await mkdir(join(workspaceDir, ".aipe", "journeys"), { recursive: true });
-  await writeFile(path, stringify({ id: ledger.id, dispatches: ledger.dispatches }), "utf8");
+  await writeFile(
+    path,
+    stringify({ id: ledger.id, dispatches: ledger.dispatches, authorizations: ledger.authorizations ?? [] }),
+    "utf8",
+  );
   return path;
 }
 
@@ -66,4 +73,24 @@ export async function recordDispatch(
   if (idx >= 0) ledger.dispatches[idx] = dispatch;
   else ledger.dispatches.push(dispatch);
   return writeLedger(workspaceDir, ledger);
+}
+
+// Records an explicit PE authorization for a gated tier on this journey. Written
+// by the coordinator ONLY after the PE grants it in the live session. Idempotent
+// per (tier) — re-granting the same tier does not duplicate.
+export async function recordAuthorization(
+  workspaceDir: string,
+  id: string,
+  auth: JourneyAuthorization,
+): Promise<string> {
+  const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [], authorizations: [] };
+  ledger.authorizations ??= [];
+  if (!ledger.authorizations.some((a) => a.tier === auth.tier)) {
+    ledger.authorizations.push(auth);
+  }
+  return writeLedger(workspaceDir, ledger);
+}
+
+export function grantedTiers(ledger: JourneyLedger | null): Set<string> {
+  return new Set((ledger?.authorizations ?? []).map((a) => a.tier));
 }

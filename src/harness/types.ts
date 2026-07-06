@@ -45,4 +45,9 @@ export interface HarnessAdapter {
 
   // E — where MCP servers are registered for this harness.
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string;
+
+  // F — map an abstract model tier to the concrete model id this harness runs.
+  //     null = no mapping (the coordinator falls back to the session default);
+  //     the tier's policy gates (authorization/volume) still apply either way.
+  resolveModel(tier: string): { id: string; label: string } | null;
 }

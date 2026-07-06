@@ -8,6 +8,9 @@ export type { PersonaRegistryEntry };
 export interface DispatchEntry {
   repo: string;
   specialist: string;
+  // Optional model tier the coordinator assigned by task complexity. Adjudicated
+  // by the model-policy CLI (`aipe model`), then carried into the hiring brief.
+  tier?: string;
 }
 
 export type Batch = DispatchEntry[];

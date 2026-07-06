@@ -97,7 +97,9 @@ export function renderDashboard(s: Snapshot, opts: RenderOpts = {}): string {
           : d.status === "dispatched" ? "active" : "available";
         const glyph = paint(STATUS_COLOR[st], STATUS_GLYPH[st]);
         const pr = d.pr ? paint(C.gray, `  ${d.pr}`) : "";
-        out.push(`    ${glyph} ${paint(C.dim, d.repo)} · ${d.specialist} ${paint(C.gray, d.status)}${pr}`);
+        // Show the model/tier the dispatch ran on, when recorded (model policy).
+        const model = d.tier || d.model ? paint(C.magenta, ` «${d.tier ?? ""}${d.tier && d.model ? ":" : ""}${d.model ?? ""}»`) : "";
+        out.push(`    ${glyph} ${paint(C.dim, d.repo)} · ${d.specialist} ${paint(C.gray, d.status)}${model}${pr}`);
       }
     }
   }

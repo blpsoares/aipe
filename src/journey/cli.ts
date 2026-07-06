@@ -42,11 +42,22 @@ async function recordCommand(args: string[]): Promise<number> {
     return 1;
   }
   const pr = getFlag(args, "--pr");
+  const tier = getFlag(args, "--tier");
+  const model = getFlag(args, "--model");
   const statusFlag = getFlag(args, "--status");
   const status: DispatchStatus = DISPATCH_STATUSES.includes(statusFlag as DispatchStatus)
     ? (statusFlag as DispatchStatus)
     : "dispatched";
-  await recordDispatch(workspace, id, { repo, specialist, branch, worktree, ...(pr ? { pr } : {}), status });
+  await recordDispatch(workspace, id, {
+    repo,
+    specialist,
+    branch,
+    worktree,
+    ...(pr ? { pr } : {}),
+    ...(tier ? { tier } : {}),
+    ...(model ? { model } : {}),
+    status,
+  });
   console.log(`OK ${repo} ${specialist} ${status}`);
   return 0;
 }

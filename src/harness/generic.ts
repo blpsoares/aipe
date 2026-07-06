@@ -72,4 +72,10 @@ export const genericAdapter: HarnessAdapter = {
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string {
     return scope === "repo" && repo ? join(repo, ".mcp.json") : ".mcp.json";
   },
+
+  // A generic harness may drive any model; it has no fixed tier→id map, so the
+  // harness decides. The tier's policy gates (authorization/volume) still apply.
+  resolveModel(): { id: string; label: string } | null {
+    return null;
+  },
 };

@@ -48,18 +48,21 @@ The launcher (`bin/aipe`, `bin/aipe.cmd`) and installers (`scripts/install.sh`,
 open-source umbrella (authored by [blpsoares.dev](https://blpsoares.dev)). Set
 `AIPE_DOWNLOAD_BASE` to point at a mirror or a local server.
 
-Cloudflare rules on `openvibes.tech` (repo slug `blpsoares/aipe`; use
-`releases/latest/download` so they never need touching on future releases):
+Cloudflare **Redirect Rules** on `openvibes.tech` (repo slug `blpsoares/aipe`).
+Seven rules, all `URI Full URL` `equals` → `Static` 302 with *Preserve query
+string* on. Everything routes through `releases/latest/download` (the release
+attaches `install.sh`/`install.ps1` as assets too — see `release.yml`), so the
+rules never need touching on future releases:
 
-| Incoming (exact/path)                    | Redirect target                                                              |
-|------------------------------------------|------------------------------------------------------------------------------|
-| `aipe.openvibes.tech/cli`                 | `raw.githubusercontent.com/blpsoares/aipe/main/scripts/install.sh`          |
-| `aipe.openvibes.tech/cli/install.ps1`     | `raw.githubusercontent.com/blpsoares/aipe/main/scripts/install.ps1`         |
-| `aipe.openvibes.tech/cli/aipe-linux-x64`  | `github.com/blpsoares/aipe/releases/latest/download/aipe-linux-x64`         |
-| `aipe.openvibes.tech/cli/aipe-linux-arm64`| `github.com/blpsoares/aipe/releases/latest/download/aipe-linux-arm64`       |
-| `aipe.openvibes.tech/cli/aipe-darwin-x64` | `github.com/blpsoares/aipe/releases/latest/download/aipe-darwin-x64`        |
-| `aipe.openvibes.tech/cli/aipe-darwin-arm64`| `github.com/blpsoares/aipe/releases/latest/download/aipe-darwin-arm64`     |
-| `aipe.openvibes.tech/cli/aipe-windows-x64.exe`| `github.com/blpsoares/aipe/releases/latest/download/aipe-windows-x64.exe` |
+| Rule name | Incoming (URI Full URL equals) | Redirect target |
+|-----------|--------------------------------|-----------------|
+| `aipe-cli-install-sh`  | `https://aipe.openvibes.tech/cli`                    | `https://github.com/blpsoares/aipe/releases/latest/download/install.sh` |
+| `aipe-cli-install-ps1` | `https://aipe.openvibes.tech/cli/install.ps1`        | `https://github.com/blpsoares/aipe/releases/latest/download/install.ps1` |
+| `aipe-bin-linux-x64`   | `https://aipe.openvibes.tech/cli/aipe-linux-x64`     | `https://github.com/blpsoares/aipe/releases/latest/download/aipe-linux-x64` |
+| `aipe-bin-linux-arm64` | `https://aipe.openvibes.tech/cli/aipe-linux-arm64`   | `https://github.com/blpsoares/aipe/releases/latest/download/aipe-linux-arm64` |
+| `aipe-bin-darwin-x64`  | `https://aipe.openvibes.tech/cli/aipe-darwin-x64`    | `https://github.com/blpsoares/aipe/releases/latest/download/aipe-darwin-x64` |
+| `aipe-bin-darwin-arm64`| `https://aipe.openvibes.tech/cli/aipe-darwin-arm64`  | `https://github.com/blpsoares/aipe/releases/latest/download/aipe-darwin-arm64` |
+| `aipe-bin-windows-x64` | `https://aipe.openvibes.tech/cli/aipe-windows-x64.exe` | `https://github.com/blpsoares/aipe/releases/latest/download/aipe-windows-x64.exe` |
 
 **Order matters:** publish the release first (step 3), *then* create the rules —
 they are redirects to release assets and 404 until the assets exist.

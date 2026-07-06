@@ -41,6 +41,15 @@ which specialist owns which repo).
    into **waves**: everything in a wave can run at once; a later wave depends on
    an earlier one. Independent repos go in the same wave.
 
+   **Assign a model tier per task** by its difficulty/complexity — this is your
+   judgment call:
+   - `fast` — trivial/mechanical (rename, tiny fix, boilerplate).
+   - `standard` — ordinary feature work (the default).
+   - `reasoning` — hard, subtle, or cross-cutting work (this is Opus — the PE is
+     told when a journey uses a lot of it).
+   - `frontier` — exceptional difficulty, highest cost (this is Fable — it always
+     needs the PE's explicit go-ahead, see step 4b).
+
 4. **For each wave, in order:**
 
    a. **Assemble the batch** — the `{repo, specialist}` pairs for this wave (the
@@ -56,24 +65,46 @@ which specialist owns which repo).
    - `unknown-repo` / `unknown-specialist` — you named something not in
      `brain.yaml` / `personas.yaml`.
 
-   b. **Provision a worktree per entry:**
+   b. **Resolve the model + adjudicate its gates** for each task's tier:
+   ```bash
+   aipe model resolve --tier <tier> --journey <id> --workspace <workspace>
+   ```
+   `MODEL=<id>` is the model to dispatch that specialist on. Then obey `GATE=`:
+   - `GATE=ok` — proceed.
+   - `GATE=needs-authorization` (frontier/Fable) — **STOP and ask the PE
+     explicitly**: name the task, that it's exceptionally hard, and that you'd
+     like to use Fable (the most expensive model). Only on an explicit yes,
+     record the grant (per-journey, asked once) and re-resolve:
+     ```bash
+     aipe model authorize --journey <id> --tier frontier --by PE --workspace <workspace>
+     ```
+   Then check the Opus volume for this journey:
+   ```bash
+   aipe model check --journey <id> --workspace <workspace>
+   ```
+   `STATE=notify` — tell the PE this journey has now used Opus past the threshold
+   (`REASONING=<n>/<max>`) before continuing; proceed unless they object.
+
+   c. **Provision a worktree per entry:**
    ```bash
    aipe worktree create --repo <repo> --specialist <persona> --journey <id> --workspace <workspace>
    ```
-   Note the printed `OK <worktree-path> <branch>`. Record it:
+   Note the printed `OK <worktree-path> <branch>`. Record it (with the tier +
+   resolved model, for the audit + dashboard):
    ```bash
    aipe journey record --journey <id> --repo <repo> --specialist <persona> \
-     --branch <branch> --worktree <path> --status dispatched --workspace <workspace>
+     --branch <branch> --worktree <path> --tier <tier> --model <model> \
+     --status dispatched --workspace <workspace>
    ```
 
-   c. **Dispatch the specialist as a subagent.** Read that repo's persona body
-   from `<repo>/.claude/skills/<slug>/SKILL.md` and start a subagent whose
-   prompt is: that persona identity, followed by the **hiring brief** (below),
-   and the instruction *"operate strictly inside `<worktree-path>`; when done,
-   commit, push `<branch>`, open a PR, and return the structured result."*
-   Dispatch all entries in a wave in parallel (one subagent each).
+   d. **Dispatch the specialist as a subagent.** Read that repo's persona body
+   from `<repo>/.claude/skills/<slug>/SKILL.md` and start a subagent **on the
+   resolved model** whose prompt is: that persona identity, followed by the
+   **hiring brief** (below), and the instruction *"operate strictly inside
+   `<worktree-path>`; when done, commit, push `<branch>`, open a PR, and return
+   the structured result."* Dispatch all entries in a wave in parallel.
 
-   d. **Collect results.** Each subagent returns one of:
+   e. **Collect results.** Each subagent returns one of:
    - `{ "status": "delivered", "pr": "<url>", "summary": "…" }` — record it:
      `aipe journey record … --pr <url> --status delivered`.
    - `{ "status": "escalate", "targetRepo": "<repo>", "need": "…", "reason": "…" }`
@@ -107,6 +138,8 @@ Hand the subagent this exact shape, filled from the data above:
   "repo": "<repo>",
   "specialist": "<persona>",
   "role": "dev-fullstack | qa",
+  "tier": "fast | standard | reasoning | frontier",
+  "model": "<resolved model id from `aipe model resolve`>",
   "worktree": "<absolute worktree path>",
   "branch": "aipe/<id>/<slug>",
   "task": "One scoped paragraph: what to build/fix in THIS repo only.",
@@ -127,6 +160,10 @@ Hand the subagent this exact shape, filled from the data above:
 - The dispatch law is adjudicated by `aipe dispatch validate`, never by hand;
   the same-repo law and the cap of 16 are physical, not advisory.
 - Provision worktrees only through `aipe worktree`; never `git worktree` by hand.
+- Model choice is your judgment (tier by complexity), but the gates are the CLI's:
+  a `frontier`/Fable dispatch needs the PE's explicit authorization recorded via
+  `aipe model authorize`, and a journey over the Opus (`reasoning`) volume
+  threshold must be reported to the PE. Never spend Fable or heavy Opus silently.
 - The hiring brief is assembled in memory and passed to the subagent — it is
   never written to disk. The durable record is the journey ledger + the PRs.
 - Each specialist opens its **own** PR; commits carry the namespaced persona

@@ -39,6 +39,7 @@ may happen in another language, but the repository is English-only.)
 | 8 | Persona load-order — preflight (`aipe validate-personas`) + live-step protocol | Preflight done; live step pending PE | [09-persona-load-order.md](09-persona-load-order.md) |
 | 9 | Release + distribution readiness — version guard, hardened `release.yml`, `RELEASING.md` | Prepared; domain + tag pending PE | [10-release-distribution.md](10-release-distribution.md) |
 | 10 | Harness adapters — `HarnessAdapter` seam + Claude Code extraction + `generic` adapter | Implemented; generic live-check pending PE | [11-harness-adapters.md](11-harness-adapters.md) |
+| 11 | Model policy — coordinator model selection by tier + Fable-authorization / Opus-volume gates | Implemented | [12-model-policy.md](12-model-policy.md) |
 
 ### Roadmap (not yet built)
 
@@ -50,10 +51,6 @@ may happen in another language, but the repository is English-only.)
 - Harness adapters — the `HarnessAdapter` seam + a `generic` adapter shipped
   (dossier 11); the generic adapter needs a **live** non-Claude session to
   validate, and `rehydrate`/toolbox-skill install are the remaining surfaces.
-- Model policy — coordinator picks the model by task complexity; frontier (Fable)
-  needs PE authorization; exorbitant Opus volume is reported to the PE. Specced
-  (`specs/2026-07-06-model-policy-design.md`); awaiting PE confirmation of the
-  tier→model map, auth scope, and Opus threshold before implementing.
 - Skill/MCP uninstall; release tag + Cloudflare rules (runbook in `RELEASING.md`)
 
 See the foundation design at

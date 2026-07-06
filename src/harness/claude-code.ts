@@ -90,4 +90,14 @@ export const claudeCodeAdapter: HarnessAdapter = {
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string {
     return scope === "repo" && repo ? join(repo, ".mcp.json") : ".mcp.json";
   },
+
+  resolveModel(tier: string): { id: string; label: string } | null {
+    const map: Record<string, { id: string; label: string }> = {
+      fast: { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
+      standard: { id: "claude-sonnet-5", label: "Sonnet 5" },
+      reasoning: { id: "claude-opus-4-8", label: "Opus 4.8" },
+      frontier: { id: "claude-fable-5", label: "Fable 5" },
+    };
+    return map[tier] ?? null;
+  },
 };
