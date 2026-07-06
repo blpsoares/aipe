@@ -31,6 +31,20 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Version consistency guard
+        run: bun run version:check
+
+      - name: Tag matches manifest version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="v$(node -p "require('./.claude-plugin/plugin.json').version")"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "Release tag '$TAG' does not match manifest version '$VERSION'." >&2
+            echo "Bump .claude-plugin/plugin.json (and run 'bun run version:check') to match the tag." >&2
+            exit 1
+          fi
+          echo "Tag $TAG matches manifest $VERSION."
+
       - name: Type-check and test
         run: |
           bun run typecheck
