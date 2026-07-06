@@ -36,13 +36,15 @@ may happen in another language, but the repository is English-only.)
 | — | Unified `aipe` CLI + zero-dependency distribution | Implemented | [06-unified-cli-distribution.md](06-unified-cli-distribution.md) |
 | 6 | Phase B (Operation): worktree, dispatch, journey, operate, dashboard + portability, toolbox, add-repo | Merged | [07-phase-b-operation.md](07-phase-b-operation.md) |
 | 7 | Module granularity — relationship + hire-specialists by fqid (`repo/module`) | Implemented | [08-module-granularity.md](08-module-granularity.md) |
+| 8 | Persona load-order — preflight (`aipe validate-personas`) + live-step protocol | Preflight done; live step pending PE | [09-persona-load-order.md](09-persona-load-order.md) |
 
 ### Roadmap (not yet built)
 
 - **AIPe Web Console** — responsive desktop+mobile visualization of the org
   chart, workers, and pipeline (`specs/2026-07-05-web-console-design.md`).
   **Build LAST**, once the pipeline data model is fully settled.
-- Persona load-order validation (needs a live session)
+- Persona load-order — the **live** observation still needs a real session
+  (preflight + exact steps shipped; see dossier 09).
 - Skill/MCP uninstall; harness adapters beyond Claude Code; release + Cloudflare
 
 See the foundation design at

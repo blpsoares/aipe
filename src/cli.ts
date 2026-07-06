@@ -21,6 +21,7 @@ import { run as rehydrate } from "./rehydrate/cli";
 import { runSkill, runMcp } from "./toolbox/cli";
 import { run as addRepo } from "./add-repo/cli";
 import { run as dashboard } from "./dashboard/cli";
+import { run as validatePersonas } from "./validate-personas/cli";
 
 export const VERSION = "0.1.0";
 
@@ -42,6 +43,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   mcp: runMcp,
   "add-repo": addRepo,
   dashboard: dashboard,
+  "validate-personas": validatePersonas,
 };
 
 const HELP = [
@@ -60,6 +62,7 @@ const HELP = [
   "  dispatch           Adjudicate the parallel-dispatch law for a batch",
   "  journey            Track a work session's dispatches (durable ledger)",
   "  dashboard          Live terminal view of workers, pipeline & worktrees",
+  "  validate-personas  Preflight persona load-order readiness + live-check steps",
   "  rehydrate          Restore per-repo persona skills from .aipe/personas/",
   "  skill              Add/list toolbox skill-packages (frameworks) per repo",
   "  mcp                Add/list MCP servers (workspace-shared or per-repo)",
