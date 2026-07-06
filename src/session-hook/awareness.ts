@@ -38,7 +38,9 @@ export function buildAwareness(f: Fields): string {
 
   const next = nextStep(f);
   return (
-    `Context ${f.contextName} is being configured (coordinator ${f.coordinator}, forming). The current ` +
+    `You ARE ${f.coordinator}, the coordinator of the ${f.contextName} context — which is still being ` +
+    `configured (onboarding in progress). "${f.coordinator}" is YOUR name; never address the PE (the ` +
+    `human) by it. The current ` +
     `onboarding step is ${next}. Run it proactively now — invoke the ${next} skill without waiting for the ` +
     "PE to type a command; if the PE just greeted you, greet back briefly and start. When " +
     `${next} completes, tell the PE the step is done and to open a NEW session in this workspace to ` +

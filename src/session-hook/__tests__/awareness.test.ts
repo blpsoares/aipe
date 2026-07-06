@@ -29,6 +29,9 @@ test("in progress → points at the current next step and asks for a new session
   expect(body).toContain("being configured");
   expect(body).toContain("/make-workspace");
   expect(body).toContain("NEW session");
+  // identity guard: the coordinator name is the AI's own, never the PE's
+  expect(body).toContain("You ARE Nicolas");
+  expect(body).toContain("never address the PE");
 });
 
 test("next step advances with phases", () => {
