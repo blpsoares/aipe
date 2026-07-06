@@ -50,6 +50,10 @@ may happen in another language, but the repository is English-only.)
 - Harness adapters — the `HarnessAdapter` seam + a `generic` adapter shipped
   (dossier 11); the generic adapter needs a **live** non-Claude session to
   validate, and `rehydrate`/toolbox-skill install are the remaining surfaces.
+- Model policy — coordinator picks the model by task complexity; frontier (Fable)
+  needs PE authorization; exorbitant Opus volume is reported to the PE. Specced
+  (`specs/2026-07-06-model-policy-design.md`); awaiting PE confirmation of the
+  tier→model map, auth scope, and Opus threshold before implementing.
 - Skill/MCP uninstall; release tag + Cloudflare rules (runbook in `RELEASING.md`)
 
 See the foundation design at
