@@ -41,6 +41,20 @@ test("run --harness cursor (coming soon) exits non-zero without creating a folde
   expect(code).toBe(1);
 });
 
+test("run --harness generic creates AGENTS.md + records the harness", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "aipe-start-run-"));
+  try {
+    const code = await run(["--harness", "generic", "--name", "opvibes", "--dir", parent]);
+    expect(code).toBe(0);
+    const agents = await readFile(join(parent, "aipe-opvibes", "AGENTS.md"), "utf8");
+    expect(agents).toContain("aipe session-context");
+    const harness = (await readFile(join(parent, "aipe-opvibes", ".aipe", "harness"), "utf8")).trim();
+    expect(harness).toBe("generic");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("installClaudeCode writes settings.json hook + the onboarding skills", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-start-"));
   try {

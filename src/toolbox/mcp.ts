@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { resolveAdapter } from "../harness/registry";
 import { readBrain } from "../make-workspace/read";
 import { readToolbox, upsertMcp, writeToolbox } from "./catalog";
 import { findSecrets } from "./secrets";
@@ -23,10 +24,10 @@ export type InstallMcpResult =
   | { ok: true; rows: InstallMcpRow[] }
   | { ok: false; error: string };
 
-// Merge one server into an .mcp.json file (Claude Code project MCP config),
-// preserving any other servers already there.
-async function mergeMcpJson(dir: string, name: string, config: unknown): Promise<void> {
-  const path = join(dir, ".mcp.json");
+// Merge one server into the harness's MCP config file, preserving any other
+// servers already there. `file` is the adapter-resolved basename (`.mcp.json`).
+async function mergeMcpJson(dir: string, file: string, name: string, config: unknown): Promise<void> {
+  const path = join(dir, file);
   let doc: { mcpServers?: Record<string, unknown> } = {};
   try {
     const parsed = JSON.parse(await readFile(path, "utf8"));
@@ -57,10 +58,14 @@ export async function installMcp(workspaceDir: string, input: InstallMcpInput): 
   }
 
   const pathByRepo = new Map(brain.brain.repos.map((r) => [r.name, r.path]));
+  // The MCP config filename is harness-specific (both current adapters use
+  // .mcp.json); the directory is already resolved from the brain's repo paths.
+  const adapter = await resolveAdapter(workspaceDir);
+  const mcpFile = basename(adapter.mcpConfigPath("workspace"));
 
   const rows: InstallMcpRow[] = [];
   if (input.scope === "workspace") {
-    await mergeMcpJson(workspaceDir, input.name, input.config);
+    await mergeMcpJson(workspaceDir, mcpFile, input.name, input.config);
     rows.push({ target: "workspace", status: "configured" });
   } else {
     for (const repoName of input.repos) {
@@ -71,7 +76,7 @@ export async function installMcp(workspaceDir: string, input: InstallMcpInput): 
       }
       const repoAbs = join(workspaceDir, repoPath);
       try {
-        await mergeMcpJson(repoAbs, input.name, input.config);
+        await mergeMcpJson(repoAbs, mcpFile, input.name, input.config);
         rows.push({ target: repoName, status: "configured" });
       } catch {
         rows.push({ target: repoName, status: "repo-missing" });

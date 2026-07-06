@@ -111,7 +111,7 @@ Add one repo to an already-onboarded context without redoing onboarding:
 | 7 | **Module granularity** — relationship graph + hiring by fqid (`repo/module`) | Implemented | [08](docs/dossie/08-module-granularity.md) |
 | 8 | Persona load-order — `aipe validate-personas` preflight + live-step protocol | Preflight done; live step pending | [09](docs/dossie/09-persona-load-order.md) |
 | 9 | Release + distribution readiness — version guard, hardened `release.yml`, [`RELEASING.md`](RELEASING.md) | Prepared; domain + tag pending | [10](docs/dossie/10-release-distribution.md) |
-| 10 | Harness adapters — architecture spec (`HarnessAdapter` seam) | Spec written; decision pending | [11](docs/dossie/11-harness-adapters.md) |
+| 10 | Harness adapters — `HarnessAdapter` seam + Claude Code extraction + `generic` adapter | Implemented; generic live-check pending | [11](docs/dossie/11-harness-adapters.md) |
 
 ### Roadmap (pending)
 
@@ -119,7 +119,7 @@ Add one repo to an already-onboarded context without redoing onboarding:
 |---|---|
 | **AIPe Web Console** (`aipe serve`) | Responsive desktop+mobile visualization of the org chart, workers, and pipeline. **The final planned sub-project** — build last. Spec: [`web-console-design`](docs/superpowers/specs/2026-07-05-web-console-design.md). |
 | Persona load-order — **live** check | Preflight (`aipe validate-personas`) + exact steps shipped (dossier 09); the live observation still needs a real interactive session. |
-| Non-Claude-Code harness adapters | `HarnessAdapter` seam specced (dossier 11). Awaiting the PE's implement-now vs. documented-foundation call; the live second adapter needs its target harness to test in. |
+| Non-Claude-Code harness adapters | `HarnessAdapter` seam + a `generic` (AGENTS.md) adapter shipped (dossier 11); `aipe start --harness generic` works. The generic adapter needs a **live** non-Claude session to validate; `rehydrate` + toolbox-skill install are the remaining surfaces. |
 | Skill/MCP uninstall | Toolbox supports add + list + match; removal not yet. |
 | Release tag + Cloudflare rules | Runbook ready in [`RELEASING.md`](RELEASING.md); domain (`blpsoares.dev` vs `openvibes.tech`) and the tag push are the PE's. |
 

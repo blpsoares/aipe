@@ -144,6 +144,31 @@ test("hires per module when the graph has module nodes (monorepo)", async () => 
   }
 });
 
+test("a generic-harness workspace writes personas in the AGENTS format + location", async () => {
+  const dir = await ws();
+  try {
+    await writeFile(join(dir, ".aipe", "harness"), "generic\n", "utf8");
+    await putReport(dir, "embark", "dev-fullstack", { repo: "embark", role: "dev-fullstack", name: "Joaquim", body: "You are Joaquim." });
+    await putReport(dir, "embark", "qa", { repo: "embark", role: "qa", name: "Marina", body: "You are Marina." });
+    await putReport(dir, "prontuario", "dev-fullstack", { repo: "prontuario", role: "dev-fullstack", name: "Pedro", body: "You are Pedro." });
+    await putReport(dir, "prontuario", "qa", { repo: "prontuario", role: "qa", name: "Karen", body: "You are Karen." });
+
+    await runHireSpecialists(dir);
+
+    // repo copy is the generic AGENTS-style file, not a .claude SKILL.md
+    const persona = await readFile(join(dir, "embark", ".aipe-personas", "joaquim.md"), "utf8");
+    expect(persona).toContain("# joaquim");
+    expect(persona).toContain("You are Joaquim.");
+    expect(persona.startsWith("---")).toBe(false);
+
+    // the published source-of-truth copy stays in the canonical SKILL.md format
+    const source = await readFile(join(dir, ".aipe", "personas", "embark", "joaquim", "SKILL.md"), "utf8");
+    expect(source).toContain("name: joaquim");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a missing (repo, role) report → phase pending, reports dir kept for retry", async () => {
   const dir = await ws();
   try {

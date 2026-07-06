@@ -1,9 +1,5 @@
-import type { PersonaReport, PersonaRole } from "./types";
-
-const ROLE_LABEL: Record<PersonaRole, string> = {
-  "dev-fullstack": "Fullstack specialist",
-  qa: "QA specialist",
-};
+import { claudeCodeAdapter } from "../harness/claude-code";
+import type { PersonaReport } from "./types";
 
 export function personaSlug(name: string): string {
   return name
@@ -15,14 +11,15 @@ export function personaSlug(name: string): string {
     .replace(/(^-+|-+$)/g, "");
 }
 
+// Renders a persona's Claude Code SKILL.md. The frontmatter/description shape
+// lives in the Claude Code adapter (the format is harness-specific); this keeps
+// the published .aipe/personas/ source in that canonical format for rehydrate.
 export function renderSkillMd(report: PersonaReport, stack: string[]): string {
-  const slug = personaSlug(report.name);
-  const stackLabel = stack.length > 0 ? stack.join(", ") : "unknown stack";
-  const module = report.module ?? null;
-  // A module persona is scoped to `repo/module`; a whole-repo persona to `repo`.
-  const scope = module ? `${report.repo}/${module}` : report.repo;
-  const unit = module ? "module" : "repo";
-  const description = `${ROLE_LABEL[report.role]} for the ${scope} ${unit} (${stackLabel}). Dispatched by the coordinator for tasks scoped to ${scope}, or worn directly when a session opens inside the ${report.repo} repo.`;
-
-  return `---\nname: ${slug}\ndescription: ${description}\n---\n\n${report.body.trim()}\n`;
+  return claudeCodeAdapter.wrapPersona(report.body, {
+    slug: personaSlug(report.name),
+    role: report.role,
+    repo: report.repo,
+    module: report.module ?? null,
+    stack,
+  });
 }

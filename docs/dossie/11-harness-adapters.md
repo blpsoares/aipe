@@ -1,17 +1,20 @@
-# Dossier 11 — Harness adapters (architecture spec)
+# Dossier 11 — Harness adapters (`HarnessAdapter` seam)
 
-**Status:** Spec written on `claude/aipe-finalize-i6443p` (frente 4 of 4).
-**No implementation** — this frente's deliverable is the design + a decision for
-the PE. Nothing under `src/` changed.
+**Status:** Spec **and implementation** on `claude/aipe-finalize-i6443p`
+(frente 4 of 4). After reviewing the spec the PE approved implementing the seam
+now (option a). The `HarnessAdapter` seam, the Claude Code extraction, a second
+`generic` adapter, and the threading are shipped and tested; the **live**
+validation of the generic adapter inside a real non-Claude harness is left to the
+PE (same live-session constraint as load-order).
 **Spec:** `2026-07-06-harness-adapters-design.md`.
 
-## Why spec-only
+## How this went (propose → decide → build)
 
-The PE's instruction was explicit: first propose the abstraction layer (what is
-Claude-Code-specific today vs. what a real adapter is), show the design, and ask
-whether to implement now or bank it as documented foundation — do **not** build a
-whole harness without approval. This entry records that proposal and the open
-decision.
+The PE's instruction was to first propose the abstraction (what is
+Claude-Code-specific vs. what an adapter is) and ask before building a whole
+harness. That proposal is the spec; the PE then approved option (a) — implement
+the behavior-preserving extraction now plus one file-based demonstrator adapter,
+leaving its live validation to them. This entry records both.
 
 ## The finding (what's portable vs. Claude-Code-specific)
 
@@ -54,17 +57,51 @@ inside that harness in a live session — the same constraint as persona
 load-order (dossier 09). Shipping a second adapter unvalidated would be the very
 "claimed it worked without checking" failure to avoid.
 
-## Decision for the PE (open)
+## What shipped (option a, TDD)
 
-- **(a) Implement the seam now** — the behavior-preserving Claude-Code extraction
-  + registry + threading through install/hire/rehydrate/toolbox, plus one
-  file-based `generic` adapter with fixture tests (its *live* validation left to
-  the PE). Moderate, low-risk refactor; ~2 new source files + tests.
-- **(b) Keep as documented foundation** — land the spec, ship v1 on Claude Code,
-  build the seam when the PE has named and can live-test the first second harness.
+**New `src/harness/` module:**
+- `types.ts` — the `HarnessAdapter` interface (install / startup-delivery /
+  persona-target + wrap / mcp-config-path) + plain `PersonaMeta` (so the module
+  imports nothing from hire-specialists — no cycle).
+- `skills.ts` — the embedded flow-skill texts (moved from `start/install.ts`),
+  shared by every adapter.
+- `claude-code.ts` — the Claude Code adapter: the `.claude/settings.json`
+  SessionStart hook + `.claude/skills/`, personas as `.claude/skills/<slug>/
+  SKILL.md` (the frontmatter/description assembly moved here), `.mcp.json`.
+  **Behavior-preserving** — every prior test passes unchanged.
+- `generic.ts` — a file-based demonstrator: `AGENTS.md` bootstrap + `.aipe/flows/`,
+  personas as `.aipe-personas/<slug>.md` (plain markdown, no frontmatter), shared
+  `.mcp.json`. Marked EXPERIMENTAL until live-validated.
+- `registry.ts` — `getAdapter(id)` (unknown/absent → claude-code) +
+  `writeHarness`/`readHarness` (`.aipe/harness`) + `resolveAdapter`.
 
-**Recommendation:** do the **extraction now** (removes the hard-coding, makes
-"any harness" true in code) but **defer the live second adapter** until the PE
-picks the target. Absent a decision this session (it became non-interactive), the
-default state is **(b): documented foundation** — no code was changed. The PE's
-answer flips it to (a).
+**Threading (each hard-coded Claude Code path now goes through the adapter):**
+- `start/cli.ts` installs via `getAdapter(harness.id).installIntegration` and
+  records the harness — so `aipe start --harness generic` now works
+  end-to-end. `start/install.ts` became a thin wrapper (kept for its tests).
+- `hire-specialists/run.ts` writes the **repo** persona copy via the recorded
+  adapter (`personaTarget` + `wrapPersona`); the published `.aipe/personas/`
+  source stays canonical SKILL.md for rehydrate. `render.ts`'s `renderSkillMd`
+  now delegates to the Claude Code adapter (single source for the format).
+- `toolbox/mcp.ts` resolves the MCP config filename from the adapter.
+- `HARNESSES`: `generic` flipped to `supported` (it has a real installer);
+  `codex`/`gemini`/`copilot`/`antigravity`/`cursor` stay `coming-soon`.
+
+**Verification:** repo-wide 221 pass / 1 known env-only fail; `tsc` clean;
+`build:host` OK. End-to-end through the compiled binary: `aipe start --harness
+generic --name demo` created `aipe-demo/` with `AGENTS.md`, `.aipe/flows/` (7
+flows), and `.aipe/harness = generic`; a generic-recorded workspace writes
+personas as `.aipe-personas/<slug>.md` while the published source stays SKILL.md.
+
+## Left to the PE + follow-up
+
+- **Live validation of the `generic` adapter** — running AIPe inside a real
+  non-Claude/AGENTS.md harness and watching a session pick it up. Not doable
+  headless (dossier 09's constraint); the adapter is marked EXPERIMENTAL until
+  then.
+- **Remaining adapter surfaces (documented, not yet routed):** `rehydrate` (still
+  restores to `.claude/skills`) and toolbox **skill** install location are still
+  Claude-Code-shaped; they read from the canonical source and are additive to
+  route through `personaTarget` when a non-CC harness is validated.
+- Picking the *named* first non-Claude target (Codex/Cursor/…) and giving it a
+  format-specific adapter beyond the `generic` demonstrator.

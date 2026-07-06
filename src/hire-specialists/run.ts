@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { makeFqid } from "../relationship/fqid";
+import { resolveAdapter } from "../harness/registry";
 import { readBrain } from "../make-workspace/read";
 import { readHiringGroups } from "./groups";
 import { dedupeReportsByName, resolveNames } from "./naming";
@@ -22,19 +23,32 @@ async function writePersonaFiles(
   groups: HiringGroup[],
 ): Promise<void> {
   const stackByFqid = new Map(groups.map((g) => [g.fqid, g.stack]));
+  const adapter = await resolveAdapter(workspaceDir);
   for (const report of reports) {
     const repo = brain.repos.find((r) => r.name === report.repo);
     if (!repo) continue;
     const fqid = makeFqid(report.repo, report.module);
     const stack = stackByFqid.get(fqid) ?? repo.stack ?? [];
     const slug = personaSlug(report.name);
-    const content = renderSkillMd(report, stack);
-    const skillDir = join(workspaceDir, repo.path, ".claude", "skills", slug);
+
+    // (1) the repo copy, in the recorded harness's persona format + location.
+    const target = adapter.personaTarget(slug);
+    const content = adapter.wrapPersona(report.body, {
+      slug,
+      role: report.role,
+      repo: report.repo,
+      module: report.module ?? null,
+      stack,
+    });
+    const skillDir = join(workspaceDir, repo.path, target.relDir);
     await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), content, "utf8");
+    await writeFile(join(skillDir, target.filename), content, "utf8");
+
+    // (2) the published source-of-truth copy under .aipe/personas/, kept in the
+    // canonical Claude Code SKILL.md format for `aipe rehydrate`.
     const sourceDir = join(workspaceDir, ".aipe", "personas", report.repo, slug);
     await mkdir(sourceDir, { recursive: true });
-    await writeFile(join(sourceDir, "SKILL.md"), content, "utf8");
+    await writeFile(join(sourceDir, "SKILL.md"), renderSkillMd(report, stack), "utf8");
   }
 }
 

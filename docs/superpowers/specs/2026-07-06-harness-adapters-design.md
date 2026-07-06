@@ -1,8 +1,10 @@
 # Harness adapters — architecture spec
 
 **Date:** 2026-07-06
-**Status:** Design proposal — **awaiting PE decision** (implement now vs. keep as
-documented foundation). No implementation is done; this spec is the deliverable.
+**Status:** Design **approved and implemented** (option a — see §7 and dossier
+11). The `HarnessAdapter` seam, the Claude Code extraction, a `generic`
+demonstrator adapter, and the threading are shipped; the generic adapter's *live*
+validation is left to the PE.
 **Depends on:** `2026-07-01-aipe-context-brain-design.md`,
 `2026-07-04-unified-cli-distribution-design.md`.
 
