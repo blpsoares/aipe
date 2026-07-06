@@ -13,7 +13,7 @@ The central analogy is a company:
 |---|---|---|
 | **PE** | The user. CEO/Product: sets the mission, priority, approves budget, decides cross-repo matters. | User in command, approving between phases. |
 | **Coordinator** | The main Claude, with a name set by the PE. | Reads the state, decomposes demands, dispatches, reviews, escalates. |
-| **Specialists (contractors)** | Devs hired per repo (1 dev-fullstack + 1 QA). | Subagents dispatched by the coordinator, materialized as persona skills installed inside each repo. |
+| **Specialists (contractors)** | Devs hired per hiring group — a whole repo, or each module of a monorepo (1 dev-fullstack + 1 QA per group). | Subagents dispatched by the coordinator, materialized as persona skills installed inside each repo. |
 
 Full design rationale: [`docs/superpowers/specs/2026-07-01-aipe-context-brain-design.md`](docs/superpowers/specs/2026-07-01-aipe-context-brain-design.md).
 
@@ -108,16 +108,20 @@ Add one repo to an already-onboarded context without redoing onboarding:
 | 5 | `/hire-specialists` — persona skills | Merged | [05](docs/dossie/05-hire-specialists.md) |
 | — | Unified `aipe` CLI + zero-dependency distribution | Merged | [06](docs/dossie/06-unified-cli-distribution.md) |
 | 6 | **Phase B — Operation** (worktree · dispatch · journey · `/operate` · dashboard) + portability + toolbox + `/aipe-add-repo` | Merged | [07](docs/dossie/07-phase-b-operation.md) |
+| 7 | **Module granularity** — relationship graph + hiring by fqid (`repo/module`) | Implemented | [08](docs/dossie/08-module-granularity.md) |
+| 8 | Persona load-order — `aipe validate-personas` preflight + live-step protocol | Preflight done; live step pending | [09](docs/dossie/09-persona-load-order.md) |
+| 9 | Release + distribution readiness — version guard, hardened `release.yml`, [`RELEASING.md`](RELEASING.md) | Prepared; domain + tag pending | [10](docs/dossie/10-release-distribution.md) |
+| 10 | Harness adapters — architecture spec (`HarnessAdapter` seam) | Spec written; decision pending | [11](docs/dossie/11-harness-adapters.md) |
 
 ### Roadmap (pending)
 
 | Item | Notes |
 |---|---|
 | **AIPe Web Console** (`aipe serve`) | Responsive desktop+mobile visualization of the org chart, workers, and pipeline. **The final planned sub-project** — build last. Spec: [`web-console-design`](docs/superpowers/specs/2026-07-05-web-console-design.md). |
-| Persona load-order validation | Needs a live interactive session (persona identity surviving a third-party skill loaded on top). Can't be done autonomously. |
-| Non-Claude-Code harness adapters | The `aipe` CLI is already harness-agnostic; only the skills are Claude-Code-shaped. Deferred (Claude Code suffices for now). |
+| Persona load-order — **live** check | Preflight (`aipe validate-personas`) + exact steps shipped (dossier 09); the live observation still needs a real interactive session. |
+| Non-Claude-Code harness adapters | `HarnessAdapter` seam specced (dossier 11). Awaiting the PE's implement-now vs. documented-foundation call; the live second adapter needs its target harness to test in. |
 | Skill/MCP uninstall | Toolbox supports add + list + match; removal not yet. |
-| Release + Cloudflare wiring | Deferred debt — see [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md). Publish the release, then create the redirect rules. |
+| Release tag + Cloudflare rules | Runbook ready in [`RELEASING.md`](RELEASING.md); domain (`blpsoares.dev` vs `openvibes.tech`) and the tag push are the PE's. |
 
 ## Laws & conventions
 
@@ -187,7 +191,7 @@ portable core is a single CLI (`aipe`):
 - Onboarding: `start · context-brain · make-workspace · relationship ·
   hire-specialists · read-state · session-context`
 - Operation & growth: `worktree · dispatch · journey · dashboard · rehydrate ·
-  skill · mcp · add-repo` (and the planned `serve`)
+  skill · mcp · add-repo · validate-personas` (and the planned `serve`)
 
 - **End users need no runtime.** The CLI compiles to a standalone executable
   per OS/arch (`bun build --compile`), so there's **no Bun, Node, or npm**
