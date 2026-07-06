@@ -37,6 +37,7 @@ may happen in another language, but the repository is English-only.)
 | 6 | Phase B (Operation): worktree, dispatch, journey, operate, dashboard + portability, toolbox, add-repo | Merged | [07-phase-b-operation.md](07-phase-b-operation.md) |
 | 7 | Module granularity — relationship + hire-specialists by fqid (`repo/module`) | Implemented | [08-module-granularity.md](08-module-granularity.md) |
 | 8 | Persona load-order — preflight (`aipe validate-personas`) + live-step protocol | Preflight done; live step pending PE | [09-persona-load-order.md](09-persona-load-order.md) |
+| 9 | Release + distribution readiness — version guard, hardened `release.yml`, `RELEASING.md` | Prepared; domain + tag pending PE | [10-release-distribution.md](10-release-distribution.md) |
 
 ### Roadmap (not yet built)
 
