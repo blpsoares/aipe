@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mergeEdges } from "../merge";
+import { buildNodes, mergeEdges } from "../merge";
 import type { RepoReport } from "../types";
 
 test("keeps a one-sided imports edge untouched", () => {
@@ -78,4 +78,68 @@ test("sorts output deterministically by from, then to, then type", () => {
   ];
   const edges = mergeEdges(reports);
   expect(edges.map((e) => e.from)).toEqual(["a-repo", "z-repo"]);
+});
+
+// --- module granularity ---
+
+test("qualifies a relation's local `from` to a module fqid (intra-monorepo)", () => {
+  const reports: RepoReport[] = [
+    {
+      repo: "prontuario",
+      stack: [],
+      relations: [{ from: "apps/web", to: "prontuario/api", type: "consumes", detail: "calls /records", evidence: "web:1" }],
+    },
+  ];
+  const edges = mergeEdges(reports);
+  expect(edges).toEqual([
+    { from: "prontuario/apps/web", to: "prontuario/api", type: "consumes", perspectives: [{ detail: "calls /records", evidence: "web:1" }] },
+  ]);
+});
+
+test("an absent `from` still qualifies to the whole repo (backward compatible)", () => {
+  const reports: RepoReport[] = [
+    { repo: "embark", stack: [], relations: [{ to: "prontuario/api", type: "consumes", detail: "d", evidence: "e" }] },
+  ];
+  const edges = mergeEdges(reports);
+  expect(edges[0]?.from).toBe("embark");
+  expect(edges[0]?.to).toBe("prontuario/api");
+});
+
+test("buildNodes: modules → module nodes; module-less repo → whole-repo node", () => {
+  const reports: RepoReport[] = [
+    {
+      repo: "prontuario",
+      stack: ["typescript"],
+      modules: [
+        { id: "api", stack: ["hono"], description: "REST API" },
+        { id: "apps/web", stack: ["react"] },
+      ],
+      relations: [],
+    },
+    { repo: "embark", stack: ["bun"], relations: [] },
+  ];
+  const nodes = buildNodes(reports, mergeEdges(reports));
+  expect(nodes.map((n) => n.fqid)).toEqual(["embark", "prontuario/api", "prontuario/apps/web"]);
+  expect(nodes.find((n) => n.fqid === "prontuario/api")).toEqual({
+    fqid: "prontuario/api",
+    repo: "prontuario",
+    module: "api",
+    stack: ["hono"],
+    description: "REST API",
+  });
+  expect(nodes.find((n) => n.fqid === "embark")).toEqual({ fqid: "embark", repo: "embark", module: null, stack: ["bun"] });
+});
+
+test("buildNodes: synthesizes a minimal node for an undeclared edge endpoint", () => {
+  const reports: RepoReport[] = [
+    { repo: "embark", stack: [], relations: [{ to: "prontuario/api", type: "consumes", detail: "d", evidence: "e" }] },
+  ];
+  const nodes = buildNodes(reports, mergeEdges(reports));
+  // embark declared (module-less), prontuario/api synthesized from the edge.
+  expect(nodes.find((n) => n.fqid === "prontuario/api")).toEqual({
+    fqid: "prontuario/api",
+    repo: "prontuario",
+    module: "api",
+    stack: [],
+  });
 });

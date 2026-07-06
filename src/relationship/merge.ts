@@ -1,4 +1,5 @@
-import type { MergedEdge, Perspective, RelationType, RepoReport } from "./types";
+import { makeFqid, parseFqid } from "./fqid";
+import type { GraphNode, MergedEdge, Perspective, RelationType, RepoReport } from "./types";
 
 interface RawEdge {
   from: string;
@@ -18,7 +19,10 @@ function toRawEdges(reports: RepoReport[]): RawEdge[] {
   const edges: RawEdge[] = [];
   for (const report of reports) {
     for (const relation of report.relations) {
-      edges.push({ from: report.repo, to: relation.to, type: relation.type, detail: relation.detail, evidence: relation.evidence });
+      // Qualify the local `from` to an fqid (`repo` or `repo/module`); `to` is
+      // already fully qualified by the agent.
+      const from = makeFqid(report.repo, relation.from);
+      edges.push({ from, to: relation.to, type: relation.type, detail: relation.detail, evidence: relation.evidence });
     }
   }
   return edges;
@@ -84,6 +88,61 @@ export function combineMergedEdges(existing: MergedEdge[], incoming: MergedEdge[
 
 // Drops every edge that touches a repo no longer present in the context. Keeps
 // an incremental merge from resurrecting stale edges if a repo was removed.
+// Endpoints are fqids, so we compare their repo segment against the repo set.
 export function pruneEdges(edges: MergedEdge[], repoNames: Set<string>): MergedEdge[] {
-  return edges.filter((e) => repoNames.has(e.from) && repoNames.has(e.to));
+  return edges.filter((e) => repoNames.has(parseFqid(e.from).repo) && repoNames.has(parseFqid(e.to).repo));
+}
+
+function sortNodes(nodes: GraphNode[]): GraphNode[] {
+  return nodes.sort((a, b) => a.fqid.localeCompare(b.fqid));
+}
+
+// Folds freshly-built nodes into the existing node set for the incremental path
+// (/aipe-add-repo). An incoming node (re-scanned) wins over an existing one with
+// the same fqid, so refreshed stack/description replace stale values.
+export function combineNodes(existing: GraphNode[], incoming: GraphNode[]): GraphNode[] {
+  const byFqid = new Map<string, GraphNode>();
+  for (const node of existing) byFqid.set(node.fqid, node);
+  for (const node of incoming) byFqid.set(node.fqid, node);
+  return sortNodes([...byFqid.values()]);
+}
+
+// Drops nodes whose repo is no longer present in the context.
+export function pruneNodes(nodes: GraphNode[], repoNames: Set<string>): GraphNode[] {
+  return nodes.filter((n) => repoNames.has(n.repo));
+}
+
+// Builds the graph's nodes from the reports and the merged edges. A node exists
+// for: (1) every declared module → `repo/module`; (2) every repo with no
+// declared modules → the whole-repo fqid; (3) any edge endpoint that was never
+// declared (e.g. a module in another repo the reporting agent named but whose
+// owner didn't enumerate) → a synthesized minimal node, so no edge dangles.
+export function buildNodes(reports: RepoReport[], edges: MergedEdge[]): GraphNode[] {
+  const byFqid = new Map<string, GraphNode>();
+
+  for (const report of reports) {
+    const modules = report.modules ?? [];
+    if (modules.length === 0) {
+      const fqid = makeFqid(report.repo);
+      byFqid.set(fqid, { fqid, repo: report.repo, module: null, stack: report.stack });
+      continue;
+    }
+    for (const mod of modules) {
+      const fqid = makeFqid(report.repo, mod.id);
+      const node: GraphNode = { fqid, repo: report.repo, module: mod.id, stack: mod.stack ?? [] };
+      if (mod.description !== undefined) node.description = mod.description;
+      byFqid.set(fqid, node);
+    }
+  }
+
+  // Synthesize minimal nodes for any endpoint not already declared.
+  for (const edge of edges) {
+    for (const fqid of [edge.from, edge.to]) {
+      if (byFqid.has(fqid)) continue;
+      const { repo, module } = parseFqid(fqid);
+      byFqid.set(fqid, { fqid, repo, module, stack: [] });
+    }
+  }
+
+  return sortNodes([...byFqid.values()]);
 }

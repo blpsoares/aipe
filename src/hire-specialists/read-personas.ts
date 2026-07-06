@@ -30,5 +30,12 @@ export async function readPersonas(workspaceDir: string): Promise<PersonaRegistr
   if (typeof parsed !== "object" || parsed === null) return [];
   const list = (parsed as Record<string, unknown>).personas;
   if (!Array.isArray(list)) return [];
-  return list.filter(isEntry);
+  // Normalize legacy rosters (no fqid/module) so downstream code sees null,
+  // not undefined; fqid falls back to the repo for whole-repo personas.
+  return list.filter(isEntry).map((e) => ({
+    ...e,
+    module: e.module ?? null,
+    fqid: e.fqid ?? (e.repo ?? null),
+    path: e.path ?? null,
+  }));
 }

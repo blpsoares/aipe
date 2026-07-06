@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { dedupeReportsByName, resolveNames } from "../naming";
-import type { BrainFile, PersonaReport, ProvidedNames } from "../types";
+import { repoGroups } from "../groups";
+import type { BrainFile, HiringGroup, PersonaReport, ProvidedNames } from "../types";
 
 const brain: BrainFile = {
   context: { name: "opvibes", coordinator: "Nicolas" },
@@ -10,8 +11,11 @@ const brain: BrainFile = {
   ],
 };
 
+const groups = repoGroups(brain);
+const coordinator = brain.context.coordinator;
+
 test("produces exactly 2 personas per repo (dev-fullstack + qa)", () => {
-  const result = resolveNames(brain, {});
+  const result = resolveNames(groups, coordinator, {});
   expect(result.personas).toHaveLength(4);
   expect(result.personas.filter((p) => p.repo === "embark").map((p) => p.role).sort()).toEqual(["dev-fullstack", "qa"]);
   expect(result.personas.filter((p) => p.repo === "prontuario").map((p) => p.role).sort()).toEqual(["dev-fullstack", "qa"]);
@@ -19,7 +23,7 @@ test("produces exactly 2 personas per repo (dev-fullstack + qa)", () => {
 
 test("uses PE-provided names when present", () => {
   const provided: ProvidedNames = { embark: { devFullstack: "Joaquim", qa: "Marina" } };
-  const result = resolveNames(brain, provided);
+  const result = resolveNames(groups, coordinator, provided);
   const embarkDev = result.personas.find((p) => p.repo === "embark" && p.role === "dev-fullstack");
   const embarkQa = result.personas.find((p) => p.repo === "embark" && p.role === "qa");
   expect(embarkDev?.name).toBe("Joaquim");
@@ -27,7 +31,7 @@ test("uses PE-provided names when present", () => {
 });
 
 test("fills missing names from the built-in pool, never colliding with the coordinator", () => {
-  const result = resolveNames(brain, {});
+  const result = resolveNames(groups, coordinator, {});
   const names = [result.coordinator, ...result.personas.map((p) => p.name)].map((n) => n.toLowerCase());
   expect(new Set(names).size).toBe(names.length);
   expect(result.coordinator).toBe("Nicolas");
@@ -38,11 +42,24 @@ test("re-picks from the pool when a provided name collides with an already-used 
     embark: { devFullstack: "Nicolas", qa: null },
     prontuario: { devFullstack: null, qa: null },
   };
-  const result = resolveNames(brain, provided);
+  const result = resolveNames(groups, coordinator, provided);
   const embarkDev = result.personas.find((p) => p.repo === "embark" && p.role === "dev-fullstack");
   expect(embarkDev?.name).not.toBe("Nicolas");
   const names = [result.coordinator, ...result.personas.map((p) => p.name)].map((n) => n.toLowerCase());
   expect(new Set(names).size).toBe(names.length);
+});
+
+test("hires per module when given module hiring groups (fqid-keyed names)", () => {
+  const monoGroups: HiringGroup[] = [
+    { fqid: "prontuario/api", repo: "prontuario", module: "api", stack: ["hono"] },
+    { fqid: "prontuario/apps/web", repo: "prontuario", module: "apps/web", stack: ["react"] },
+  ];
+  const provided: ProvidedNames = { "prontuario/api": { devFullstack: "Ana", qa: null } };
+  const result = resolveNames(monoGroups, coordinator, provided);
+  expect(result.personas).toHaveLength(4);
+  const apiDev = result.personas.find((p) => p.fqid === "prontuario/api" && p.role === "dev-fullstack");
+  expect(apiDev?.name).toBe("Ana");
+  expect(apiDev?.module).toBe("api");
 });
 
 test("dedupeReportsByName keeps the first occurrence of a duplicate name", () => {

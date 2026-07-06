@@ -1,4 +1,4 @@
-import type { BrainFile, NamingResult, PersonaAssignment, PersonaReport, ProvidedNames } from "./types";
+import type { HiringGroup, NamingResult, PersonaAssignment, PersonaReport, ProvidedNames } from "./types";
 
 const NAME_POOL = [
   "Alice", "Bruno", "Carla", "Diego", "Elena", "Felipe", "Gabriela", "Hugo",
@@ -16,14 +16,16 @@ function pickUnused(used: Set<string>): string {
   return `persona-${i}`;
 }
 
-export function resolveNames(brain: BrainFile, provided: ProvidedNames): NamingResult {
-  const used = new Set<string>([brain.context.coordinator.toLowerCase()]);
+// Resolves a final, context-unique name for every (hiring group, role). Names
+// are keyed by fqid in `provided`, so a monorepo can be hired per module.
+export function resolveNames(groups: HiringGroup[], coordinator: string, provided: ProvidedNames): NamingResult {
+  const used = new Set<string>([coordinator.toLowerCase()]);
   const personas: PersonaAssignment[] = [];
 
-  for (const repo of brain.repos) {
+  for (const group of groups) {
     for (const role of ["dev-fullstack", "qa"] as const) {
       const key = role === "dev-fullstack" ? "devFullstack" : "qa";
-      const suggested = provided[repo.name]?.[key];
+      const suggested = provided[group.fqid]?.[key];
       let name = suggested && suggested.trim().length > 0 ? suggested.trim() : undefined;
 
       if (!name || used.has(name.toLowerCase())) {
@@ -31,11 +33,11 @@ export function resolveNames(brain: BrainFile, provided: ProvidedNames): NamingR
       }
 
       used.add(name.toLowerCase());
-      personas.push({ repo: repo.name, role, name });
+      personas.push({ fqid: group.fqid, repo: group.repo, module: group.module, role, name });
     }
   }
 
-  return { coordinator: brain.context.coordinator, personas };
+  return { coordinator, personas };
 }
 
 export function dedupeReportsByName(reports: PersonaReport[], coordinatorName: string): PersonaReport[] {

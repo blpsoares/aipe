@@ -1,26 +1,34 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { makeFqid } from "../relationship/fqid";
 import { readBrain } from "../make-workspace/read";
+import { readHiringGroups } from "./groups";
 import { dedupeReportsByName, resolveNames } from "./naming";
 import { personaSlug, renderSkillMd } from "./render";
 import { readPersonas } from "./read-personas";
 import { readReports } from "./reports";
 import { buildRegistry, mergeRegistry, renderPersonasYaml } from "./registry";
 import { updateSpecialistsPhase } from "./state";
-import type { BrainFile, NamingResult, PersonaReport, PersonaRegistryEntry, PersonaRole, ProvidedNames, SpecialistsPhase } from "./types";
+import type { BrainFile, HiringGroup, NamingResult, PersonaReport, PersonaRegistryEntry, PersonaRole, ProvidedNames, SpecialistsPhase } from "./types";
 
 // Writes each report's persona SKILL.md into (1) the repo and (2) the published
 // .aipe/personas/ source of truth. Shared by the full and incremental paths.
+// The persona's stack is the hiring group's stack (a module's own stack in a
+// monorepo), falling back to the repo stack.
 async function writePersonaFiles(
   workspaceDir: string,
   brain: BrainFile,
   reports: PersonaReport[],
+  groups: HiringGroup[],
 ): Promise<void> {
+  const stackByFqid = new Map(groups.map((g) => [g.fqid, g.stack]));
   for (const report of reports) {
     const repo = brain.repos.find((r) => r.name === report.repo);
     if (!repo) continue;
+    const fqid = makeFqid(report.repo, report.module);
+    const stack = stackByFqid.get(fqid) ?? repo.stack ?? [];
     const slug = personaSlug(report.name);
-    const content = renderSkillMd(report, repo.stack ?? []);
+    const content = renderSkillMd(report, stack);
     const skillDir = join(workspaceDir, repo.path, ".claude", "skills", slug);
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(skillDir, "SKILL.md"), content, "utf8");
@@ -30,10 +38,11 @@ async function writePersonaFiles(
   }
 }
 
-function rosterCoversAllRepos(brain: BrainFile, roster: PersonaRegistryEntry[]): boolean {
-  return brain.repos.every((repo) =>
+// True when the roster covers every hiring group with both roles.
+function rosterCoversAllGroups(groups: HiringGroup[], roster: PersonaRegistryEntry[]): boolean {
+  return groups.every((group) =>
     (["dev-fullstack", "qa"] as const).every((role) =>
-      roster.some((e) => e.repo === repo.name && e.role === role),
+      roster.some((e) => (e.fqid ?? e.repo) === group.fqid && e.role === role),
     ),
   );
 }
@@ -48,11 +57,14 @@ export async function resolvePersonaNames(
 ): Promise<ResolveNamesResult> {
   const brainResult = await readBrain(workspaceDir);
   if (!brainResult.ok) return { ok: false, error: brainResult.error };
-  return { ok: true, result: resolveNames(brainResult.brain, provided) };
+  const groups = await readHiringGroups(workspaceDir, brainResult.brain);
+  return { ok: true, result: resolveNames(groups, brainResult.brain.context.coordinator, provided) };
 }
 
 export interface PersonaStatus {
   repo: string;
+  module: string | null;
+  fqid: string;
   role: PersonaRole;
   status: "ok" | "missing";
 }
@@ -65,25 +77,28 @@ export async function runHireSpecialists(workspaceDir: string): Promise<RunResul
   const brainResult = await readBrain(workspaceDir);
   if (!brainResult.ok) return { ok: false, error: brainResult.error };
   const brain = brainResult.brain;
+  const groups = await readHiringGroups(workspaceDir, brain);
 
   const reportsDir = join(workspaceDir, ".aipe", "specialists", ".reports");
   const rawReports = await readReports(reportsDir);
   const reports = dedupeReportsByName(rawReports, brain.context.coordinator);
-  const byKey = new Map(reports.map((r) => [`${r.repo}|${r.role}`, r]));
+  const byKey = new Map(reports.map((r) => [`${makeFqid(r.repo, r.module)}|${r.role}`, r]));
 
   const results: PersonaStatus[] = [];
-  for (const repo of brain.repos) {
+  for (const group of groups) {
     for (const role of ["dev-fullstack", "qa"] as const) {
       results.push({
-        repo: repo.name,
+        repo: group.repo,
+        module: group.module,
+        fqid: group.fqid,
         role,
-        status: byKey.has(`${repo.name}|${role}`) ? "ok" : "missing",
+        status: byKey.has(`${group.fqid}|${role}`) ? "ok" : "missing",
       });
     }
   }
   const phase: SpecialistsPhase = results.every((r) => r.status === "ok") ? "done" : "pending";
 
-  await writePersonaFiles(workspaceDir, brain, reports);
+  await writePersonaFiles(workspaceDir, brain, reports, groups);
 
   const registry = buildRegistry(brain, reports);
   await mkdir(join(workspaceDir, ".aipe"), { recursive: true });
@@ -106,6 +121,7 @@ export async function runHireSpecialistsMerge(workspaceDir: string): Promise<Run
   const brainResult = await readBrain(workspaceDir);
   if (!brainResult.ok) return { ok: false, error: brainResult.error };
   const brain = brainResult.brain;
+  const groups = await readHiringGroups(workspaceDir, brain);
 
   const existing = await readPersonas(workspaceDir);
   const reportsDir = join(workspaceDir, ".aipe", "specialists", ".reports");
@@ -116,23 +132,25 @@ export async function runHireSpecialistsMerge(workspaceDir: string): Promise<Run
     (r) => !usedNames.some((n) => n.toLowerCase() === r.name.toLowerCase()),
   );
 
-  await writePersonaFiles(workspaceDir, brain, reports);
+  await writePersonaFiles(workspaceDir, brain, reports, groups);
 
   const merged = mergeRegistry(brain, existing, reports);
   await mkdir(join(workspaceDir, ".aipe"), { recursive: true });
   await writeFile(join(workspaceDir, ".aipe", "personas.yaml"), renderPersonasYaml(merged), "utf8");
 
-  const phase: SpecialistsPhase = rosterCoversAllRepos(brain, merged) ? "done" : "pending";
+  const phase: SpecialistsPhase = rosterCoversAllGroups(groups, merged) ? "done" : "pending";
   await updateSpecialistsPhase(workspaceDir, phase);
   if (phase === "done") await rm(reportsDir, { recursive: true, force: true });
 
   const results: PersonaStatus[] = [];
-  for (const repo of brain.repos) {
+  for (const group of groups) {
     for (const role of ["dev-fullstack", "qa"] as const) {
       results.push({
-        repo: repo.name,
+        repo: group.repo,
+        module: group.module,
+        fqid: group.fqid,
         role,
-        status: merged.some((e) => e.repo === repo.name && e.role === role) ? "ok" : "missing",
+        status: merged.some((e) => (e.fqid ?? e.repo) === group.fqid && e.role === role) ? "ok" : "missing",
       });
     }
   }

@@ -14,6 +14,8 @@ export interface WorkerView {
   name: string;
   role: string;
   repo: string | null;
+  module: string | null;
+  fqid: string | null;
   status: WorkerStatus;
   journey?: string;
   pr?: string;
@@ -78,11 +80,13 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
   ]);
 
   const workers: WorkerView[] = roster.map((p) => {
+    const module = p.module ?? null;
+    const fqid = p.fqid ?? (p.repo ?? null);
     if (p.role === "coordinator" || p.repo === null) {
-      return { name: p.name, role: p.role, repo: p.repo, status: "active" as WorkerStatus };
+      return { name: p.name, role: p.role, repo: p.repo, module, fqid, status: "active" as WorkerStatus };
     }
     const derived = deriveStatus(p.repo, p.name, journeys);
-    return { name: p.name, role: p.role, repo: p.repo, ...derived };
+    return { name: p.name, role: p.role, repo: p.repo, module, fqid, ...derived };
   });
 
   const specialists = workers.filter((w) => w.role !== "coordinator");

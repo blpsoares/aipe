@@ -4,8 +4,8 @@ import { renderReport } from "../cli";
 test("renderReport formats each (repo, role) pair and the STATE line when done", () => {
   const lines = renderReport(
     [
-      { repo: "embark", role: "dev-fullstack", status: "ok" },
-      { repo: "embark", role: "qa", status: "ok" },
+      { repo: "embark", module: null, fqid: "embark", role: "dev-fullstack", status: "ok" },
+      { repo: "embark", module: null, fqid: "embark", role: "qa", status: "ok" },
     ],
     "done",
   );
@@ -17,8 +17,8 @@ test("renderReport formats each (repo, role) pair and the STATE line when done",
 test("renderReport lists missing pairs and marks pending", () => {
   const lines = renderReport(
     [
-      { repo: "embark", role: "dev-fullstack", status: "ok" },
-      { repo: "embark", role: "qa", status: "missing" },
+      { repo: "embark", module: null, fqid: "embark", role: "dev-fullstack", status: "ok" },
+      { repo: "embark", module: null, fqid: "embark", role: "qa", status: "missing" },
     ],
     "pending",
   );

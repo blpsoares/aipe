@@ -35,6 +35,7 @@ may happen in another language, but the repository is English-only.)
 | 5 | `/hire-specialists` — persona skills (renamed from `/context-brain-generator`) | Implemented | [05-hire-specialists.md](05-hire-specialists.md) |
 | — | Unified `aipe` CLI + zero-dependency distribution | Implemented | [06-unified-cli-distribution.md](06-unified-cli-distribution.md) |
 | 6 | Phase B (Operation): worktree, dispatch, journey, operate, dashboard + portability, toolbox, add-repo | Merged | [07-phase-b-operation.md](07-phase-b-operation.md) |
+| 7 | Module granularity — relationship + hire-specialists by fqid (`repo/module`) | Implemented | [08-module-granularity.md](08-module-granularity.md) |
 
 ### Roadmap (not yet built)
 

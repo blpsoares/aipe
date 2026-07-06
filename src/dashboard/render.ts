@@ -75,7 +75,10 @@ export function renderDashboard(s: Snapshot, opts: RenderOpts = {}): string {
       const glyph = paint(STATUS_COLOR[w.status], STATUS_GLYPH[w.status]);
       const extra = w.status === "delivered" && w.pr ? paint(C.gray, `  ${w.pr}`) : "";
       const jn = w.journey ? paint(C.gray, ` (${w.journey})`) : "";
-      out.push(`    ${glyph} ${w.name} ${paint(C.gray, w.role)}${jn}${extra}`);
+      // Show the module for a monorepo module persona, so two devs in the same
+      // repo are distinguishable by their module.
+      const mod = w.module ? paint(C.cyan, ` [${w.module}]`) : "";
+      out.push(`    ${glyph} ${w.name} ${paint(C.gray, w.role)}${mod}${jn}${extra}`);
     }
   }
   out.push("");

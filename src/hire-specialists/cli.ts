@@ -14,7 +14,7 @@ function getFlag(args: string[], name: string): string | undefined {
 export function renderReport(results: PersonaStatus[], phase: SpecialistsPhase): string[] {
   const lines: string[] = [];
   for (const r of results) {
-    lines.push(r.status === "ok" ? `OK ${r.repo} ${r.role}` : `MISSING ${r.repo} ${r.role}`);
+    lines.push(r.status === "ok" ? `OK ${r.fqid} ${r.role}` : `MISSING ${r.fqid} ${r.role}`);
   }
   const missing = results.filter((r) => r.status === "missing").length;
   const suffix = missing > 0 ? ` (${missing} missing of ${results.length} personas)` : "";

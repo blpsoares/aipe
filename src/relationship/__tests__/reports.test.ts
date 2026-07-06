@@ -74,6 +74,44 @@ test("rejects a report whose relations contain an out-of-enum type", async () =>
   }
 });
 
+test("parses a module-bearing report (monorepo) with relation `from`", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-rel-"));
+  try {
+    await writeFile(
+      join(dir, "prontuario.json"),
+      JSON.stringify({
+        repo: "prontuario",
+        stack: ["typescript"],
+        modules: [
+          { id: "api", stack: ["hono"], description: "REST API" },
+          { id: "apps/web", stack: ["react"] },
+        ],
+        relations: [{ from: "apps/web", to: "prontuario/api", type: "consumes", detail: "d", evidence: "e" }],
+      }),
+    );
+    const reports = await readReports(dir);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]?.modules).toHaveLength(2);
+    expect(reports[0]?.relations[0]?.from).toBe("apps/web");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("drops a report whose module entry is malformed", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-rel-"));
+  try {
+    await writeFile(
+      join(dir, "bad-module.json"),
+      JSON.stringify({ repo: "x", stack: [], modules: [{ stack: [] }], relations: [] }),
+    );
+    const reports = await readReports(dir);
+    expect(reports).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("rejects a report whose relations element is missing a required field", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-rel-"));
   try {

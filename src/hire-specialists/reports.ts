@@ -10,6 +10,8 @@ function isValidReport(value: unknown): value is PersonaReport {
   return (
     typeof r.repo === "string" &&
     r.repo.trim().length > 0 &&
+    // module is optional; when present it must be a non-empty string.
+    (r.module === undefined || r.module === null || (typeof r.module === "string" && r.module.trim().length > 0)) &&
     typeof r.role === "string" &&
     ROLES.has(r.role) &&
     typeof r.name === "string" &&

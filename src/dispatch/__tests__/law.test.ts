@@ -3,10 +3,10 @@ import { validateBatch } from "../law";
 import type { PersonaRegistryEntry } from "../types";
 
 const roster: PersonaRegistryEntry[] = [
-  { name: "Nicolas", role: "coordinator", repo: null, path: null },
-  { name: "Joaquim", role: "dev-fullstack", repo: "embark", path: "./embark/.claude/skills/joaquim" },
-  { name: "Marina", role: "qa", repo: "embark", path: "./embark/.claude/skills/marina" },
-  { name: "Pedro", role: "dev-fullstack", repo: "prontuario", path: "./prontuario/.claude/skills/pedro" },
+  { name: "Nicolas", role: "coordinator", repo: null, module: null, fqid: null, path: null },
+  { name: "Joaquim", role: "dev-fullstack", repo: "embark", module: null, fqid: "embark", path: "./embark/.claude/skills/joaquim" },
+  { name: "Marina", role: "qa", repo: "embark", module: null, fqid: "embark", path: "./embark/.claude/skills/marina" },
+  { name: "Pedro", role: "dev-fullstack", repo: "prontuario", module: null, fqid: "prontuario", path: "./prontuario/.claude/skills/pedro" },
 ];
 const repos = ["embark", "prontuario"];
 

@@ -17,9 +17,9 @@ const brain2: BrainFile = {
 
 test("mergeRegistry keeps existing personas and adds new repo's, deduped", () => {
   const existing: PersonaRegistryEntry[] = [
-    { name: "Nicolas", role: "coordinator", repo: null, path: null },
-    { name: "Joaquim", role: "dev-fullstack", repo: "embark", path: "./embark/.claude/skills/joaquim" },
-    { name: "Marina", role: "qa", repo: "embark", path: "./embark/.claude/skills/marina" },
+    { name: "Nicolas", role: "coordinator", repo: null, module: null, fqid: null, path: null },
+    { name: "Joaquim", role: "dev-fullstack", repo: "embark", module: null, fqid: "embark", path: "./embark/.claude/skills/joaquim" },
+    { name: "Marina", role: "qa", repo: "embark", module: null, fqid: "embark", path: "./embark/.claude/skills/marina" },
   ];
   const reports: PersonaReport[] = [
     { repo: "prontuario", role: "dev-fullstack", name: "Pedro", body: "b" },

@@ -85,6 +85,37 @@ test("renderDashboard (no color) shows the sections and coordinator", async () =
   }
 });
 
+test("renderDashboard shows the module tag for a monorepo module persona", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-dash-"));
+  try {
+    const brain: BrainFile = {
+      context: { name: "opvibes", coordinator: "Nicolas" },
+      repos: [{ name: "prontuario", url: "u", path: "./prontuario" }],
+    };
+    await mkdir(join(dir, ".aipe", "journeys"), { recursive: true });
+    await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(brain), "utf8");
+    await writeFile(
+      join(dir, ".aipe", "personas.yaml"),
+      stringify({
+        personas: [
+          { name: "Nicolas", role: "coordinator", repo: null, module: null, fqid: null, path: null },
+          { name: "Ana", role: "dev-fullstack", repo: "prontuario", module: "api", fqid: "prontuario/api", path: "p" },
+        ],
+      }),
+      "utf8",
+    );
+    const snap = await buildSnapshot(dir);
+    const ana = snap.workers.find((w) => w.name === "Ana");
+    expect(ana?.module).toBe("api");
+    expect(ana?.fqid).toBe("prontuario/api");
+    const frame = renderDashboard(snap, { color: false });
+    expect(frame).toContain("Ana");
+    expect(frame).toContain("[api]");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("buildSnapshot reports not-onboarded without a brain", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-dash-"));
   try {

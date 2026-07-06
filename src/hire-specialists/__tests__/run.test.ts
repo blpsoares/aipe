@@ -97,6 +97,53 @@ test("all (repo, role) pairs reported → phase done, SKILL.md files written, pe
   }
 });
 
+async function putGraph(dir: string, nodes: unknown[]): Promise<void> {
+  const relDir = join(dir, ".aipe", "relations");
+  await mkdir(relDir, { recursive: true });
+  await writeFile(join(relDir, "graph.yaml"), stringify({ nodes, edges: [] }), "utf8");
+}
+
+test("hires per module when the graph has module nodes (monorepo)", async () => {
+  const dir = await ws();
+  try {
+    // A single monorepo `prontuario` with two modules → 4 personas, not 2.
+    const monoBrain: BrainFile = {
+      context: { name: "opvibes", coordinator: "Nicolas" },
+      repos: [{ name: "prontuario", url: "git@github.com:opvibes/prontuario.git", path: "./prontuario", stack: ["typescript"] }],
+    };
+    await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(monoBrain), "utf8");
+    await putGraph(dir, [
+      { fqid: "prontuario/api", repo: "prontuario", module: "api", stack: ["hono"] },
+      { fqid: "prontuario/web", repo: "prontuario", module: "web", stack: ["react"] },
+    ]);
+
+    await putReport(dir, "api-dev", "x", { repo: "prontuario", module: "api", role: "dev-fullstack", name: "Ana", body: "You are Ana." });
+    await putReport(dir, "api-qa", "x", { repo: "prontuario", module: "api", role: "qa", name: "Bia", body: "You are Bia." });
+    await putReport(dir, "web-dev", "x", { repo: "prontuario", module: "web", role: "dev-fullstack", name: "Caio", body: "You are Caio." });
+    await putReport(dir, "web-qa", "x", { repo: "prontuario", module: "web", role: "qa", name: "Duda", body: "You are Duda." });
+
+    const result = await runHireSpecialists(dir);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.phase).toBe("done");
+      expect(result.results).toHaveLength(4);
+    }
+
+    // Ana's skill is grounded in the api module and its own stack.
+    const ana = await readFile(join(dir, "prontuario", ".claude", "skills", "ana", "SKILL.md"), "utf8");
+    expect(ana).toContain("You are Ana.");
+    expect(ana).toContain("for the prontuario/api module (hono).");
+
+    const registry = parse(await readFile(join(dir, ".aipe", "personas.yaml"), "utf8"));
+    expect(registry.personas).toHaveLength(5); // coordinator + 4
+    const anaEntry = registry.personas.find((p: { name: string }) => p.name === "Ana");
+    expect(anaEntry.fqid).toBe("prontuario/api");
+    expect(anaEntry.module).toBe("api");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a missing (repo, role) report → phase pending, reports dir kept for retry", async () => {
   const dir = await ws();
   try {
