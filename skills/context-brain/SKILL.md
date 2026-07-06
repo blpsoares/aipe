@@ -18,7 +18,10 @@ the writing to the typed CLI, which validates and serializes it.
    another folder.
 
 2. **Collect only what's missing, one question at a time:**
-   - **Coordinator** name (how the PE wants to be addressed).
+   - **Coordinator** name — the name the PE gives to **you, the AI coordinator**
+     (it is injected at SessionStart as "You ARE <name>" and is reserved so no
+     hired persona reuses it). This is *your* name as the AI, **not** the PE's own
+     name: the PE is the human running the session; the coordinator is you.
    - The **repositories**: for each one, `name`, `url` (git@, or https with `.git`
      optional) and a relative `path`
      (starting with `./`). `stack` is optional — only fill it in if the PE knows it;
