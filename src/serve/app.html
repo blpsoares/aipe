@@ -926,6 +926,28 @@ function orgLegend(){
   </div>`;
 }
 
+// Pan + zoom for the org chart: wheel zooms toward the cursor, drag pans,
+// double-click resets. Clicks on a specialist node still open their CV (drag is
+// suppressed when the pointer starts on a clickable node).
+let _orgZ = {s:1,x:0,y:0};
+function initOrgPanZoom(){
+  const wrap = document.getElementById("orgwrap"); if(!wrap) return;
+  const svg = wrap.querySelector("svg"); if(!svg) return;
+  // keep the current zoom/pan across live re-renders (don't reset on every tick)
+  wrap.style.overflow="hidden"; wrap.style.cursor="grab"; wrap.style.touchAction="none";
+  svg.style.transformOrigin="0 0";
+  const apply=()=>{ svg.style.transform=`translate(${_orgZ.x}px,${_orgZ.y}px) scale(${_orgZ.s})`; };
+  apply();
+  wrap.onwheel=(e)=>{ e.preventDefault(); const r=wrap.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+    const ns=Math.min(3,Math.max(0.3,_orgZ.s*Math.exp(-e.deltaY*0.0015))), k=ns/_orgZ.s;
+    _orgZ.x=mx-(mx-_orgZ.x)*k; _orgZ.y=my-(my-_orgZ.y)*k; _orgZ.s=ns; apply(); };
+  let drag=null;
+  wrap.onpointerdown=(e)=>{ if(e.target.closest(".onode[onclick]"))return; drag={x:e.clientX,y:e.clientY,ox:_orgZ.x,oy:_orgZ.y}; wrap.style.cursor="grabbing"; try{wrap.setPointerCapture(e.pointerId)}catch(_){} };
+  wrap.onpointermove=(e)=>{ if(!drag)return; _orgZ.x=drag.ox+(e.clientX-drag.x); _orgZ.y=drag.oy+(e.clientY-drag.y); apply(); };
+  wrap.onpointerup=()=>{ drag=null; wrap.style.cursor="grab"; };
+  wrap.ondblclick=()=>{ _orgZ={s:1,x:0,y:0}; apply(); };
+}
+
 // ── Router ───────────────────────────────────────────────────────────────────
 function go(v){
   CUR = v;
@@ -933,6 +955,7 @@ function go(v){
   $$("#tabbar button").forEach(b=>b.classList.toggle("on", b.dataset.view===v));
   $("#tbTitle").textContent = t("nav_" + v) || v;
   $("#view").innerHTML = views[v]();
+  if(v==="org") initOrgPanZoom();
   $("#app").classList.remove("mobileopen");
   closeCmd();
   if (v==="terminal"){ connectTerm(); const inp=$("#termIn"); if(inp) setTimeout(()=>inp.focus(),0); }
