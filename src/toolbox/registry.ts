@@ -43,26 +43,29 @@ Commit, alongside the change, objective proof it works:
 No commits are authored without the PE's go; evidence travels in the PR.
 `;
 
-// The full/heavy tier — GitHub Spec Kit, routed only to non-trivial tasks.
+// The full/heavy tier — GitHub Spec Kit's method, routed only to non-trivial
+// tasks. Follows Spec Kit's spec→plan→tasks→implement discipline; when the repo
+// has Spec Kit initialized (the /speckit.* commands present) use those directly.
 const SPEC_KIT = `---
 name: spec-kit
-description: Full spec-driven development (GitHub Spec Kit) for non-trivial tasks — /speckit.specify → plan → tasks → implement, scoped to your package, committed in the PR.
+description: Full spec-driven development (GitHub Spec Kit method) for non-trivial tasks — specify → plan → tasks → implement, scoped to your package, committed in the PR.
 ---
 
 # spec-kit — full spec-driven development
 
 For a **non-trivial** task (a new contract, a new package/service, a migration,
-anything the router sends here), run the Spec Kit flow **scoped to your package**:
+anything the router sends here), work **spec-first**, **scoped to your package**,
+following the Spec Kit method:
 
-1. **/speckit.specify** — the *what* and *why*, focused on your package's slice.
-2. **/speckit.plan** — tech approach and architecture.
-3. **/speckit.tasks** — the actionable breakdown.
-4. **/speckit.implement** — build against the plan, TDD.
+1. **Specify** — the *what* and *why*, focused on your package's slice.
+2. **Plan** — tech approach and architecture.
+3. **Tasks** — the actionable breakdown.
+4. **Implement** — build against the plan, TDD.
 
-Commit the generated spec/plan/tasks **into your PR**. The Spec Kit templates and
-commands are materialized in this repo (\`.specify/\` + the \`/speckit.*\` commands)
-so no external CLI/runtime is needed. Do not run the full flow on a trivial edit —
-that is what **sdd-lite** is for.
+Commit the spec/plan/tasks **into your PR**. If this repo has Spec Kit
+initialized (the \`/speckit.*\` commands are available) drive it with those;
+otherwise follow the same four steps directly. Do not run this heavy flow on a
+trivial edit — that is what **sdd-lite** is for.
 `;
 
 // The PE's parity framework — routed to migration/rewrite/port tasks only.
