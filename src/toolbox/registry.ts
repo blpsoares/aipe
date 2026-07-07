@@ -86,8 +86,10 @@ evidence-first cycle whose state lives in \`.audit/\` (not in model context):
 - **The AI never authors commits**; push / PR / merge happen only after an explicit
   human "yes". **Merge is 100% human**, after QA approves.
 
-Install the plugin per-project (\`blpsoares/parity-driven-development\`). For a
-greenfield feature there is nothing to track parity against — use sdd-lite / spec-kit.
+Installing this kit wired the PDD plugin into this repo (its marketplace +
+enablement in \`.claude/settings.json\`), so its \`/audit-*\` cycle loads on open.
+For a greenfield feature there is nothing to track parity against — use
+sdd-lite / spec-kit.
 `;
 
 export const KITS: Record<string, CuratedKit> = {

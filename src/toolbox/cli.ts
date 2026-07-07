@@ -11,6 +11,7 @@ import { readToolbox } from "./catalog";
 import { installMcp, removeMcp, type InstallMcpInput } from "./mcp";
 import { kitNames, resolveKit } from "./registry";
 import { matchSkills } from "./routing";
+import { wirePdd } from "./pdd";
 import { installSkill, installSkillContent, removeSkill, type InstallSkillInput } from "./skills";
 import { materializeSpecKit } from "./spec-kit";
 import type { TaskSize } from "./types";
@@ -118,6 +119,23 @@ async function skillAddKit(workspace: string, name: string, args: string[]): Pro
         if (!(await dirExists(abs))) continue;
         const files = await materializeSpecKit(abs);
         console.log(`MATERIALIZED spec-kit → ${repoName} (${files.length} files: .specify/ + .claude/commands/speckit.*)`);
+      }
+    }
+  }
+
+  // pdd is a living Claude Code plugin — wire its marketplace + enablement into
+  // each repo's .claude/settings.json so the real, up-to-date plugin loads there.
+  if (kit.name === "pdd") {
+    const brain = await readBrain(workspace);
+    if (brain.ok) {
+      const pathByRepo = new Map(brain.brain.repos.map((r) => [r.name, r.path]));
+      for (const repoName of repos.value) {
+        const rel = pathByRepo.get(repoName);
+        if (!rel) continue;
+        const abs = join(workspace, rel);
+        if (!(await dirExists(abs))) continue;
+        await wirePdd(abs);
+        console.log(`WIRED pdd → ${repoName} (.claude/settings.json: marketplace + enabledPlugins)`);
       }
     }
   }
