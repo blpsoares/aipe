@@ -842,37 +842,55 @@ function cvCard(w){
 function orgColor(st){ return st==="active"?"var(--sky)":st==="delivered"?"var(--accent)":st==="escalated"?"var(--amber)":"var(--slate)"; }
 function renderOrgSvg(){
   const repos = DATA.repos.map(r=>r.name);
-  const specsBy = {}; repos.forEach(r=> specsBy[r]=DATA.workers.filter(w=>w.repo===r));
-  const COLW = r => Math.max(160, (specsBy[r].length||1)*134);
-  const gap=30; let x=24; const cols=[];
-  repos.forEach(r=>{ const w=COLW(r); cols.push({r,x,w,cx:x+w/2}); x+=w+gap; });
+  const yC=42, yR=152, yS0=262, sH=64, pkgH=28, grpGap=14, colW=212, gap=34;
+  // Per repo, group specialists by package (w.module); "" = repo-level. Each
+  // package becomes a labelled cluster, so a monorepo's units are visually
+  // separated instead of one flat stack under the repo.
+  const colsData = repos.map(r=>{
+    const info = DATA.repos.find(x=>x.name===r);
+    const mono = !!(info.packages && info.packages.length>0);
+    const g = new Map();
+    DATA.workers.filter(w=>w.repo===r).forEach(w=>{ const k=w.module||""; if(!g.has(k)) g.set(k,[]); g.get(k).push(w); });
+    const rows=[]; let y=yS0;
+    for(const [pkg, ws] of g){
+      if(pkg){ rows.push({type:"pkg",label:pkg,y}); y+=pkgH; }
+      ws.forEach(w=>{ rows.push({type:"spec",w,y}); y+=sH; });
+      y+=grpGap;
+    }
+    return { r, info, mono, rows, botY:y };
+  });
+  let x=24; const cols=[];
+  colsData.forEach(cd=>{ cols.push(Object.assign({}, cd, {x, cx:x+colW/2})); x+=colW+gap; });
   const totalW=Math.max(560,x+24);
-  const yC=42, yR=152, yS0=262, sH=64;
-  const maxS=Math.max(1,...repos.map(r=>specsBy[r].length));
-  const totalH=yS0+maxS*sH+16;
+  const totalH=Math.max(yS0, ...cols.map(c=>c.botY))+16;
   const cxAll=totalW/2, P=[];
   DATA.relations.forEach(e=>{ const a=cols.find(c=>c.r===e.from), b=cols.find(c=>c.r===e.to); if(!a||!b)return;
     const y=yR-10, mid=(a.cx+b.cx)/2, lift=44+Math.abs(a.cx-b.cx)*0.05;
     P.push(`<path class="oedge" d="M ${a.cx} ${y} Q ${mid} ${y-lift} ${b.cx} ${y}"/>`);
     P.push(`<text class="oedge-l" x="${mid}" y="${y-lift+3}" text-anchor="middle">${esc(e.type)}</text>`); });
-  cols.forEach(c=>{ P.push(`<path class="olink" d="M ${cxAll} ${yC+22} C ${cxAll} ${yR}, ${c.cx} ${yC+22}, ${c.cx} ${yR-14}"/>`);
-    specsBy[c.r].forEach((w,i)=>{ const sy=yS0+i*sH; P.push(`<path class="olink" d="M ${c.cx} ${yR+34} L ${c.cx} ${sy-2}"/>`); }); });
+  cols.forEach(c=>{ P.push(`<path class="olink" d="M ${cxAll} ${yC+22} C ${cxAll} ${yR}, ${c.cx} ${yR}, ${c.cx} ${yR-14}"/>`);
+    c.rows.forEach(row=>{ P.push(`<path class="olink" d="M ${c.cx} ${yR+34} L ${c.cx} ${row.y-2}"/>`); }); });
   const node=(cx,y,w,h,fill,stroke,label,sub,click,tone,pulse)=>{ const x0=cx-w/2; return `<g class="onode" ${click} tabindex="0">
     <rect x="${x0}" y="${y}" width="${w}" height="${h}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.4"/>
     ${tone?`<circle class="${pulse?'odot-active':''}" cx="${x0+14}" cy="${y+h/2}" r="4.5" fill="${tone}"/>`:""}
     <text class="otitle" x="${cx+(tone?7:0)}" y="${y+(sub?21:h/2+4)}" text-anchor="middle" fill="var(--ink)" font-size="13">${esc(label)}</text>
     ${sub?`<text x="${cx+(tone?7:0)}" y="${y+37}" text-anchor="middle" fill="var(--ink-3)" font-size="11">${esc(sub)}</text>`:""}</g>`; };
   P.push(node(cxAll,yC,208,44,"color-mix(in srgb, var(--accent) 11%, var(--panel))","var(--accent)",DATA.context.coordinator||"coordinator","coordinator","",'var(--accent)',false));
-  cols.forEach(c=>{ const info=DATA.repos.find(r=>r.name===c.r);
-    // A repo that declares packages is a monorepo — label it as such (its border
-    // is tinted to set it apart from a plain single-package repo).
-    const mono = info.packages && info.packages.length>0;
-    const cat = info.kind || "";
-    const rsub = mono ? (cat ? `${t("t_monorepo")} · ${cat}` : t("t_monorepo")) : (cat || t("t_repo"));
-    P.push(node(c.cx,yR-14,Math.min(c.w-8,198),48,"var(--panel-2)",mono?"var(--accent)":"var(--line-2)",c.r,rsub,"", mono?"var(--accent)":"",false));
-    specsBy[c.r].forEach((w,i)=>{ const sy=yS0+i*sH, col=orgColor(w.status), sub=w.module?`${w.role} · ${w.module}`:w.role;
-      P.push(node(c.cx,sy,Math.min(c.w-8,198),48,`color-mix(in srgb, ${col} 8%, var(--panel))`,col,w.name,sub,`onclick="openWorker('${esc(w.name)}')"`,col,w.status==="active")); });
-    if(specsBy[c.r].length===0) P.push(`<text x="${c.cx}" y="${yS0+14}" text-anchor="middle" class="oedge-l">${t("nospec")}</text>`); });
+  cols.forEach(c=>{
+    const cat = c.info.kind || "";
+    const rsub = c.mono ? (cat ? `${t("t_monorepo")} · ${cat}` : t("t_monorepo")) : (cat || t("t_repo"));
+    P.push(node(c.cx,yR-14,colW-12,48,"var(--panel-2)",c.mono?"var(--accent)":"var(--line-2)",c.r,rsub,"", c.mono?"var(--accent)":"",false));
+    if(c.rows.length===0) P.push(`<text x="${c.cx}" y="${yS0+14}" text-anchor="middle" class="oedge-l">${t("nospec")}</text>`);
+    c.rows.forEach(row=>{
+      if(row.type==="pkg"){
+        const x0=c.cx-(colW-12)/2;
+        P.push(`<g class="onode"><rect x="${x0}" y="${row.y}" width="${colW-12}" height="${pkgH-6}" rx="8" fill="color-mix(in srgb, var(--accent) 7%, var(--panel-2))" stroke="var(--accent)" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="1"/><text class="otitle" x="${c.cx}" y="${row.y+15}" text-anchor="middle" fill="var(--ink-2)" font-size="11">${esc(row.label)}</text></g>`);
+      } else {
+        const w=row.w, col=orgColor(w.status);
+        P.push(node(c.cx,row.y,colW-12,48,`color-mix(in srgb, ${col} 8%, var(--panel))`,col,w.name,w.role,`onclick="openWorker('${esc(w.name)}')"`,col,w.status==="active"));
+      }
+    });
+  });
   return `<svg width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">${P.join("")}</svg>`;
 }
 // The mobile organogram: a vertical tree (coordinator → repo/monorepo cards →
