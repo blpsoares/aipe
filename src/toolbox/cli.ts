@@ -5,10 +5,12 @@
 // .aipe/toolbox.yaml (published) so the coordinator can see what exists and
 // when to use it.
 import { readFile } from "node:fs/promises";
+import { readBrain } from "../make-workspace/read";
 import { readToolbox } from "./catalog";
 import { installMcp, removeMcp, type InstallMcpInput } from "./mcp";
+import { kitNames, resolveKit } from "./registry";
 import { matchSkills } from "./routing";
-import { installSkill, removeSkill, type InstallSkillInput } from "./skills";
+import { installSkill, installSkillContent, removeSkill, type InstallSkillInput } from "./skills";
 import type { TaskSize } from "./types";
 
 // The name for `remove`: the first positional (after the subcommand), falling
@@ -39,7 +41,68 @@ async function readInput<T>(args: string[]): Promise<{ ok: true; value: T } | { 
 
 // ---- aipe skill ----
 
+function collectFlags(args: string[], name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const next = args[i + 1];
+    if (args[i] === name && next !== undefined && !next.startsWith("--")) out.push(next);
+  }
+  return out;
+}
+
+// Repos for a curated-kit install: every repo with --all, else each --repo <name>.
+async function resolveRepos(
+  workspace: string,
+  args: string[],
+): Promise<{ ok: true; value: string[] } | { ok: false; error: string }> {
+  if (args.includes("--all")) {
+    const brain = await readBrain(workspace);
+    if (!brain.ok) return { ok: false, error: brain.error };
+    return { ok: true, value: brain.brain.repos.map((r) => r.name) };
+  }
+  const repos = collectFlags(args, "--repo");
+  if (repos.length === 0) return { ok: false, error: "repos: pass --repo <name> (repeatable) or --all" };
+  return { ok: true, value: repos };
+}
+
+// Curated path: `aipe skill add <kit> [--repo <r> ...] [--all]` — AIPe knows the
+// kit's content + metadata, so no JSON payload is needed.
+async function skillAddKit(workspace: string, name: string, args: string[]): Promise<number> {
+  const kit = resolveKit(name);
+  if (!kit) {
+    console.log(`ERROR kit: unknown kit "${name}". Known: ${kitNames().join(", ")}. For a custom skill use --input.`);
+    return 1;
+  }
+  const repos = await resolveRepos(workspace, args);
+  if (!repos.ok) {
+    console.log(`ERROR ${repos.error}`);
+    return 1;
+  }
+  const result = await installSkillContent(workspace, {
+    name: kit.name,
+    description: kit.description,
+    objective: kit.objective,
+    whenToUse: kit.whenToUse,
+    repos: repos.value,
+    content: kit.content,
+    ...(kit.routing ? { routing: kit.routing } : {}),
+  });
+  if (!result.ok) {
+    console.log(`ERROR ${result.error}`);
+    return 1;
+  }
+  for (const r of result.rows) console.log(`${r.status.toUpperCase()} ${r.repo}`);
+  console.log(`OK skill=${kit.name}`);
+  return 0;
+}
+
 async function skillAdd(workspace: string, args: string[]): Promise<number> {
+  // A bare positional name (no --input) means a curated kit by name.
+  const positional = args[0];
+  if (positional !== undefined && !positional.startsWith("--") && !args.includes("--input")) {
+    return skillAddKit(workspace, positional, args.slice(1));
+  }
+
   const input = await readInput<InstallSkillInput>(args);
   if (!input.ok) {
     console.log(`ERROR input: ${input.error}`);
@@ -104,7 +167,8 @@ export async function runSkill(args: string[]): Promise<number> {
   if (sub === "match") return skillMatch(workspace, rest);
   if (sub === "remove") return skillRemove(workspace, rest);
   console.log(`ERROR command: unknown skill command "${sub ?? ""}"`);
-  console.log("Usage: aipe skill <add --input <json> | list | match --task-type <t> [--size <s>] | remove <name>> [--workspace <dir>]");
+  console.log(`Usage: aipe skill <add <kit> [--repo <r>...|--all] | add --input <json> | list | match --task-type <t> [--size <s>] | remove <name>> [--workspace <dir>]`);
+  console.log(`Known kits: ${kitNames().join(", ")}`);
   return 1;
 }
 

@@ -42,6 +42,18 @@ async function readSource(source: string): Promise<string | null> {
   }
 }
 
+// Skill metadata without a `source` — used by the curated kit registry, which
+// supplies the SKILL.md content directly instead of a file path.
+export interface InstallSkillContent {
+  name: string;
+  description: string;
+  objective: string;
+  whenToUse: string;
+  repos: string[];
+  content: string;
+  routing?: SkillRouting;
+}
+
 // Installs a skill package into the chosen repos and records it in the catalog.
 // The skill content is kept in .aipe/skills/<name>/ (published, source of truth
 // for rehydrate + the coordinator's workspace-root view) and copied into each
@@ -50,12 +62,21 @@ export async function installSkill(
   workspaceDir: string,
   input: InstallSkillInput,
 ): Promise<InstallSkillResult> {
+  const content = await readSource(input.source);
+  if (content === null) return { ok: false, error: `source: cannot read ${input.source}` };
+  return installSkillContent(workspaceDir, { ...input, content });
+}
+
+// The core install: given ready SKILL.md content (from a file or the curated
+// registry), write the source of truth + each repo copy + the catalog entry.
+export async function installSkillContent(
+  workspaceDir: string,
+  input: InstallSkillContent,
+): Promise<InstallSkillResult> {
   const brain = await readBrain(workspaceDir);
   if (!brain.ok) return { ok: false, error: brain.error };
 
-  const content = await readSource(input.source);
-  if (content === null) return { ok: false, error: `source: cannot read ${input.source}` };
-
+  const content = input.content;
   const pathByRepo = new Map(brain.brain.repos.map((r) => [r.name, r.path]));
 
   // (1) source of truth
