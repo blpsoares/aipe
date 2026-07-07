@@ -192,7 +192,7 @@ The rules the framework enforces (most as tested CLI, a few as skill prose):
 
 ```sh
 # 1. Install the aipe binary (no Bun/Node/npm needed)
-curl -fsSL https://aipe.blpsoares.dev/cli | sh
+curl -fsSL https://aipe.openvibes.tech/cli | sh
 
 # 2. Create a workspace. `aipe start` is a plain terminal program (no AI):
 #    it shows an arrow-key list of harnesses, asks the workspace name,

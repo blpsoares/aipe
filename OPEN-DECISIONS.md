@@ -10,8 +10,7 @@ direction. Updated after your install/onboarding clarifications.
   installers fetch from `AIPE_DOWNLOAD_BASE`, default
   `https://aipe.openvibes.tech/cli` (a Cloudflare redirect to the GitHub release
   assets). Install via `curl -fsSL https://aipe.openvibes.tech/cli | sh`. The
-  domain choice (open-source umbrella `openvibes.tech` over the personal portfolio
-  `blpsoares.dev`) is settled; portfolio credit links back to `blpsoares.dev`.
+  domain is `openvibes.tech` (the open-source umbrella), settled.
   → The release + Cloudflare wiring is the last manual step — see "Deferred debt"
   below and `RELEASING.md`.
 - **Onboarding is coordinator-driven, one step per session.** Implemented in

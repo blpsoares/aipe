@@ -45,8 +45,7 @@ runbook, without touching the PE-owned decisions.
 ## Left to the PE (unchanged by this session)
 
 1. **Download domain — RESOLVED to `openvibes.tech`.** The PE chose the
-   open-source umbrella `openvibes.tech` over the personal portfolio
-   `blpsoares.dev` (which keeps the authorship credit link). The default
+   open-source umbrella `openvibes.tech`. The default
    `AIPE_DOWNLOAD_BASE` was switched to `https://aipe.openvibes.tech/cli` across
    `bin/aipe`, `bin/aipe.cmd`, `scripts/install.sh`, `install.ps1`, `README.md`,
    `RELEASING.md`, and `OPEN-DECISIONS.md`; the GitHub slug stays `blpsoares/aipe`.

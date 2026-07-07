@@ -45,7 +45,7 @@ open-source umbrella), overridable at runtime via `AIPE_DOWNLOAD_BASE`.
 The launcher (`bin/aipe`, `bin/aipe.cmd`) and installers (`scripts/install.sh`,
 `scripts/install.ps1`) fetch binaries from `AIPE_DOWNLOAD_BASE`, which defaults to
 **`https://aipe.openvibes.tech/cli`** — AIPe lives under the `openvibes.tech`
-open-source umbrella (authored by [blpsoares.dev](https://blpsoares.dev)). Set
+open-source umbrella. Set
 `AIPE_DOWNLOAD_BASE` to point at a mirror or a local server.
 
 Cloudflare **Redirect Rules** on `openvibes.tech` (repo slug `blpsoares/aipe`).

@@ -74,7 +74,7 @@ runtime, then just open a folder and talk. Implemented:
   begin each step itself and, on completion, ask the PE to open a new session
   for the next step (no slash commands after the first greeting).
 - **Custom-domain delivery** — launcher + `install.sh`/`install.ps1` fetch from
-  `AIPE_DOWNLOAD_BASE` (default `https://aipe.blpsoares.dev/cli`), verified
+  `AIPE_DOWNLOAD_BASE` (default `https://aipe.openvibes.tech/cli`), verified
   end-to-end against a local base server.
 
 ## Final state

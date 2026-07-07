@@ -48,7 +48,7 @@ can't assume Claude Code.
    output.
 
 6. **Delivery via a custom domain.** `AIPE_DOWNLOAD_BASE` defaults to
-   `https://aipe.blpsoares.dev/cli` (a Cloudflare redirect to the release
+   `https://aipe.openvibes.tech/cli` (a Cloudflare redirect to the release
    assets built by `.github/workflows/release.yml`). `scripts/install.sh`
    (`curl … | sh`) and `install.ps1` fetch the right binary onto `$PATH`.
 
