@@ -159,15 +159,50 @@ async function skillRemove(workspace: string, args: string[]): Promise<number> {
   return 0;
 }
 
+// Installs the always-on floor (sdd-lite) into every repo, no prompt, and prints
+// a one-line suggestion for the coordinator to offer the heavier kits. Run right
+// after hire-specialists so every package has the spec-first floor by default.
+async function skillPreset(workspace: string): Promise<number> {
+  const kit = resolveKit("sdd-lite");
+  if (!kit) {
+    console.log("ERROR kit: sdd-lite missing from registry");
+    return 1;
+  }
+  const brain = await readBrain(workspace);
+  if (!brain.ok) {
+    console.log(`ERROR ${brain.error}`);
+    return 1;
+  }
+  const repos = brain.brain.repos.map((r) => r.name);
+  const result = await installSkillContent(workspace, {
+    name: kit.name,
+    description: kit.description,
+    objective: kit.objective,
+    whenToUse: kit.whenToUse,
+    repos,
+    content: kit.content,
+  });
+  if (!result.ok) {
+    console.log(`ERROR ${result.error}`);
+    return 1;
+  }
+  for (const r of result.rows) console.log(`${r.status.toUpperCase()} ${r.repo}`);
+  console.log(`OK preset=sdd-lite (floor installed in ${repos.length} repo(s))`);
+  console.log("SUGGEST enable spec-kit on non-trivial packages and pdd on migration repos:");
+  console.log("SUGGEST   aipe skill add spec-kit --repo <r>   |   aipe skill add pdd --repo <r>");
+  return 0;
+}
+
 export async function runSkill(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const [sub, ...rest] = args;
   if (sub === "add") return skillAdd(workspace, rest);
+  if (sub === "preset") return skillPreset(workspace);
   if (sub === "list") return skillList(workspace);
   if (sub === "match") return skillMatch(workspace, rest);
   if (sub === "remove") return skillRemove(workspace, rest);
   console.log(`ERROR command: unknown skill command "${sub ?? ""}"`);
-  console.log(`Usage: aipe skill <add <kit> [--repo <r>...|--all] | add --input <json> | list | match --task-type <t> [--size <s>] | remove <name>> [--workspace <dir>]`);
+  console.log(`Usage: aipe skill <add <kit> [--repo <r>...|--all] | add --input <json> | preset | list | match --task-type <t> [--size <s>] | remove <name>> [--workspace <dir>]`);
   console.log(`Known kits: ${kitNames().join(", ")}`);
   return 1;
 }

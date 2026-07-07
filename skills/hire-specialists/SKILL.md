@@ -93,6 +93,16 @@ CLI, same as the earlier onboarding steps.
     Mention that onboarding is now complete — opening a session directly
     inside a repo will load that repo's personas automatically.
 
+11. **Install the spec-first floor + offer the heavier kits.** Run
+    `aipe skill preset --workspace <workspace>` — it installs the always-on
+    **`sdd-lite`** floor (short spec + evidence + task doc) into every repo, no
+    prompt. Then offer the PE, in **one** message, the routed kits:
+    **spec-kit** on packages with non-trivial work
+    (`aipe skill add spec-kit --repo <r>`) and **pdd** on any repo that is a
+    legacy migration/port (`aipe skill add pdd --repo <r>`). Presets do the
+    rest; at dispatch time you route the right kit per task with
+    `aipe skill match`.
+
 ## Rules
 
 - Never write `personas.yaml`, `state.yaml`, or any persona `SKILL.md` by
