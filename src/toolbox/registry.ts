@@ -62,10 +62,11 @@ following the Spec Kit method:
 3. **Tasks** — the actionable breakdown.
 4. **Implement** — build against the plan, TDD.
 
-Commit the spec/plan/tasks **into your PR**. If this repo has Spec Kit
-initialized (the \`/speckit.*\` commands are available) drive it with those;
-otherwise follow the same four steps directly. Do not run this heavy flow on a
-trivial edit — that is what **sdd-lite** is for.
+Commit the spec/plan/tasks **into your PR**. Installing this kit materialized the
+real Spec Kit into the repo — the \`/speckit.*\` slash commands (\`.claude/commands/\`)
+plus its templates and scripts (\`.specify/\`) — so drive it with
+\`/speckit.specify\` → \`/speckit.plan\` → \`/speckit.tasks\` → \`/speckit.implement\`.
+Do not run this heavy flow on a trivial edit — that is what **sdd-lite** is for.
 `;
 
 // The PE's parity framework — routed to migration/rewrite/port tasks only.

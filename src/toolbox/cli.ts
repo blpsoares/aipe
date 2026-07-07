@@ -4,14 +4,25 @@
 // payload (rich metadata is awkward as flags); everything is recorded in
 // .aipe/toolbox.yaml (published) so the coordinator can see what exists and
 // when to use it.
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
 import { readToolbox } from "./catalog";
 import { installMcp, removeMcp, type InstallMcpInput } from "./mcp";
 import { kitNames, resolveKit } from "./registry";
 import { matchSkills } from "./routing";
 import { installSkill, installSkillContent, removeSkill, type InstallSkillInput } from "./skills";
+import { materializeSpecKit } from "./spec-kit";
 import type { TaskSize } from "./types";
+
+async function dirExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // The name for `remove`: the first positional (after the subcommand), falling
 // back to --name. Ignores flag values so `remove foo --workspace /x` works.
@@ -92,6 +103,25 @@ async function skillAddKit(workspace: string, name: string, args: string[]): Pro
     return 1;
   }
   for (const r of result.rows) console.log(`${r.status.toUpperCase()} ${r.repo}`);
+
+  // spec-kit is more than a SKILL.md: materialize its vendored templates +
+  // scripts (.specify/) and the /speckit.* slash commands (.claude/commands/)
+  // into each repo that exists on disk.
+  if (kit.name === "spec-kit") {
+    const brain = await readBrain(workspace);
+    if (brain.ok) {
+      const pathByRepo = new Map(brain.brain.repos.map((r) => [r.name, r.path]));
+      for (const repoName of repos.value) {
+        const rel = pathByRepo.get(repoName);
+        if (!rel) continue;
+        const abs = join(workspace, rel);
+        if (!(await dirExists(abs))) continue;
+        const files = await materializeSpecKit(abs);
+        console.log(`MATERIALIZED spec-kit → ${repoName} (${files.length} files: .specify/ + .claude/commands/speckit.*)`);
+      }
+    }
+  }
+
   console.log(`OK skill=${kit.name}`);
   return 0;
 }
