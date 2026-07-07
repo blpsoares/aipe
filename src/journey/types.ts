@@ -19,6 +19,17 @@ export interface JourneyDispatch {
   worktree: string;
   pr?: string;
   status: DispatchStatus;
+  // Model-policy audit (optional; absent on legacy ledgers): the tier the
+  // coordinator assigned and the concrete model the specialist ran on.
+  tier?: string;
+  model?: string;
+}
+
+// An explicit PE grant for a gated tier, recorded only after the PE says yes in
+// the live session. Scope is per journey (PE-confirmed).
+export interface JourneyAuthorization {
+  tier: string;
+  grantedBy: string;
 }
 
 // The coordinator's Orientation Spec for this journey (path relative to the
@@ -33,4 +44,5 @@ export interface JourneyLedger {
   id: string;
   dispatches: JourneyDispatch[];
   spec?: JourneySpec;
+  authorizations?: JourneyAuthorization[];
 }

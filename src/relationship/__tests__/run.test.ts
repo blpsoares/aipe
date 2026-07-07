@@ -72,6 +72,36 @@ test("all repos reported → phase done, graph/readme written, reports dir clean
   }
 });
 
+test("a monorepo report → module nodes persisted by fqid + intra-monorepo edge", async () => {
+  const dir = await ws();
+  try {
+    await putReport(dir, "embark", { repo: "embark", stack: ["typescript"], relations: [] });
+    await putReport(dir, "prontuario", {
+      repo: "prontuario",
+      stack: ["typescript"],
+      modules: [
+        { id: "api", stack: ["hono"], description: "REST API" },
+        { id: "apps/web", stack: ["react"] },
+      ],
+      relations: [{ from: "apps/web", to: "prontuario/api", type: "consumes", detail: "calls /records", evidence: "web:1" }],
+    });
+
+    const result = await runRelationship(dir);
+    expect(result.ok && result.phase).toBe("done");
+
+    const graph = parse(await readFile(join(dir, ".aipe", "relations", "graph.yaml"), "utf8"));
+    expect(graph.nodes.map((n: { fqid: string }) => n.fqid).sort()).toEqual(["embark", "prontuario/api", "prontuario/apps/web"]);
+    expect(graph.edges).toHaveLength(1);
+    expect(graph.edges[0].from).toBe("prontuario/apps/web");
+    expect(graph.edges[0].to).toBe("prontuario/api");
+
+    const readme = await readFile(join(dir, ".aipe", "relations", "README.md"), "utf8");
+    expect(readme).toContain("### prontuario/api");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a missing report → phase pending, reports dir kept for retry", async () => {
   const dir = await ws();
   try {

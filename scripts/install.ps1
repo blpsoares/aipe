@@ -1,12 +1,12 @@
 # AIPe installer (Windows PowerShell). Downloads the standalone `aipe.exe` and
 # puts it on the PATH — no Bun/Node/npm required.
 #
-#   irm https://aipe.blpsoares.dev/cli/install.ps1 | iex
+#   irm https://aipe.openvibes.tech/cli/install.ps1 | iex
 #
 # Env overrides: $env:AIPE_DOWNLOAD_BASE, $env:AIPE_INSTALL_DIR
 $ErrorActionPreference = "Stop"
 
-$base = if ($env:AIPE_DOWNLOAD_BASE) { $env:AIPE_DOWNLOAD_BASE } else { "https://aipe.blpsoares.dev/cli" }
+$base = if ($env:AIPE_DOWNLOAD_BASE) { $env:AIPE_DOWNLOAD_BASE } else { "https://aipe.openvibes.tech/cli" }
 $installDir = if ($env:AIPE_INSTALL_DIR) { $env:AIPE_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "aipe\bin" }
 
 $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x64" }

@@ -18,7 +18,7 @@ export const HARNESSES: Harness[] = [
   { id: "copilot", label: "GitHub Copilot", status: "coming-soon" },
   { id: "antigravity", label: "Antigravity", status: "coming-soon" },
   { id: "cursor", label: "Cursor", status: "coming-soon" },
-  { id: "generic", label: "Generic / any other harness", status: "coming-soon" },
+  { id: "generic", label: "Generic / AGENTS.md harness (experimental)", status: "supported" },
 ];
 
 const WORKSPACE_RULE =

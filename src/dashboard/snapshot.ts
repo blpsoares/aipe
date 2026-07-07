@@ -258,7 +258,7 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     journeys.map(async (j) => ({ ...j, updatedAt: await journeyMtime(workspaceDir, j.id) })),
   );
 
-  const relations: RelationEdgeView[] = graph.map((e) => ({
+  const relations: RelationEdgeView[] = graph.edges.map((e) => ({
     from: e.from,
     to: e.to,
     type: e.type,

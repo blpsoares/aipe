@@ -6,11 +6,14 @@ direction. Updated after your install/onboarding clarifications.
 
 ## Resolved by you (now implemented)
 
-- **Binary delivery = a custom domain.** The launcher and installers fetch from
-  `AIPE_DOWNLOAD_BASE`, default `https://aipe.blpsoares.dev/cli` (your
-  Cloudflare redirect). Install via `curl -fsSL https://aipe.blpsoares.dev/cli | sh`.
-  → The release + Cloudflare wiring is intentionally **deferred to near the end**
-  — see "Deferred debt" below.
+- **Binary delivery = a custom domain, on `openvibes.tech`.** The launcher and
+  installers fetch from `AIPE_DOWNLOAD_BASE`, default
+  `https://aipe.openvibes.tech/cli` (a Cloudflare redirect to the GitHub release
+  assets). Install via `curl -fsSL https://aipe.openvibes.tech/cli | sh`. The
+  domain choice (open-source umbrella `openvibes.tech` over the personal portfolio
+  `blpsoares.dev`) is settled; portfolio credit links back to `blpsoares.dev`.
+  → The release + Cloudflare wiring is the last manual step — see "Deferred debt"
+  below and `RELEASING.md`.
 - **Onboarding is coordinator-driven, one step per session.** Implemented in
   the SessionStart hook: the coordinator starts each step itself when the PE
   greets it, then announces completion and asks the PE to open a new session
@@ -77,14 +80,14 @@ are just redirects to release assets, so they 404 until the assets exist.
    `install.sh`/`install.ps1` + `SHA256SUMS`.
 3. **Create the Cloudflare rules** (use `latest/download` so they never need
    updating on future releases):
-   - `aipe.blpsoares.dev/cli` (exact) → raw `install.sh`
+   - `aipe.openvibes.tech/cli` (exact) → raw `install.sh`
      (`raw.githubusercontent.com/blpsoares/aipe/main/scripts/install.sh`).
-   - `aipe.blpsoares.dev/cli/install.ps1` → raw `install.ps1`.
-   - `aipe.blpsoares.dev/cli/aipe-<os>-<arch>[.exe]` →
+   - `aipe.openvibes.tech/cli/install.ps1` → raw `install.ps1`.
+   - `aipe.openvibes.tech/cli/aipe-<os>-<arch>[.exe]` →
      `github.com/blpsoares/aipe/releases/latest/download/aipe-<os>-<arch>[.exe]`
      (labels: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
      `windows-x64.exe`).
-4. **Test:** `curl -fsSL https://aipe.blpsoares.dev/cli | sh`.
+4. **Test:** `curl -fsSL https://aipe.openvibes.tech/cli | sh`.
 
 Optional prep I can do before then: switch the installer to the
 `latest/download` pattern and write the exact rule values, so step 3 is

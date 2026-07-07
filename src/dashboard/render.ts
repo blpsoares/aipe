@@ -75,7 +75,10 @@ export function renderDashboard(s: Snapshot, opts: RenderOpts = {}): string {
       const glyph = paint(STATUS_COLOR[w.status], STATUS_GLYPH[w.status]);
       const extra = w.status === "delivered" && w.pr ? paint(C.gray, `  ${w.pr}`) : "";
       const jn = w.journey ? paint(C.gray, ` (${w.journey})`) : "";
-      out.push(`    ${glyph} ${w.name} ${paint(C.gray, w.role)}${jn}${extra}`);
+      // Show the module for a monorepo module persona, so two devs in the same
+      // repo are distinguishable by their module.
+      const mod = w.module ? paint(C.cyan, ` [${w.module}]`) : "";
+      out.push(`    ${glyph} ${w.name} ${paint(C.gray, w.role)}${mod}${jn}${extra}`);
     }
   }
   out.push("");
@@ -94,7 +97,9 @@ export function renderDashboard(s: Snapshot, opts: RenderOpts = {}): string {
           : d.status === "dispatched" ? "active" : "available";
         const glyph = paint(STATUS_COLOR[st], STATUS_GLYPH[st]);
         const pr = d.pr ? paint(C.gray, `  ${d.pr}`) : "";
-        out.push(`    ${glyph} ${paint(C.dim, d.repo)} · ${d.specialist} ${paint(C.gray, d.status)}${pr}`);
+        // Show the model/tier the dispatch ran on, when recorded (model policy).
+        const model = d.tier || d.model ? paint(C.magenta, ` «${d.tier ?? ""}${d.tier && d.model ? ":" : ""}${d.model ?? ""}»`) : "";
+        out.push(`    ${glyph} ${paint(C.dim, d.repo)} · ${d.specialist} ${paint(C.gray, d.status)}${model}${pr}`);
       }
     }
   }

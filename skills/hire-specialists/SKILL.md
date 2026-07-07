@@ -5,12 +5,16 @@ description: Use in step 4 (last) of AIPe onboarding to hire the context's speci
 
 # /hire-specialists
 
-Hires the context's specialists: for every repo in `brain.yaml`, one
-dev-fullstack persona and one QA persona, each installed as a two-mode skill
-inside that repo (`<repo>/.claude/skills/<name>/SKILL.md`). You (the
-coordinator) drive naming and dispatch subagents that write persona prose —
-name resolution, validation, and file writing are handled by a deterministic
-CLI, same as the earlier onboarding steps.
+Hires the context's specialists: for every **hiring group**, one dev-fullstack
+persona and one QA persona, each installed as a two-mode skill inside its repo
+(`<repo>/.claude/skills/<name>/SKILL.md`). A **hiring group** is a node in the
+relationship graph (`.aipe/relations/graph.yaml`) — a **whole repo** for a plain
+single-purpose repo, or a **module** (`repo/module`, an **fqid**) for each module
+of a monorepo. So a monorepo with 3 modules hires 3 dev + 3 QA, one pair per
+module; a plain repo hires 1 dev + 1 QA, exactly as before. You (the coordinator)
+drive naming and dispatch subagents that write persona prose — name resolution,
+validation, and file writing are handled by a deterministic CLI, same as the
+earlier onboarding steps.
 
 ## Flow
 
@@ -22,49 +26,59 @@ CLI, same as the earlier onboarding steps.
    no stack/relations data to ground personas in yet.
 
 3. **Read `brain.yaml`** (repos, stack, `context.coordinator`) and
-   `.aipe/relations/graph.yaml` (edges) directly, to have them on hand for
-   steps 4 and 6.
+   `.aipe/relations/graph.yaml` (its `nodes:` = the hiring groups, and `edges:`)
+   directly, to have them on hand for steps 4 and 6. The **nodes** are the units
+   you hire against: `fqid: embark` (a whole repo) or `fqid: prontuario/api` (a
+   module). If the graph has no `nodes` (a legacy context), the CLI falls back to
+   one group per repo automatically.
 
-4. **Ask the PE for names, one repo at a time.** For each repo, ask for the
-   dev-fullstack's name and the QA's name. The PE may answer or ask you to
-   generate one — leave that slot `null` in this step, the CLI fills it.
-   Assemble the answers into a `ProvidedNames` JSON object, e.g.:
+4. **Ask the PE for names, one hiring group at a time.** For each node/fqid, ask
+   for the dev-fullstack's name and the QA's name. The PE may answer or ask you
+   to generate one — leave that slot `null`, the CLI fills it. Assemble the
+   answers into a `ProvidedNames` JSON object **keyed by fqid**, e.g.:
    ```json
    {
      "embark": { "devFullstack": "Joaquim", "qa": null },
-     "prontuario": { "devFullstack": null, "qa": null }
+     "prontuario/api": { "devFullstack": null, "qa": null },
+     "prontuario/apps/web": { "devFullstack": "Ana", "qa": null }
    }
    ```
+   (For a context with no monorepos, the fqids are just the repo names — this is
+   identical to the pre-module flow.)
 
 5. **Resolve final names.** Write that JSON to a temp file and run:
    ```bash
    aipe hire-specialists --resolve-names --input <file.json> --workspace <workspace>
    ```
-   The CLI prints one JSON line: `{"coordinator":"Nicolas","personas":[{"repo":"embark","role":"dev-fullstack","name":"Joaquim"}, ...]}`.
+   The CLI prints one JSON line: `{"coordinator":"Nicolas","personas":[{"fqid":"prontuario/api","repo":"prontuario","module":"api","role":"dev-fullstack","name":"Ana"}, ...]}`.
    Every name here is final and unique across the whole context (including
    the coordinator's) — this is what you dispatch with next, not whatever the
    PE originally typed.
 
-6. **Dispatch one agent per (repo, role) — 2N agents, all in parallel.** For
+6. **Dispatch one agent per (fqid, role) — all in parallel.** For
    each entry in the resolved `personas` list, launch an agent and give it:
-   - Its assigned `name` and `role` (`dev-fullstack` or `qa`).
-   - The repo's `stack` (from `brain.yaml`).
-   - The repo's relations (edges from `graph.yaml` where `from` or `to`
-     equals this repo).
+   - Its assigned `name`, `role` (`dev-fullstack` or `qa`), `repo`, and
+     `module` (null for a whole-repo persona).
+   - The hiring group's `stack` (the module's own stack from the graph node, or
+     the repo's `stack` for a whole-repo group).
+   - The group's relations (edges from `graph.yaml` where `from` or `to`
+     equals this **fqid** — a module persona sees its module's edges, including
+     intra-monorepo ones).
    - The coordinator's name and the context name.
    - Instructions to write the **body** of a Claude Code skill file: one
-     identity paragraph grounded in the stack/relations, then two short
-     sections — (a) how to behave when dispatched as a subagent with a
-     hiring brief (a scoped task description handed to you by the
-     coordinator at dispatch time): stay within this repo, report back
+     identity paragraph grounded in the stack/relations of **this module/repo**,
+     then two short sections — (a) how to behave when dispatched as a subagent
+     with a hiring brief (a scoped task description handed to you by the
+     coordinator at dispatch time): stay within this module/repo, report back
      through the coordinator, never touch another repo; (b) how to behave
      when the PE opens a session directly inside this repo: pair with them
-     directly as this repo's fullstack dev/QA, same posture as any Claude
-     Code session, colored by this repo's stack/relations awareness.
+     directly as this module/repo's fullstack dev/QA, same posture as any Claude
+     Code session, colored by this group's stack/relations awareness.
    - A forced structured output matching exactly this shape:
      ```json
      {
        "repo": "<repo-name>",
+       "module": "<local module id, or omit/null for a whole-repo persona>",
        "role": "dev-fullstack | qa",
        "name": "<assigned name from step 5>",
        "body": "<markdown body for SKILL.md, below the frontmatter>"
@@ -72,8 +86,9 @@ CLI, same as the earlier onboarding steps.
      ```
 
 7. **Save each result** to
-   `<workspace>/.aipe/specialists/.reports/<repo-name>-<role>.json` (create the
-   directory if needed).
+   `<workspace>/.aipe/specialists/.reports/<slug>.json` (create the directory if
+   needed; any unique filename works — the CLI keys off the report's
+   `repo`+`module`+`role`, not the filename).
 
 8. **Run the CLI:**
    ```bash
@@ -81,8 +96,8 @@ CLI, same as the earlier onboarding steps.
    ```
 
 9. **Translate the output to the PE:**
-   - `OK <repo> <role>` → that persona's `SKILL.md` was written.
-   - `MISSING <repo> <role>` → no report file (the agent may have failed or
+   - `OK <fqid> <role>` → that persona's `SKILL.md` was written.
+   - `MISSING <fqid> <role>` → no report file (the agent may have failed or
      timed out). The reports directory is preserved when any pair is
      missing, so re-dispatching just the missing pairs and re-running the
      CLI is safe and won't lose the ones that already succeeded.
@@ -107,8 +122,10 @@ CLI, same as the earlier onboarding steps.
 
 - Never write `personas.yaml`, `state.yaml`, or any persona `SKILL.md` by
   hand — always through the CLI.
-- Always exactly 2 personas per repo (1 dev-fullstack + 1 QA) — never split
-  by sub-stack, never skip QA.
+- Always exactly 2 personas per **hiring group** (1 dev-fullstack + 1 QA) — a
+  whole repo for a plain repo, or each module of a monorepo. Never skip QA. A
+  monorepo is hired per module (per graph node), not as one repo-wide pair,
+  unless you deliberately judge it cohesive enough to hire at the repo fqid.
 - Names must be resolved via `--resolve-names` (step 5) **before** dispatch —
   an agent must be told its final name to write coherent identity prose.
 - Each subagent must stay scoped to its own repo when writing persona

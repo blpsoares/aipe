@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { stringify } from "yaml";
 import { readBrain } from "../make-workspace/read";
 import { backfillStack } from "./backfill";
-import { combineMergedEdges, mergeEdges, pruneEdges } from "./merge";
+import { buildNodes, combineMergedEdges, combineNodes, mergeEdges, pruneEdges, pruneNodes } from "./merge";
 import { readGraph } from "./read-graph";
 import { readReports } from "./reports";
 import { renderGraphYaml, renderReadme } from "./render";
@@ -36,11 +36,12 @@ export async function runRelationship(workspaceDir: string): Promise<RunResult> 
   const phase: RelationshipPhase = results.every((r) => r.status === "ok") ? "done" : "pending";
 
   const edges = mergeEdges(reports);
+  const nodes = buildNodes(reports, edges);
   await mkdir(relationsDir, { recursive: true });
-  await writeFile(join(relationsDir, "graph.yaml"), renderGraphYaml(edges), "utf8");
+  await writeFile(join(relationsDir, "graph.yaml"), renderGraphYaml(nodes, edges), "utf8");
   await writeFile(
     join(relationsDir, "README.md"),
-    renderReadme(edges, brain.repos.map((r) => r.name)),
+    renderReadme(nodes, edges, brain.repos.map((r) => r.name)),
     "utf8",
   );
 
@@ -73,13 +74,15 @@ export async function runRelationshipMerge(workspaceDir: string): Promise<RunRes
   const repoNames = new Set(brain.repos.map((r) => r.name));
 
   const existing = await readGraph(workspaceDir);
-  const combined = pruneEdges(combineMergedEdges(existing, mergeEdges(reports)), repoNames);
+  const freshEdges = mergeEdges(reports);
+  const combined = pruneEdges(combineMergedEdges(existing.edges, freshEdges), repoNames);
+  const combinedNodes = pruneNodes(combineNodes(existing.nodes, buildNodes(reports, freshEdges)), repoNames);
 
   await mkdir(relationsDir, { recursive: true });
-  await writeFile(join(relationsDir, "graph.yaml"), renderGraphYaml(combined), "utf8");
+  await writeFile(join(relationsDir, "graph.yaml"), renderGraphYaml(combinedNodes, combined), "utf8");
   await writeFile(
     join(relationsDir, "README.md"),
-    renderReadme(combined, brain.repos.map((r) => r.name)),
+    renderReadme(combinedNodes, combined, brain.repos.map((r) => r.name)),
     "utf8",
   );
 

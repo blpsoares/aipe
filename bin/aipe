@@ -12,7 +12,7 @@ AIPE_VERSION="0.1.0"
 # Where standalone binaries are fetched from. Defaults to the AIPe download
 # domain (a Cloudflare redirect to the GitHub release assets); override with
 # AIPE_DOWNLOAD_BASE for a mirror or a local server.
-AIPE_DOWNLOAD_BASE="${AIPE_DOWNLOAD_BASE:-https://aipe.blpsoares.dev/cli}"
+AIPE_DOWNLOAD_BASE="${AIPE_DOWNLOAD_BASE:-https://aipe.openvibes.tech/cli}"
 
 # --- locate the plugin root (this script lives in <root>/bin/aipe) ----------
 self="$0"

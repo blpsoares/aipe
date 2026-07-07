@@ -9,7 +9,7 @@ import {
   slugify,
   type Harness,
 } from "./start";
-import { installClaudeCode } from "./install";
+import { getAdapter, writeHarness } from "../harness/registry";
 import { scaffoldWorkspace } from "./scaffold";
 import { askLine, selectInteractive } from "./prompt";
 
@@ -81,15 +81,13 @@ export async function run(args: string[]): Promise<number> {
   // cloned repos + secrets out) — harness-agnostic.
   await scaffoldWorkspace(workspaceDir);
 
-  if (harness.id === "claude-code") {
-    const code = await installClaudeCode(workspaceDir);
-    if (code !== 0) return code;
-    print(renderNextSteps(folder));
-    return 0;
-  }
-
-  console.log(`ERROR harness: no installer wired for "${harness.id}"`);
-  return 1;
+  const adapter = getAdapter(harness.id);
+  const report = await adapter.installIntegration(workspaceDir);
+  await writeHarness(workspaceDir, harness.id);
+  console.log(`aipe: installed the ${adapter.label} integration into ${folder}/`);
+  for (const note of report.notes) console.log(`aipe:  - ${note}`);
+  print(renderNextSteps(folder));
+  return 0;
 }
 
 if (import.meta.main) {

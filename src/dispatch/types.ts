@@ -9,6 +9,9 @@ export interface DispatchEntry {
   repo: string;
   specialist: string;
   module?: string; // the unit within the repo; absent ⇒ the implicit whole-repo module
+  // Optional model tier the coordinator assigned by task complexity. Adjudicated
+  // by the model-policy CLI (`aipe model`), then carried into the hiring brief.
+  tier?: string;
 }
 
 export type Batch = DispatchEntry[];
