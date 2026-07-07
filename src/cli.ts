@@ -25,6 +25,8 @@ import { run as serve } from "./serve/cli";
 import { run as detectPackages } from "./detect-packages/cli";
 import { run as validatePersonas } from "./validate-personas/cli";
 import { run as model } from "./model/cli";
+import { run as checkUpdate } from "./update/cli";
+import { cachedUpdateInfo, updateNotice } from "./update/check";
 
 export const VERSION = "0.2.0";
 
@@ -50,6 +52,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "detect-packages": detectPackages,
   "validate-personas": validatePersonas,
   model: model,
+  "check-update": checkUpdate,
 };
 
 const HELP = [
@@ -77,6 +80,7 @@ const HELP = [
   "  mcp                Add/list MCP servers (workspace-shared or per-repo)",
   "  read-state         Print the coordinator awareness fields (used by hooks)",
   "  session-context    Emit the SessionStart hook JSON (coordinator awareness)",
+  "  check-update       Notify if a newer aipe release is available (else silent)",
   "",
   "Common options:",
   "  --workspace <dir>  Workspace directory (defaults to the current directory)",
@@ -93,6 +97,10 @@ export async function dispatch(argv: string[]): Promise<number> {
   }
   if (command === "--version" || command === "-v" || command === "version") {
     console.log(VERSION);
+    // Cache-only (no network) so --version stays instant; `check-update` refreshes it.
+    const info = await cachedUpdateInfo(VERSION);
+    const notice = info && updateNotice(info);
+    if (notice) console.log(notice);
     return 0;
   }
 
