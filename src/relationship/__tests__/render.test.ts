@@ -13,8 +13,8 @@ const edges: MergedEdge[] = [
 ];
 
 const repoNodes: GraphNode[] = [
-  { fqid: "embark", repo: "embark", module: null, stack: ["bun"] },
-  { fqid: "prontuario", repo: "prontuario", module: null, stack: ["hono"] },
+  { fqid: "embark", repo: "embark", package: null, stack: ["bun"] },
+  { fqid: "prontuario", repo: "prontuario", package: null, stack: ["hono"] },
 ];
 
 test("renderGraphYaml produces parseable YAML with nodes + edges", () => {
@@ -33,7 +33,7 @@ test("renderGraphYaml with nothing still produces valid empty lists", () => {
   expect(parsed.nodes).toEqual([]);
 });
 
-test("renderReadme groups edges under each repo, from and to sides (single-module)", () => {
+test("renderReadme groups edges under each repo, from and to sides (single-package)", () => {
   const readme = renderReadme(repoNodes, edges, ["embark", "prontuario"]);
   expect(readme).toContain("## embark");
   expect(readme).toContain("## prontuario");
@@ -48,10 +48,10 @@ test("renderReadme notes repos with no known relations", () => {
   expect(readme).toContain("_No known relations._");
 });
 
-test("renderReadme renders per-module sub-sections for a monorepo", () => {
+test("renderReadme renders per-package sub-sections for a monorepo", () => {
   const nodes: GraphNode[] = [
-    { fqid: "prontuario/api", repo: "prontuario", module: "api", stack: ["hono"], description: "REST API" },
-    { fqid: "prontuario/apps/web", repo: "prontuario", module: "apps/web", stack: ["react"] },
+    { fqid: "prontuario/api", repo: "prontuario", package: "api", stack: ["hono"], description: "REST API" },
+    { fqid: "prontuario/apps/web", repo: "prontuario", package: "apps/web", stack: ["react"] },
   ];
   const monoEdges: MergedEdge[] = [
     { from: "prontuario/apps/web", to: "prontuario/api", type: "consumes", perspectives: [{ detail: "calls /records", evidence: "web:1" }] },

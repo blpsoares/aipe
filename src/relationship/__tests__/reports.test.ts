@@ -74,7 +74,7 @@ test("rejects a report whose relations contain an out-of-enum type", async () =>
   }
 });
 
-test("parses a module-bearing report (monorepo) with relation `from`", async () => {
+test("parses a package-bearing report (monorepo) with relation `from`", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-rel-"));
   try {
     await writeFile(
@@ -98,11 +98,11 @@ test("parses a module-bearing report (monorepo) with relation `from`", async () 
   }
 });
 
-test("drops a report whose module entry is malformed", async () => {
+test("drops a report whose package entry is malformed", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-rel-"));
   try {
     await writeFile(
-      join(dir, "bad-module.json"),
+      join(dir, "bad-package.json"),
       JSON.stringify({ repo: "x", stack: [], modules: [{ stack: [] }], relations: [] }),
     );
     const reports = await readReports(dir);

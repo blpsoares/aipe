@@ -7,7 +7,7 @@ import { genericAdapter } from "../generic";
 import { DEFAULT_HARNESS, getAdapter, readHarness, resolveAdapter, writeHarness } from "../registry";
 import type { PersonaMeta } from "../types";
 
-const meta: PersonaMeta = { slug: "ana", role: "dev-fullstack", repo: "prontuario", module: "api", stack: ["hono"] };
+const meta: PersonaMeta = { slug: "ana", role: "dev-fullstack", repo: "prontuario", package: "api", stack: ["hono"] };
 
 test("getAdapter resolves known ids and falls back to Claude Code", () => {
   expect(getAdapter("claude-code").id).toBe("claude-code");
@@ -23,7 +23,7 @@ test("claude-code adapter: SessionStart hook delivery + SKILL.md persona", () =>
   expect(target).toEqual({ relDir: join(".claude", "skills", "ana"), filename: "SKILL.md" });
   const file = claudeCodeAdapter.wrapPersona("You are Ana.", meta);
   expect(file).toContain("name: ana");
-  expect(file).toContain("for the prontuario/api module (hono).");
+  expect(file).toContain("for the prontuario/api package (hono).");
   expect(file.startsWith("---\n")).toBe(true);
 });
 

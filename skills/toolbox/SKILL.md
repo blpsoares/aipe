@@ -18,7 +18,7 @@ tool is a deterministic `aipe` command.
    README) so you can describe it accurately — what it is, what it's for, and
    **when it should and should not be used**. This routing hint is the point:
    later you must know that "change a button's colour" does *not* warrant
-   spawning a full SDD flow, while "design a new billing module" does.
+   spawning a full SDD flow, while "design a new billing package" does.
 
 2. **Pick the repos with the PE.** A framework can go into one repo or several.
    Shared frameworks are still installed **individually** per repo; the catalog

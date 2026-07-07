@@ -35,8 +35,8 @@ test("a well-formed persona passes; the coordinator is skipped", async () => {
   const dir = await ws();
   try {
     await roster(dir, [
-      { name: "Nicolas", role: "coordinator", repo: null, module: null, fqid: null, path: null },
-      { name: "Joaquim", role: "dev-fullstack", repo: "embark", module: null, fqid: "embark", path: "./embark/.claude/skills/joaquim" },
+      { name: "Nicolas", role: "coordinator", repo: null, package: null, fqid: null, path: null },
+      { name: "Joaquim", role: "dev-fullstack", repo: "embark", package: null, fqid: "embark", path: "./embark/.claude/skills/joaquim" },
     ]);
     await skill(dir, "embark/.claude/skills/joaquim", "joaquim", "Fullstack specialist for embark.");
 
@@ -53,7 +53,7 @@ test("flags a missing SKILL.md", async () => {
   const dir = await ws();
   try {
     await roster(dir, [
-      { name: "Joaquim", role: "dev-fullstack", repo: "embark", module: null, fqid: "embark", path: "./embark/.claude/skills/joaquim" },
+      { name: "Joaquim", role: "dev-fullstack", repo: "embark", package: null, fqid: "embark", path: "./embark/.claude/skills/joaquim" },
     ]);
     const result = await checkPersonaReadiness(dir);
     expect(result.ready).toBe(0);
@@ -67,7 +67,7 @@ test("flags a frontmatter name that does not match the persona slug", async () =
   const dir = await ws();
   try {
     await roster(dir, [
-      { name: "Marina", role: "qa", repo: "embark", module: null, fqid: "embark", path: "./embark/.claude/skills/marina" },
+      { name: "Marina", role: "qa", repo: "embark", package: null, fqid: "embark", path: "./embark/.claude/skills/marina" },
     ]);
     await skill(dir, "embark/.claude/skills/marina", "marina-qa", "QA specialist.");
     const result = await checkPersonaReadiness(dir);
@@ -82,7 +82,7 @@ test("flags an empty description", async () => {
   const dir = await ws();
   try {
     await roster(dir, [
-      { name: "Ana", role: "dev-fullstack", repo: "prontuario", module: "api", fqid: "prontuario/api", path: "./prontuario/.claude/skills/ana" },
+      { name: "Ana", role: "dev-fullstack", repo: "prontuario", package: "api", fqid: "prontuario/api", path: "./prontuario/.claude/skills/ana" },
     ]);
     await skill(dir, "prontuario/.claude/skills/ana", "ana", "");
     const result = await checkPersonaReadiness(dir);

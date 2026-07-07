@@ -28,10 +28,10 @@ export function renderReadme(nodes: GraphNode[], edges: MergedEdge[], repoNames:
   for (const repo of [...repoNames].sort()) {
     lines.push(`## ${repo}`, "");
     const repoNodes = nodes.filter((n) => n.repo === repo).sort((a, b) => a.fqid.localeCompare(b.fqid));
-    const isMonorepo = repoNodes.some((n) => n.module !== null);
+    const isMonorepo = repoNodes.some((n) => n.package !== null);
 
     if (isMonorepo) {
-      // One sub-section per module node, from that module's point of view.
+      // One sub-section per package node, from that package's point of view.
       for (const node of repoNodes) {
         lines.push(`### ${node.fqid}`);
         if (node.description) lines.push(`_${node.description}_`);
@@ -46,7 +46,7 @@ export function renderReadme(nodes: GraphNode[], edges: MergedEdge[], repoNames:
       continue;
     }
 
-    // Single-module repo: render exactly as the pre-module model did, keyed on
+    // Single-package repo: render exactly as the pre-package model did, keyed on
     // the whole-repo fqid (== the repo name).
     const related = edges.filter((e) => parseFqid(e.from).repo === repo || parseFqid(e.to).repo === repo);
     if (related.length === 0) {

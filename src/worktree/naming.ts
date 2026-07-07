@@ -10,21 +10,21 @@ export function isValidJourneyId(id: string): boolean {
   return /^[a-z0-9][a-z0-9-]*$/.test(id);
 }
 
-// Encodes the module (when present) into the branch/path so two packages of one
-// monorepo get distinct worktrees on the same clone. Implicit packages (module
-// absent or equal to the repo) keep the pre-module naming exactly:
+// Encodes the package (when present) into the branch/path so two packages of one
+// monorepo get distinct worktrees on the same clone. Implicit packages (package
+// absent or equal to the repo) keep the pre-package naming exactly:
 //   implicit: aipe/<journey>/<persona>            · .worktrees/<journey>-<persona>
-//   module:   aipe/<journey>/<module>--<persona>  · .worktrees/<journey>-<module>--<persona>
-// The `<module>--<persona>` shape keeps the branch two levels deep so listing
+//   package:   aipe/<journey>/<package>--<persona>  · .worktrees/<journey>-<package>--<persona>
+// The `<package>--<persona>` shape keeps the branch two levels deep so listing
 // stays parseable, and slugs never contain `--` (personaSlug collapses runs).
-export function deriveSpec(repo: string, journey: string, specialist: string, module?: string | null): WorktreeSpec {
+export function deriveSpec(repo: string, journey: string, specialist: string, pkg?: string | null): WorktreeSpec {
   const slug = personaSlug(specialist);
-  const moduleSlug = module && module !== repo ? personaSlug(module) : null;
+  const moduleSlug = pkg && pkg !== repo ? personaSlug(pkg) : null;
   const combined = moduleSlug ? `${moduleSlug}--${slug}` : slug;
   return {
     repo,
     specialist,
-    module: module ?? undefined,
+    package: pkg ?? undefined,
     journey,
     slug,
     moduleSlug,

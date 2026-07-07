@@ -97,7 +97,7 @@ export async function checkPersonaReadiness(workspaceDir: string): Promise<Readi
 
   const results: PersonaCheck[] = [];
   for (const p of personas) {
-    results.push(await checkOne(workspaceDir, { name: p.name, fqid: p.repo ? makeFqid(p.repo, p.module) : null, repo: p.repo, path: p.path }));
+    results.push(await checkOne(workspaceDir, { name: p.name, fqid: p.repo ? makeFqid(p.repo, p.package) : null, repo: p.repo, path: p.path }));
   }
   return { results, ready: results.filter((r) => r.ok).length, total: results.length };
 }

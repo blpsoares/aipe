@@ -84,7 +84,7 @@ export async function recordDispatch(
 ): Promise<string> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
   const idx = ledger.dispatches.findIndex(
-    (d) => d.repo === dispatch.repo && (d.module ?? null) === (dispatch.module ?? null) && d.specialist === dispatch.specialist,
+    (d) => d.repo === dispatch.repo && (d.package ?? null) === (dispatch.package ?? null) && d.specialist === dispatch.specialist,
   );
   if (idx >= 0) ledger.dispatches[idx] = dispatch;
   else ledger.dispatches.push(dispatch);

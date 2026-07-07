@@ -171,7 +171,7 @@ test("snapshot resolves packages and carries them on workers (monorepo)", async 
       stringify({
         personas: [
           { name: "Ana", role: "coordinator", repo: null, path: null },
-          { name: "Bruno", role: "dev-fullstack", repo: "platform", module: "core", group: "core", path: "p" },
+          { name: "Bruno", role: "dev-fullstack", repo: "platform", package: "core", group: "core", path: "p" },
         ],
       }),
       "utf8",
@@ -180,7 +180,7 @@ test("snapshot resolves packages and carries them on workers (monorepo)", async 
     expect(s.packages.map((m) => m.fqid)).toEqual(["platform/core", "platform/web"]);
     expect(s.packages[0]?.implicit).toBe(false);
     const bruno = s.workers.find((w) => w.name === "Bruno");
-    expect(bruno?.module).toBe("core");
+    expect(bruno?.package).toBe("core");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

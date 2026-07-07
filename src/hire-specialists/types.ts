@@ -8,7 +8,7 @@ export interface PersonaAssignment {
   repo: string;
   role: PersonaRole;
   name: string;
-  module?: string; // representative module of the hiring group (absent ⇒ whole repo)
+  package?: string; // representative package of the hiring group (absent ⇒ whole repo)
   group?: string; // hiring group/area; packages sharing it share this pair
 }
 
@@ -26,7 +26,7 @@ export interface PersonaReport {
   role: PersonaRole;
   name: string;
   body: string;
-  module?: string; // representative module of the hiring group (absent ⇒ whole repo)
+  package?: string; // representative package of the hiring group (absent ⇒ whole repo)
   group?: string; // hiring group/area
 }
 
@@ -35,7 +35,7 @@ export interface PersonaRegistryEntry {
   role: PersonaRole | "coordinator";
   repo: string | null;
   path: string | null;
-  module?: string; // representative module (absent ⇒ implicit whole-repo module)
+  package?: string; // representative package (absent ⇒ implicit whole-repo package)
   group?: string; // hiring group this persona covers
 }
 

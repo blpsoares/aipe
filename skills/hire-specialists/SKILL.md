@@ -9,9 +9,9 @@ Hires the context's specialists: for every **hiring group**, one dev-fullstack
 persona and one QA persona, each installed as a two-mode skill inside its repo
 (`<repo>/.claude/skills/<name>/SKILL.md`). A **hiring group** is a node in the
 relationship graph (`.aipe/relations/graph.yaml`) — a **whole repo** for a plain
-single-purpose repo, or a **module** (`repo/module`, an **fqid**) for each module
-of a monorepo. So a monorepo with 3 modules hires 3 dev + 3 QA, one pair per
-module; a plain repo hires 1 dev + 1 QA, exactly as before. You (the coordinator)
+single-purpose repo, or a **package** (`repo/package`, an **fqid**) for each package
+of a monorepo. So a monorepo with 3 packages hires 3 dev + 3 QA, one pair per
+package; a plain repo hires 1 dev + 1 QA, exactly as before. You (the coordinator)
 drive naming and dispatch subagents that write persona prose — name resolution,
 validation, and file writing are handled by a deterministic CLI, same as the
 earlier onboarding steps.
@@ -29,7 +29,7 @@ earlier onboarding steps.
    `.aipe/relations/graph.yaml` (its `nodes:` = the hiring groups, and `edges:`)
    directly, to have them on hand for steps 4 and 6. The **nodes** are the units
    you hire against: `fqid: embark` (a whole repo) or `fqid: prontuario/api` (a
-   module). If the graph has no `nodes` (a legacy context), the CLI falls back to
+   package). If the graph has no `nodes` (a legacy context), the CLI falls back to
    one group per repo automatically.
 
 4. **Ask the PE for names, one hiring group at a time.** For each node/fqid, ask
@@ -44,13 +44,13 @@ earlier onboarding steps.
    }
    ```
    (For a context with no monorepos, the fqids are just the repo names — this is
-   identical to the pre-module flow.)
+   identical to the pre-package flow.)
 
 5. **Resolve final names.** Write that JSON to a temp file and run:
    ```bash
    aipe hire-specialists --resolve-names --input <file.json> --workspace <workspace>
    ```
-   The CLI prints one JSON line: `{"coordinator":"Nicolas","personas":[{"fqid":"prontuario/api","repo":"prontuario","module":"api","role":"dev-fullstack","name":"Ana"}, ...]}`.
+   The CLI prints one JSON line: `{"coordinator":"Nicolas","personas":[{"fqid":"prontuario/api","repo":"prontuario","package":"api","role":"dev-fullstack","name":"Ana"}, ...]}`.
    Every name here is final and unique across the whole context (including
    the coordinator's) — this is what you dispatch with next, not whatever the
    PE originally typed.
@@ -58,27 +58,27 @@ earlier onboarding steps.
 6. **Dispatch one agent per (fqid, role) — all in parallel.** For
    each entry in the resolved `personas` list, launch an agent and give it:
    - Its assigned `name`, `role` (`dev-fullstack` or `qa`), `repo`, and
-     `module` (null for a whole-repo persona).
-   - The hiring group's `stack` (the module's own stack from the graph node, or
+     `package` (null for a whole-repo persona).
+   - The hiring group's `stack` (the package's own stack from the graph node, or
      the repo's `stack` for a whole-repo group).
    - The group's relations (edges from `graph.yaml` where `from` or `to`
-     equals this **fqid** — a module persona sees its module's edges, including
+     equals this **fqid** — a package persona sees its package's edges, including
      intra-monorepo ones).
    - The coordinator's name and the context name.
    - Instructions to write the **body** of a Claude Code skill file: one
-     identity paragraph grounded in the stack/relations of **this module/repo**,
+     identity paragraph grounded in the stack/relations of **this package/repo**,
      then two short sections — (a) how to behave when dispatched as a subagent
      with a hiring brief (a scoped task description handed to you by the
-     coordinator at dispatch time): stay within this module/repo, report back
+     coordinator at dispatch time): stay within this package/repo, report back
      through the coordinator, never touch another repo; (b) how to behave
      when the PE opens a session directly inside this repo: pair with them
-     directly as this module/repo's fullstack dev/QA, same posture as any Claude
+     directly as this package/repo's fullstack dev/QA, same posture as any Claude
      Code session, colored by this group's stack/relations awareness.
    - A forced structured output matching exactly this shape:
      ```json
      {
        "repo": "<repo-name>",
-       "module": "<local module id, or omit/null for a whole-repo persona>",
+       "package": "<local package id, or omit/null for a whole-repo persona>",
        "role": "dev-fullstack | qa",
        "name": "<assigned name from step 5>",
        "body": "<markdown body for SKILL.md, below the frontmatter>"
@@ -88,7 +88,7 @@ earlier onboarding steps.
 7. **Save each result** to
    `<workspace>/.aipe/specialists/.reports/<slug>.json` (create the directory if
    needed; any unique filename works — the CLI keys off the report's
-   `repo`+`module`+`role`, not the filename).
+   `repo`+`package`+`role`, not the filename).
 
 8. **Run the CLI:**
    ```bash
@@ -123,8 +123,8 @@ earlier onboarding steps.
 - Never write `personas.yaml`, `state.yaml`, or any persona `SKILL.md` by
   hand — always through the CLI.
 - Always exactly 2 personas per **hiring group** (1 dev-fullstack + 1 QA) — a
-  whole repo for a plain repo, or each module of a monorepo. Never skip QA. A
-  monorepo is hired per module (per graph node), not as one repo-wide pair,
+  whole repo for a plain repo, or each package of a monorepo. Never skip QA. A
+  monorepo is hired per package (per graph node), not as one repo-wide pair,
   unless you deliberately judge it cohesive enough to hire at the repo fqid.
 - Names must be resolved via `--resolve-names` (step 5) **before** dispatch —
   an agent must be told its final name to write coherent identity prose.

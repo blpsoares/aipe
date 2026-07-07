@@ -1,5 +1,5 @@
-// A module is the unit of work below a repo (a package/service/app inside a
-// monorepo). A repo with no declared packages is exactly one implicit module
+// A package is the unit of work below a repo (a package/service/app inside a
+// monorepo). A repo with no declared packages is exactly one implicit package
 // spanning the whole repo — so single-repo workspaces behave unchanged.
 export interface PackageEntry {
   name: string; // unique within its repo

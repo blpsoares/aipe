@@ -46,7 +46,7 @@ test("detects go.work use directories", async () => {
     await writeFile(join(dir, "go.work"), "go 1.22\n\nuse (\n  ./cmd/gateway\n  ./cmd/workers\n)\n", "utf8");
     await mkdir(join(dir, "cmd", "gateway"), { recursive: true });
     await mkdir(join(dir, "cmd", "workers"), { recursive: true });
-    await writeFile(join(dir, "cmd", "gateway", "go.mod"), "module gateway\n", "utf8");
+    await writeFile(join(dir, "cmd", "gateway", "go.mod"), "package gateway\n", "utf8");
     const mods = await detectPackages(dir);
     expect(mods.map((m) => m.path).sort()).toEqual(["cmd/gateway", "cmd/workers"]);
     expect(mods.find((m) => m.path === "cmd/gateway")?.stack).toEqual(["Go"]);

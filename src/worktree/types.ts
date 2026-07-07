@@ -9,10 +9,10 @@ export type { BrainFile, RepoEntry };
 export interface WorktreeSpec {
   repo: string; // repo name (from brain.yaml)
   specialist: string; // persona display name
-  module?: string; // module name/slug (absent ⇒ implicit whole-repo module)
+  package?: string; // package name/slug (absent ⇒ implicit whole-repo package)
   journey: string; // journey id
   slug: string; // personaSlug(specialist)
-  moduleSlug: string | null; // personaSlug(module) when a real module, else null
+  moduleSlug: string | null; // personaSlug(package) when a real package, else null
   branch: string; // aipe/<journey>/<combined>
   relPath: string; // .worktrees/<journey>-<combined> (relative to the repo dir)
 }
@@ -21,7 +21,7 @@ export interface WorktreeSpec {
 export interface WorktreeRow {
   repo: string;
   slug: string;
-  module?: string; // module slug recovered from the branch (absent ⇒ implicit)
+  package?: string; // package slug recovered from the branch (absent ⇒ implicit)
   journey: string;
   branch: string;
   path: string; // absolute

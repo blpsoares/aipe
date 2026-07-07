@@ -80,9 +80,9 @@ test("sorts output deterministically by from, then to, then type", () => {
   expect(edges.map((e) => e.from)).toEqual(["a-repo", "z-repo"]);
 });
 
-// --- module granularity ---
+// --- package granularity ---
 
-test("qualifies a relation's local `from` to a module fqid (intra-monorepo)", () => {
+test("qualifies a relation's local `from` to a package fqid (intra-monorepo)", () => {
   const reports: RepoReport[] = [
     {
       repo: "prontuario",
@@ -105,7 +105,7 @@ test("an absent `from` still qualifies to the whole repo (backward compatible)",
   expect(edges[0]?.to).toBe("prontuario/api");
 });
 
-test("buildNodes: modules → module nodes; module-less repo → whole-repo node", () => {
+test("buildNodes: modules → package nodes; package-less repo → whole-repo node", () => {
   const reports: RepoReport[] = [
     {
       repo: "prontuario",
@@ -123,11 +123,11 @@ test("buildNodes: modules → module nodes; module-less repo → whole-repo node
   expect(nodes.find((n) => n.fqid === "prontuario/api")).toEqual({
     fqid: "prontuario/api",
     repo: "prontuario",
-    module: "api",
+    package: "api",
     stack: ["hono"],
     description: "REST API",
   });
-  expect(nodes.find((n) => n.fqid === "embark")).toEqual({ fqid: "embark", repo: "embark", module: null, stack: ["bun"] });
+  expect(nodes.find((n) => n.fqid === "embark")).toEqual({ fqid: "embark", repo: "embark", package: null, stack: ["bun"] });
 });
 
 test("buildNodes: synthesizes a minimal node for an undeclared edge endpoint", () => {
@@ -135,11 +135,11 @@ test("buildNodes: synthesizes a minimal node for an undeclared edge endpoint", (
     { repo: "embark", stack: [], relations: [{ to: "prontuario/api", type: "consumes", detail: "d", evidence: "e" }] },
   ];
   const nodes = buildNodes(reports, mergeEdges(reports));
-  // embark declared (module-less), prontuario/api synthesized from the edge.
+  // embark declared (package-less), prontuario/api synthesized from the edge.
   expect(nodes.find((n) => n.fqid === "prontuario/api")).toEqual({
     fqid: "prontuario/api",
     repo: "prontuario",
-    module: "api",
+    package: "api",
     stack: [],
   });
 });

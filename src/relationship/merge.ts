@@ -19,7 +19,7 @@ function toRawEdges(reports: RepoReport[]): RawEdge[] {
   const edges: RawEdge[] = [];
   for (const report of reports) {
     for (const relation of report.relations) {
-      // Qualify the local `from` to an fqid (`repo` or `repo/module`); `to` is
+      // Qualify the local `from` to an fqid (`repo` or `repo/package`); `to` is
       // already fully qualified by the agent.
       const from = makeFqid(report.repo, relation.from);
       edges.push({ from, to: relation.to, type: relation.type, detail: relation.detail, evidence: relation.evidence });
@@ -113,9 +113,9 @@ export function pruneNodes(nodes: GraphNode[], repoNames: Set<string>): GraphNod
 }
 
 // Builds the graph's nodes from the reports and the merged edges. A node exists
-// for: (1) every declared module → `repo/module`; (2) every repo with no
+// for: (1) every declared package → `repo/package`; (2) every repo with no
 // declared modules → the whole-repo fqid; (3) any edge endpoint that was never
-// declared (e.g. a module in another repo the reporting agent named but whose
+// declared (e.g. a package in another repo the reporting agent named but whose
 // owner didn't enumerate) → a synthesized minimal node, so no edge dangles.
 export function buildNodes(reports: RepoReport[], edges: MergedEdge[]): GraphNode[] {
   const byFqid = new Map<string, GraphNode>();
@@ -124,12 +124,12 @@ export function buildNodes(reports: RepoReport[], edges: MergedEdge[]): GraphNod
     const modules = report.modules ?? [];
     if (modules.length === 0) {
       const fqid = makeFqid(report.repo);
-      byFqid.set(fqid, { fqid, repo: report.repo, module: null, stack: report.stack });
+      byFqid.set(fqid, { fqid, repo: report.repo, package: null, stack: report.stack });
       continue;
     }
     for (const mod of modules) {
       const fqid = makeFqid(report.repo, mod.id);
-      const node: GraphNode = { fqid, repo: report.repo, module: mod.id, stack: mod.stack ?? [] };
+      const node: GraphNode = { fqid, repo: report.repo, package: mod.id, stack: mod.stack ?? [] };
       if (mod.description !== undefined) node.description = mod.description;
       byFqid.set(fqid, node);
     }
@@ -139,8 +139,8 @@ export function buildNodes(reports: RepoReport[], edges: MergedEdge[]): GraphNod
   for (const edge of edges) {
     for (const fqid of [edge.from, edge.to]) {
       if (byFqid.has(fqid)) continue;
-      const { repo, module } = parseFqid(fqid);
-      byFqid.set(fqid, { fqid, repo, module, stack: [] });
+      const { repo, package: pkg } = parseFqid(fqid);
+      byFqid.set(fqid, { fqid, repo, package: pkg, stack: [] });
     }
   }
 

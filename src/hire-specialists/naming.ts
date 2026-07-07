@@ -22,7 +22,7 @@ export function resolveNames(brain: BrainFile, provided: ProvidedNames): NamingR
   const personas: PersonaAssignment[] = [];
 
   // One dev+QA pair per hiring *group* (a group is a repo's implicit whole-repo
-  // module, a single module, or several packages sharing a `group`). Provided
+  // package, a single package, or several packages sharing a `group`). Provided
   // names may be keyed by the group id ("repo/group") or, for a flat repo, the
   // bare repo name.
   for (const g of resolveGroups(brain)) {
@@ -43,7 +43,7 @@ export function resolveNames(brain: BrainFile, provided: ProvidedNames): NamingR
         repo: g.repo,
         role,
         name,
-        ...(flat ? {} : { module: rep?.module, group: g.group }),
+        ...(flat ? {} : { package: rep?.package, group: g.group }),
       });
     }
   }

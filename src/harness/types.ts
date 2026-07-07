@@ -6,13 +6,13 @@
 
 export type PersonaRole = "dev-fullstack" | "qa";
 
-// The data an adapter needs to render a persona file — plain, so this module
+// The data an adapter needs to render a persona file — plain, so this package
 // never imports from hire-specialists (no cycle). The caller computes `slug`.
 export interface PersonaMeta {
   slug: string;
   role: PersonaRole;
   repo: string;
-  module: string | null;
+  package: string | null;
   stack: string[];
 }
 

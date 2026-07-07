@@ -19,14 +19,14 @@ function hasFlag(args: string[], name: string): boolean {
 }
 
 export function renderRows(rows: WorktreeRow[]): string[] {
-  return rows.map((r) => `WT ${r.repo} ${r.slug} ${r.journey} ${r.branch} ${r.path}${r.module ? ` module=${r.module}` : ""}`);
+  return rows.map((r) => `WT ${r.repo} ${r.slug} ${r.journey} ${r.branch} ${r.path}${r.package ? ` package=${r.package}` : ""}`);
 }
 
 const USAGE = [
   "Usage: aipe worktree <command> [options]",
-  "  create --repo <name> --specialist <persona> --journey <id> [--module <name>] [--base <branch>] [--workspace <dir>]",
+  "  create --repo <name> --specialist <persona> --journey <id> [--package <name>] [--base <branch>] [--workspace <dir>]",
   "  list   [--journey <id>] [--workspace <dir>]",
-  "  remove --repo <name> --specialist <persona> --journey <id> [--module <name>] [--force] [--workspace <dir>]",
+  "  remove --repo <name> --specialist <persona> --journey <id> [--package <name>] [--force] [--workspace <dir>]",
   "  prune  --journey <id> [--force] [--workspace <dir>]",
 ].join("\n");
 
@@ -40,8 +40,8 @@ async function createCommand(args: string[]): Promise<number> {
     return 1;
   }
   const base = getFlag(args, "--base");
-  const module = getFlag(args, "--module");
-  const result = await createWorktree(workspace, { repo, specialist, journey, module, base });
+  const pkg = getFlag(args, "--package");
+  const result = await createWorktree(workspace, { repo, specialist, journey, package: pkg, base });
   if (!result.ok) {
     console.log(`ERROR ${result.error}`);
     return 1;
@@ -69,8 +69,8 @@ async function removeCommand(args: string[]): Promise<number> {
     return 1;
   }
   const force = hasFlag(args, "--force");
-  const module = getFlag(args, "--module");
-  const result = await removeWorktree(workspace, { repo, specialist, journey, module, force });
+  const pkg = getFlag(args, "--package");
+  const result = await removeWorktree(workspace, { repo, specialist, journey, package: pkg, force });
   if (result.ok) {
     console.log(`OK removed ${result.path}`);
     return 0;

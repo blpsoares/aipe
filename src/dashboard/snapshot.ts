@@ -29,13 +29,13 @@ export interface WorkerView {
   status: WorkerStatus;
   journey?: string;
   pr?: string;
-  module?: string; // monorepo unit this persona covers (absent ⇒ whole repo)
+  package?: string; // monorepo unit this persona covers (absent ⇒ whole repo)
   group?: string;
 }
 
 export interface ModuleView {
   repo: string;
-  module: string;
+  package: string;
   fqid: string;
   group: string;
   stack: string[];
@@ -82,7 +82,7 @@ export interface PersonaCV {
   role: string;
   title: string;
   repo: string | null;
-  module?: string;
+  package?: string;
   bio: string;
   competences: string[];
 }
@@ -200,16 +200,16 @@ async function buildPersonaCVs(
   return Promise.all(
     roster.map(async (p) => {
       const title = ROLE_TITLE[p.role] ?? p.role;
-      const stack = p.module
-        ? packages.find((m) => m.repo === p.repo && m.module === p.module)?.stack ?? []
+      const stack = p.package
+        ? packages.find((m) => m.repo === p.repo && m.package === p.package)?.stack ?? []
         : repoInfos.find((r) => r.name === p.repo)?.stack ?? [];
       const competences = [...new Set([...(ROLE_COMPETENCES[p.role] ?? []), ...stack])];
       const bio =
         (await readPersonaBio(workspaceDir, p.path)) ??
         (p.repo
-          ? `${title} for ${p.module ? `${p.repo}/${p.module}` : p.repo}. Dispatched by the coordinator for scoped work, or worn directly in a session inside this unit.`
+          ? `${title} for ${p.package ? `${p.repo}/${p.package}` : p.repo}. Dispatched by the coordinator for scoped work, or worn directly in a session inside this unit.`
           : `${title} of the context — plans journeys, authors the Orientation Spec, and reviews cross-repo work.`);
-      return { name: p.name, role: p.role, title, repo: p.repo, ...(p.module ? { module: p.module } : {}), bio, competences };
+      return { name: p.name, role: p.role, title, repo: p.repo, ...(p.package ? { package: p.package } : {}), bio, competences };
     }),
   );
 }
@@ -239,7 +239,7 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
       name: p.name,
       role: p.role,
       repo: p.repo,
-      ...(p.module ? { module: p.module } : {}),
+      ...(p.package ? { package: p.package } : {}),
       ...(p.group ? { group: p.group } : {}),
       ...derived,
     };
@@ -270,8 +270,8 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     stack: r.stack ?? [],
     kind: inferKind(r.name, r.stack ?? [], r.kind),
   }));
-  // Declared kind per fqid: a module's own `kind`, or the repo's for an implicit
-  // (whole-repo) module. Anything undeclared is inferred from name + stack.
+  // Declared kind per fqid: a package's own `kind`, or the repo's for an implicit
+  // (whole-repo) package. Anything undeclared is inferred from name + stack.
   const declaredKind = new Map<string, string | undefined>();
   for (const r of brain.brain.repos) {
     if (r.packages && r.packages.length > 0) {
@@ -282,12 +282,12 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
   }
   const moduleViews: ModuleView[] = resolvePackages(brain.brain).map((m) => ({
     repo: m.repo,
-    module: m.module,
+    package: m.package,
     fqid: m.fqid,
     group: m.group,
     stack: m.stack,
     implicit: m.implicit,
-    kind: inferKind(m.implicit ? m.repo : m.module, m.stack, declaredKind.get(m.fqid)),
+    kind: inferKind(m.implicit ? m.repo : m.package, m.stack, declaredKind.get(m.fqid)),
   }));
   const personaCVs = await buildPersonaCVs(workspaceDir, roster, repoInfos, moduleViews);
 

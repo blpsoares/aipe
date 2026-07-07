@@ -64,9 +64,9 @@ export const genericAdapter: HarnessAdapter = {
 
   wrapPersona(body: string, meta: PersonaMeta): string {
     const stackLabel = meta.stack.length > 0 ? meta.stack.join(", ") : "unknown stack";
-    const scope = meta.module ? `${meta.repo}/${meta.module}` : meta.repo;
+    const scope = meta.package ? `${meta.repo}/${meta.package}` : meta.repo;
     const role = meta.role === "qa" ? "QA specialist" : "Fullstack specialist";
-    return `# ${meta.slug}\n\n> ${role} for the ${scope} ${meta.module ? "module" : "repo"} (${stackLabel}).\n\n${body.trim()}\n`;
+    return `# ${meta.slug}\n\n> ${role} for the ${scope} ${meta.package ? "package" : "repo"} (${stackLabel}).\n\n${body.trim()}\n`;
   },
 
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string {

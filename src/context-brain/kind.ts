@@ -1,4 +1,4 @@
-// The functional category of a repo or module — "api", "web", "lib", or the
+// The functional category of a repo or package — "api", "web", "lib", or the
 // generic "service" fallback. It is a *declared* field on brain.yaml
 // (RepoEntry.kind / PackageEntry.kind); when absent, inferKind() guesses from the
 // unit's name and stack so existing workspaces still get a sensible label.

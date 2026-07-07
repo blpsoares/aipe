@@ -34,26 +34,26 @@ the earlier onboarding steps.
      shared infrastructure (same DB/queue/bucket/env), or packages it publishes
      that another context repo imports — plus the stack it detects for its own
      repo (from manifest files: `package.json`, `Cargo.toml`, etc.).
-   - Instructions to also enumerate the repo's **modules** when it is a
+   - Instructions to also enumerate the repo's **packages** when it is a
      **monorepo** (a workspace/`packages/`/`apps/` layout, multiple manifests, a
-     Turborepo/Nx/Cargo-workspace/pnpm-workspace config, etc.). Each module gets
+     Turborepo/Nx/Cargo-workspace/pnpm-workspace config, etc.). Each package gets
      a path-like `id` local to the repo (`api`, `apps/web`), its own detected
      stack, and a one-line description. A plain single-purpose repo reports **no
-     modules** (omit the field or send `[]`) — it becomes a single whole-repo
+     packages** (omit the field or send `[]`) — it becomes a single whole-repo
      node.
    - A forced structured output matching exactly this shape:
      ```json
      {
        "repo": "<repo-name>",
        "stack": ["typescript", "bun"],
-       "modules": [
+       "packages": [
          { "id": "api", "stack": ["hono"], "description": "REST API for records" },
          { "id": "apps/web", "stack": ["react"], "description": "patient portal" }
        ],
        "relations": [
          {
-           "from": "<local module id, or omit for the whole repo>",
-           "to": "<fqid: another repo, `repo/module`, or a sibling `thisRepo/module`>",
+           "from": "<local package id, or omit for the whole repo>",
+           "to": "<fqid: another repo, `repo/package`, or a sibling `thisRepo/package`>",
            "type": "imports | published-by | consumes | exposed-by | shares-infra",
            "detail": "one sentence describing the relation",
            "evidence": "path/to/file.ts:line"
@@ -61,21 +61,21 @@ the earlier onboarding steps.
        ]
      }
      ```
-     `modules` and each relation's `from` are **optional** (absent = the whole
+     `packages` and each relation's `from` are **optional** (absent = the whole
      repo). `relations` may be an empty array. `type` must be exactly one of the
-     five listed values — nothing else. For `to`, qualify to `repo/module` when
-     you can identify the specific target module; otherwise fall back to the bare
+     five listed values — nothing else. For `to`, qualify to `repo/package` when
+     you can identify the specific target package; otherwise fall back to the bare
      repo name — best effort is fine, the merge keeps both sides' wording.
 
-   **Monorepos (module-grain relations).** If a repo declares `packages`, discover
-   relations at **module** granularity: dispatch one read-only agent per module
-   (scoped to that module's `path`) and use the module's fully-qualified id
-   `repo/module` as the node id — both in the report's `repo` field and in any
-   `to` that points at another module (same monorepo or another repo). A flat
-   repo keeps its bare name (its implicit module). This makes an intra-monorepo
+   **Monorepos (package-grain relations).** If a repo declares `packages`, discover
+   relations at **package** granularity: dispatch one read-only agent per package
+   (scoped to that package's `path`) and use the package's fully-qualified id
+   `repo/package` as the node id — both in the report's `repo` field and in any
+   `to` that points at another package (same monorepo or another repo). A flat
+   repo keeps its bare name (its implicit package). This makes an intra-monorepo
    edge (`platform/web` → `platform/core`) and a cross-repo edge the *same*
    mechanism — graph nodes are plain fqid strings, so nothing else changes. Run
-   `aipe detect-packages --repo <name>` first if you need the module list.
+   `aipe detect-packages --repo <name>` first if you need the package list.
 
 5. **Save each result** to `<workspace>/.aipe/relations/.reports/<repo-name>.json`
    (create the directory if needed). One file per repo, exactly as the agent
@@ -97,10 +97,10 @@ the earlier onboarding steps.
 8. **Report the artifacts.** On `done`, point the PE to
    `.aipe/relations/graph.yaml` (machine-readable source of truth — a `nodes:`
    list keyed by **fqid** plus an `edges:` list) and `.aipe/relations/README.md`
-   (human-readable, grouped by repo then by module), and mention that
+   (human-readable, grouped by repo then by package), and mention that
    `brain.yaml` may now have `stack` filled in for repos that didn't declare one.
    The `nodes` are the units `/hire-specialists` hires against — a whole-repo
-   node for a plain repo, one node per module for a monorepo.
+   node for a plain repo, one node per package for a monorepo.
 
 9. **Next step:** once `relationship=done`, tell the PE this step is complete
    and to open a **new session** in this workspace to continue with

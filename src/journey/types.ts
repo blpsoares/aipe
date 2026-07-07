@@ -13,7 +13,7 @@ export const DISPATCH_STATUSES: DispatchStatus[] = [
 
 export interface JourneyDispatch {
   repo: string;
-  module?: string; // the unit within the repo (absent ⇒ implicit whole-repo module)
+  package?: string; // the unit within the repo (absent ⇒ implicit whole-repo package)
   specialist: string;
   branch: string;
   worktree: string;

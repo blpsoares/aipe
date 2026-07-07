@@ -72,7 +72,7 @@ test("all repos reported → phase done, graph/readme written, reports dir clean
   }
 });
 
-test("a monorepo report → module nodes persisted by fqid + intra-monorepo edge", async () => {
+test("a monorepo report → package nodes persisted by fqid + intra-monorepo edge", async () => {
   const dir = await ws();
   try {
     await putReport(dir, "embark", { repo: "embark", stack: ["typescript"], relations: [] });

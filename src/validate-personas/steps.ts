@@ -15,7 +15,7 @@ export function liveValidationSteps(): string {
     "",
     "2. Confirm the persona loaded: ask the assistant \"who are you and what",
     "   repo are you specialized in?\" — it should answer as the persona",
-    "   (name + repo/module), not as a generic assistant.",
+    "   (name + repo/package), not as a generic assistant.",
     "",
     "3. Invoke a third-party skill on top, e.g.:",
     "     /superpowers:brainstorming  (or any installed skill)",

@@ -24,7 +24,7 @@ function isNode(value: unknown): value is GraphNode {
   return (
     typeof n.fqid === "string" &&
     typeof n.repo === "string" &&
-    (n.module === null || typeof n.module === "string") &&
+    (n.package === null || typeof n.package === "string") &&
     Array.isArray(n.stack)
   );
 }
@@ -51,8 +51,8 @@ export async function readGraph(workspaceDir: string): Promise<Graph> {
         for (const e of edges) {
           for (const fqid of [e.from, e.to]) {
             if (byFqid.has(fqid)) continue;
-            const { repo, module } = parseFqid(fqid);
-            byFqid.set(fqid, { fqid, repo, module, stack: [] });
+            const { repo, package: pkg } = parseFqid(fqid);
+            byFqid.set(fqid, { fqid, repo, package: pkg, stack: [] });
           }
         }
         nodes = [...byFqid.values()];

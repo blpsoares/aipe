@@ -42,7 +42,7 @@ function isValidReport(value: unknown): value is RepoReport {
   return (
     typeof r.repo === "string" &&
     Array.isArray(r.stack) &&
-    // `modules` is optional; when present every entry must be a valid module.
+    // `modules` is optional; when present every entry must be a valid package.
     (r.modules === undefined || (Array.isArray(r.modules) && r.modules.every(isValidModule))) &&
     Array.isArray(r.relations) &&
     r.relations.every(isValidRelation)

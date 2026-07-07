@@ -45,7 +45,7 @@ async function recordCommand(args: string[]): Promise<number> {
     return 1;
   }
   const pr = getFlag(args, "--pr");
-  const module = getFlag(args, "--module");
+  const pkg = getFlag(args, "--package");
   const tier = getFlag(args, "--tier");
   const model = getFlag(args, "--model");
   const statusFlag = getFlag(args, "--status");
@@ -54,7 +54,7 @@ async function recordCommand(args: string[]): Promise<number> {
     : "dispatched";
   await recordDispatch(workspace, id, {
     repo,
-    ...(module ? { module } : {}),
+    ...(pkg ? { package: pkg } : {}),
     specialist,
     branch,
     worktree,
@@ -63,7 +63,7 @@ async function recordCommand(args: string[]): Promise<number> {
     ...(model ? { model } : {}),
     status,
   });
-  console.log(`OK ${repo}${module ? `/${module}` : ""} ${specialist} ${status}`);
+  console.log(`OK ${repo}${pkg ? `/${pkg}` : ""} ${specialist} ${status}`);
   return 0;
 }
 
@@ -80,13 +80,13 @@ async function showCommand(args: string[]): Promise<number> {
     return 1;
   }
   for (const d of ledger.dispatches) {
-    console.log(`DISPATCH ${d.repo}${d.module ? `/${d.module}` : ""} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}`);
+    console.log(`DISPATCH ${d.repo}${d.package ? `/${d.package}` : ""} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}`);
   }
   console.log(`STATE journey=${id} dispatches=${ledger.dispatches.length}`);
   return 0;
 }
 
-// The coordinator's Orientation Spec: a durable, PE-approved cross-module spec
+// The coordinator's Orientation Spec: a durable, PE-approved cross-package spec
 // written before any dispatch (the gate). Scaffold → PE edits → --check → PE
 // --approve; --amend bumps the version (re-approval) after an escalation.
 async function specCommand(args: string[]): Promise<number> {

@@ -30,14 +30,14 @@ which specialist owns which repo).
    Use the returned `JOURNEY <id>` for every command below. One demand = one
    journey; several specialists may run under it.
 
-2. **Decompose the demand into per-module tasks.** Decide *which units* the
-   demand touches and *what each must do*. The unit of work is a **module**, not
-   the repo: a flat repo is one implicit module (`fqid` = the repo name); a
-   monorepo has one module per package/service (`fqid` = `repo/module`). Read the
+2. **Decompose the demand into per-package tasks.** Decide *which units* the
+   demand touches and *what each must do*. The unit of work is a **package**, not
+   the repo: a flat repo is one implicit package (`fqid` = the repo name); a
+   monorepo has one package per package/service (`fqid` = `repo/package`). Read the
    packages from `brain.yaml` (`aipe read-state` also lists them). A task is scoped
-   to a single module. If the demand only touches one module, there is exactly
+   to a single package. If the demand only touches one package, there is exactly
    one task — don't invent work elsewhere. Distinct packages of one monorepo run
-   in **parallel** (the law serializes only the *same* module).
+   in **parallel** (the law serializes only the *same* package).
 
 3. **Sequence with the relations graph.** Read `graph.yaml`. If repo A's task
    depends on a contract that repo B must change first (A `consumes`/`imports`
@@ -46,15 +46,15 @@ which specialist owns which repo).
    an earlier one. Independent repos go in the same wave.
 
 3.5. **Write the Orientation Spec — and get the PE's approval (the gate).**
-   Before *any* dispatch, author a durable, cross-module spec for this demand.
+   Before *any* dispatch, author a durable, cross-package spec for this demand.
    Scaffold it (one scope section per unit in the batch):
    ```bash
    aipe journey spec --journey <id> --units <fqid,fqid,...> --workspace <workspace>
    ```
    Then fill in `.aipe/journeys/<id>/orientation.md`: the **Problem**, the
-   **Cross-module contracts** (from `graph.yaml` — who consumes/imports what, what
-   lands first), a **Per-module scope + acceptance** per unit, the **Sequencing**
-   (waves), and **Out of scope**. Keep it cross-module — implementation detail is
+   **Cross-package contracts** (from `graph.yaml` — who consumes/imports what, what
+   lands first), a **Per-package scope + acceptance** per unit, the **Sequencing**
+   (waves), and **Out of scope**. Keep it cross-package — implementation detail is
    each specialist's own SDD, not this. Validate the structure, then present it to
    the PE and **wait for approval**:
    ```bash
@@ -63,34 +63,34 @@ which specialist owns which repo).
    aipe journey spec --journey <id> --approve --workspace <workspace>
    ```
    Do **not** dispatch until `--show` reports `approved=true`. If an escalation
-   later changes the cross-module shape, `--amend` (bumps the version), edit, and
+   later changes the cross-package shape, `--amend` (bumps the version), edit, and
    get re-approval before the next wave.
 
 4. **For each wave, in order:**
 
-   a. **Assemble the batch** — the `{repo, specialist, module?}` entries for this
-   wave (the specialist is the persona for that module from `personas.yaml`; add
-   `module` for a monorepo unit, omit it for a flat repo). Write it to a temp JSON
+   a. **Assemble the batch** — the `{repo, specialist, package?}` entries for this
+   wave (the specialist is the persona for that package from `personas.yaml`; add
+   `package` for a monorepo unit, omit it for a flat repo). Write it to a temp JSON
    file and adjudicate the law:
    ```bash
    aipe dispatch validate --input <batch.json> --workspace <workspace>
    ```
    `OK batch=<n>` → proceed. Any `REJECT …` → fix and re-validate:
-   - `same-module <fqid>` / `same-repo <repo>` — two tasks hit one unit in one
-     wave; split them across waves (the law serializes the same module; distinct
+   - `same-package <fqid>` / `same-repo <repo>` — two tasks hit one unit in one
+     wave; split them across waves (the law serializes the same package; distinct
      packages of one monorepo are fine in the same wave).
    - `cap-exceeded <n>` — more than 16 at once; split the wave.
    - `unknown-repo` / `unknown-specialist` — you named something not in
      `brain.yaml` / `personas.yaml`.
 
-   b. **Provision a worktree per entry** (pass `--module` for a monorepo unit so
+   b. **Provision a worktree per entry** (pass `--package` for a monorepo unit so
    two packages of one repo get distinct worktrees on the same clone):
    ```bash
-   aipe worktree create --repo <repo> [--module <module>] --specialist <persona> --journey <id> --workspace <workspace>
+   aipe worktree create --repo <repo> [--package <package>] --specialist <persona> --journey <id> --workspace <workspace>
    ```
    Note the printed `OK <worktree-path> <branch>`. Record it:
    ```bash
-   aipe journey record --journey <id> --repo <repo> [--module <module>] --specialist <persona> \
+   aipe journey record --journey <id> --repo <repo> [--package <package>] --specialist <persona> \
      --branch <branch> --worktree <path> --status dispatched --workspace <workspace>
    ```
 
@@ -99,9 +99,9 @@ which specialist owns which repo).
    prompt is: that persona identity, followed by the **hiring brief** (below,
    carrying **its slice** of the approved Orientation Spec — this unit's scope +
    acceptance), and the instruction *"operate strictly inside `<worktree-path>`
-   (a monorepo module: stay within `<module-path>`); run spec-driven — first
+   (a monorepo package: stay within `<package-path>`); run spec-driven — first
    check `aipe skill match --task-type <t> --size <s>` and, if an SDD kit matches,
-   derive a short module spec + plan and **commit it alongside the code**; then
+   derive a short package spec + plan and **commit it alongside the code**; then
    TDD, push `<branch>`, open a PR, and return the structured result."* Dispatch
    all entries in a wave in parallel (one subagent each).
 
@@ -137,22 +137,22 @@ Hand the subagent this exact shape, filled from the data above:
 {
   "journey": "<id>",
   "repo": "<repo>",
-  "module": "<module or omit for a flat repo>",
+  "package": "<package or omit for a flat repo>",
   "modulePath": "<repo-relative path the specialist must stay within>",
   "specialist": "<persona>",
   "role": "dev-fullstack | qa",
   "worktree": "<absolute worktree path>",
-  "branch": "aipe/<id>/<module>--<slug> (or aipe/<id>/<slug> when flat)",
+  "branch": "aipe/<id>/<package>--<slug> (or aipe/<id>/<slug> when flat)",
   "orientationSlice": "This unit's Scope + Acceptance, copied from the approved orientation.md.",
   "task": "One scoped paragraph: what to build/fix in THIS unit only.",
-  "workingMethod": "Run `aipe skill match`; if an SDD kit matches, write a short module spec + plan and commit it before implementing (it travels in the PR). Then TDD.",
+  "workingMethod": "Run `aipe skill match`; if an SDD kit matches, write a short package spec + plan and commit it before implementing (it travels in the PR). Then TDD.",
   "relevantFiles": ["<paths you already know are involved>"],
   "relations": [ <the graph.yaml edges touching this unit> ],
   "deliveryContract": {
     "definitionOfDone": "A PR from <branch> with the change, its committed spec/plan (when SDD applied), and green tests.",
     "opensPr": true
   },
-  "escalation": "If this needs a change in another module/repo, STOP and return {status:escalate,…}; never edit another unit."
+  "escalation": "If this needs a change in another package/repo, STOP and return {status:escalate,…}; never edit another unit."
 }
 ```
 

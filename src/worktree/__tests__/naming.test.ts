@@ -25,13 +25,13 @@ test("deriveSpec slugifies multi-word / accented names", () => {
   expect(spec.relPath).toBe(".worktrees/j1-ana-maria");
 });
 
-test("deriveSpec encodes a module into the branch/path, implicit stays unchanged", () => {
+test("deriveSpec encodes a package into the branch/path, implicit stays unchanged", () => {
   const mono = deriveSpec("platform", "j1", "Ana", "core");
   expect(mono.branch).toBe("aipe/j1/core--ana");
   expect(mono.relPath).toBe(".worktrees/j1-core--ana");
   expect(mono.moduleSlug).toBe("core");
 
-  const flat = deriveSpec("embark", "j1", "Ana", "embark"); // module === repo ⇒ implicit
+  const flat = deriveSpec("embark", "j1", "Ana", "embark"); // package === repo ⇒ implicit
   expect(flat.branch).toBe("aipe/j1/ana");
   expect(flat.moduleSlug).toBeNull();
 });

@@ -48,8 +48,8 @@ the writing to the typed CLI, which validates and serializes it.
        { "name": "billing", "path": "services/billing", "stack": ["Go"], "group": "backend", "kind": "api" }
    ] }
    ```
-   A repo with no `packages` is one implicit module (the whole repo) — flat repos
-   are unchanged. Modules sharing a `group` share one specialist pair (use it to
+   A repo with no `packages` is one implicit package (the whole repo) — flat repos
+   are unchanged. Packages sharing a `group` share one specialist pair (use it to
    keep a big monorepo's roster small). Don't fold **separate** products into one
    monorepo entry — genuinely separate git repos stay separate repo entries.
    After the clone, `aipe detect-packages --repo <name>` proposes packages from the

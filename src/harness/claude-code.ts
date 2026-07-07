@@ -81,8 +81,8 @@ export const claudeCodeAdapter: HarnessAdapter = {
 
   wrapPersona(body: string, meta: PersonaMeta): string {
     const stackLabel = meta.stack.length > 0 ? meta.stack.join(", ") : "unknown stack";
-    const scope = meta.module ? `${meta.repo}/${meta.module}` : meta.repo;
-    const unit = meta.module ? "module" : "repo";
+    const scope = meta.package ? `${meta.repo}/${meta.package}` : meta.repo;
+    const unit = meta.package ? "package" : "repo";
     const description = `${ROLE_LABEL[meta.role]} for the ${scope} ${unit} (${stackLabel}). Dispatched by the coordinator for tasks scoped to ${scope}, or worn directly when a session opens inside the ${meta.repo} repo.`;
     return `---\nname: ${meta.slug}\ndescription: ${description}\n---\n\n${body.trim()}\n`;
   },

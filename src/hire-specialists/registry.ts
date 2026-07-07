@@ -15,9 +15,9 @@ export function buildRegistry(brain: BrainFile, reports: PersonaReport[]): Perso
       role: report.role,
       repo: report.repo,
       path: `${repoPath}/.claude/skills/${personaSlug(report.name)}`,
-      // module/group are carried only for monorepo packages — a flat repo omits
+      // package/group are carried only for monorepo packages — a flat repo omits
       // them so existing single-repo rosters (and their tests) are unchanged.
-      ...(report.module ? { module: report.module } : {}),
+      ...(report.package ? { package: report.package } : {}),
       ...(report.group ? { group: report.group } : {}),
     });
   }
