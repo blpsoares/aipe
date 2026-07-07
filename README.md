@@ -142,8 +142,10 @@ aipe serve --port 8080 --workspace ../aipe-opvibes
 | — | Unified `aipe` CLI + zero-dependency distribution | Merged | [06](docs/dossie/06-unified-cli-distribution.md) |
 | 6 | **Phase B — Operation** (worktree · dispatch · journey · `/operate` · dashboard) + portability + toolbox + `/aipe-add-repo` | Merged | [07](docs/dossie/07-phase-b-operation.md) |
 | 7 | **AIPe Web Console** (`aipe serve` — responsive org chart · pipeline · detail · embedded terminal, live over SSE) | Built | [08](docs/dossie/08-web-console.md) |
-| 8 | **Monorepo module granularity** (`module` as the unit of work) + toolbox uninstall | Built | [09](docs/dossie/09-module-granularity.md) |
+| 8 | **Monorepo package granularity** (`package` as the unit of work) + toolbox uninstall | Built | [09](docs/dossie/09-module-granularity.md) |
 | 9 | **Spec-first operation** (coordinator Orientation Spec + PE gate + specialist SDD) | Built | [10](docs/dossie/10-spec-first-operation.md) |
+| 10 | **Model policy** (`aipe model` — model selection by tier + authorization/volume gates) | Built | [12](docs/dossie/12-model-policy.md) |
+| 11 | **Toolbox kits** (`aipe skill add sdd-lite\|spec-kit\|pdd` + `aipe skill preset` — vendored Spec Kit, wired PDD plugin) | Built | — |
 
 ### Roadmap (pending)
 

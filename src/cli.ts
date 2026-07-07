@@ -26,7 +26,7 @@ import { run as detectPackages } from "./detect-packages/cli";
 import { run as validatePersonas } from "./validate-personas/cli";
 import { run as model } from "./model/cli";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 type Subcommand = (args: string[]) => Promise<number>;
 
