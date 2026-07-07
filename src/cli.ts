@@ -28,7 +28,7 @@ import { run as model } from "./model/cli";
 import { run as checkUpdate } from "./update/cli";
 import { cachedUpdateInfo, updateNotice } from "./update/check";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.2.1";
 
 type Subcommand = (args: string[]) => Promise<number>;
 

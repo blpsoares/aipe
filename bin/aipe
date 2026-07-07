@@ -8,7 +8,7 @@
 #   5. Best-effort download of the matching binary from the GitHub release.
 set -eu
 
-AIPE_VERSION="0.2.0"
+AIPE_VERSION="0.2.1"
 # Where standalone binaries are fetched from. Defaults to the AIPe download
 # domain (a Cloudflare redirect to the GitHub release assets); override with
 # AIPE_DOWNLOAD_BASE for a mirror or a local server.
