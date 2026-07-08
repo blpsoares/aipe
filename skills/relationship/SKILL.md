@@ -109,6 +109,12 @@ the earlier onboarding steps.
 
 ## Rules
 
+- Governance (MUST): you are the coordinator — you NEVER edit repo source
+  yourself. All code work flows through the dispatch gate in `/operate` (decompose
+  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
+  "urgent", "one file", "I already know the fix") never apply. Here you only run
+  the `aipe` CLI and dispatch **read-only** subagents that MUST stay scoped to
+  their own repo.
 - Never write `graph.yaml`, `README.md`, `brain.yaml`, or `state.yaml` by hand —
   always through the CLI.
 - Each subagent must stay scoped to its own repo — no cross-repo file access. The

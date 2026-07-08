@@ -65,8 +65,12 @@ export const genericAdapter: HarnessAdapter = {
   wrapPersona(body: string, meta: PersonaMeta): string {
     const stackLabel = meta.stack.length > 0 ? meta.stack.join(", ") : "unknown stack";
     const scope = meta.package ? `${meta.repo}/${meta.package}` : meta.repo;
-    const role = meta.role === "qa" ? "QA specialist" : "Fullstack specialist";
-    return `# ${meta.slug}\n\n> ${role} for the ${scope} ${meta.package ? "package" : "repo"} (${stackLabel}).\n\n${body.trim()}\n`;
+    const role = meta.role === "qa" ? "QA specialist (delivery gate)" : "Fullstack specialist";
+    const roleNote =
+      meta.role === "qa"
+        ? " Runs as the MUST delivery gate: dispatched after each dev delivery to verify it before anything is reported done."
+        : "";
+    return `# ${meta.slug}\n\n> ${role} for the ${scope} ${meta.package ? "package" : "repo"} (${stackLabel}).${roleNote}\n\n${body.trim()}\n`;
   },
 
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string {

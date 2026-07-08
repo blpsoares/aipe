@@ -48,6 +48,62 @@ test("all done → full coordinator awareness with repos", () => {
   expect(body).toContain("Ready to receive requests");
 });
 
+test("operant coordinator carries the MUST dispatch gate + non-exception table", () => {
+  const body = buildAwareness(
+    fields({ phaseWorkspace: "done", phaseRelationship: "done", phaseSpecialists: "done" }),
+  );
+  expect(body).toContain("DISPATCH GATE");
+  expect(body).toContain("MUST");
+  // the four non-negotiable rationalizations
+  expect(body).toContain("simple");
+  expect(body).toContain("urgent");
+  expect(body).toContain("interactive");
+  expect(body).toContain("security-sensitive");
+  expect(body).toContain("one file");
+  expect(body).toContain("already investigated");
+});
+
+test("operant coordinator declares its allowed actions and that editing is never one", () => {
+  const body = buildAwareness(
+    fields({ phaseWorkspace: "done", phaseRelationship: "done", phaseSpecialists: "done" }),
+  );
+  expect(body).toContain("decompose");
+  expect(body).toContain("dispatch");
+  expect(body).toContain("read-only");
+  expect(body).toContain("escalate");
+  // editing a repo is NEVER a coordinator action
+  expect(body).toContain("never");
+  expect(body).toContain("edit");
+});
+
+test("only an explicit PE opt-out dispenses dispatch (casual does not count)", () => {
+  const body = buildAwareness(
+    fields({ phaseWorkspace: "done", phaseRelationship: "done", phaseSpecialists: "done" }),
+  );
+  expect(body).toContain("EXPLICITLY");
+  expect(body).toContain("casual");
+});
+
+test("operant coordinator carries the precedence-envelope clause", () => {
+  const body = buildAwareness(
+    fields({ phaseWorkspace: "done", phaseRelationship: "done", phaseSpecialists: "done" }),
+  );
+  expect(body).toContain("routing");
+  expect(body).toContain("systematic-debugging");
+  expect(body).toContain("TDD");
+  expect(body).toContain("INSIDE");
+  // process-skills are not turned off
+  expect(body).toContain("NOT disabled");
+});
+
+test("operant coordinator documents the QA gate before done", () => {
+  const body = buildAwareness(
+    fields({ phaseWorkspace: "done", phaseRelationship: "done", phaseSpecialists: "done" }),
+  );
+  expect(body).toContain("QA");
+  expect(body).toContain("gate");
+});
+
 test("renderSessionContext emits valid SessionStart hook JSON", () => {
   const json = renderSessionContext(fields({ brain: "absent" }));
   const parsed = JSON.parse(json);

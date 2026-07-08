@@ -8,6 +8,7 @@ import { DEFAULT_HARNESS, getAdapter, readHarness, resolveAdapter, writeHarness 
 import type { PersonaMeta } from "../types";
 
 const meta: PersonaMeta = { slug: "ana", role: "dev-fullstack", repo: "prontuario", package: "api", stack: ["hono"] };
+const qaMeta: PersonaMeta = { slug: "bia", role: "qa", repo: "prontuario", package: "api", stack: ["hono"] };
 
 test("getAdapter resolves known ids and falls back to Claude Code", () => {
   expect(getAdapter("claude-code").id).toBe("claude-code");
@@ -25,6 +26,19 @@ test("claude-code adapter: SessionStart hook delivery + SKILL.md persona", () =>
   expect(file).toContain("name: ana");
   expect(file).toContain("for the prontuario/api package (hono).");
   expect(file.startsWith("---\n")).toBe(true);
+});
+
+test("QA persona description surfaces the MUST delivery gate (both adapters)", () => {
+  const cc = claudeCodeAdapter.wrapPersona("You are Bia.", qaMeta);
+  expect(cc).toContain("QA specialist (delivery gate)");
+  expect(cc).toContain("MUST delivery gate");
+  expect(cc).toContain("before anything is reported done");
+  // dev persona stays clean — no gate note
+  expect(claudeCodeAdapter.wrapPersona("You are Ana.", meta)).not.toContain("delivery gate");
+
+  const gen = genericAdapter.wrapPersona("You are Bia.", qaMeta);
+  expect(gen).toContain("QA specialist (delivery gate)");
+  expect(gen).toContain("MUST delivery gate");
 });
 
 test("generic adapter: file delivery + AGENTS-style persona (no frontmatter)", () => {
