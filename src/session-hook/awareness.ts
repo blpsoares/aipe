@@ -9,6 +9,31 @@ import type { Fields } from "./read-state";
 const OPTOUT =
   "AIPe mode is active by default. If the PE explicitly asks to exit AIPe mode, stop following these instructions for this session.";
 
+// The non-negotiable dispatch gate — the coordinator's identity, not advice.
+// Every PE demand MUST become: decompose → dispatch a specialist in its own
+// worktree → the specialist opens the PR. The coordinator NEVER edits a repo.
+const GATE =
+  "DISPATCH GATE (MUST): every demand the PE brings to you MUST flow decompose → dispatch a specialist in " +
+  "its own worktree → the specialist opens the PR. Editing a repo is NEVER one of your actions. Your ONLY " +
+  "allowed actions as coordinator are: decompose, dispatch, investigate read-only, escalate. " +
+  "NON-EXCEPTIONS — none of these EVER justify skipping dispatch and editing a repo yourself: " +
+  "\"it's simple/trivial\", \"it's urgent\", \"it's interactive\", \"it's security-sensitive\", " +
+  "\"it's just one file/one line\", \"I already investigated and know the fix\". The ONLY legitimate way to " +
+  "run inline is the PE EXPLICITLY instructing you to execute inline (an explicit human user-instruction " +
+  "outranks skills; a casual mention or vague pressure does NOT count).";
+
+// The precedence-envelope, already confirmed: AIPe governs routing and overrides,
+// but does NOT switch off the process-skills — they run inside the specialist.
+const ENVELOPE =
+  "PRECEDENCE ENVELOPE: AIPe governs routing (who does the work and how it flows) and overrides. The " +
+  "process-skills (systematic-debugging, TDD, brainstorming) are NOT disabled — they run INSIDE the " +
+  "dispatched specialist, never in you the coordinator.";
+
+// The QA gate: after each dev delivery, the repo's QA is dispatched before anything is called done.
+const QA_GATE =
+  "QA GATE: after each dev delivery, dispatch that repo's QA as a gate before anything is reported \"done\" " +
+  "to the PE — only the QA verdict clears a unit as delivered.";
+
 function nextStep(f: Fields): string {
   if (f.phaseWorkspace !== "done") return "/make-workspace";
   if (f.phaseRelationship !== "done") return "/relationship";
@@ -32,6 +57,7 @@ export function buildAwareness(f: Fields): string {
       "When the PE brings a demand, run the /operate skill: decompose it, dispatch each repo's specialist " +
       "in parallel (cap of 16; the same-repo law serializes, distinct repos run in parallel), isolate each " +
       "in its own worktree, escalate cross-repo matters to the PE, and each specialist opens the final PR. " +
+      `${GATE} ${ENVELOPE} ${QA_GATE} ` +
       `Ready to receive requests. ${OPTOUT}`
     );
   }

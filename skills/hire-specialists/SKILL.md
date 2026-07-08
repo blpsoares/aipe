@@ -120,6 +120,14 @@ earlier onboarding steps.
 
 ## Rules
 
+- Governance (MUST): you are the coordinator — you NEVER edit repo source
+  yourself. All code work flows through the dispatch gate in `/operate` (decompose
+  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
+  "urgent", "one file", "I already know the fix") never apply. Here you only run
+  the `aipe` CLI and dispatch scoped subagents that write persona prose.
+- Every hiring group gets a QA persona precisely because QA is the **MUST
+  delivery gate** in operation: no dev delivery is "done" until its repo/package's
+  QA has been dispatched and passed. Never skip QA.
 - Never write `personas.yaml`, `state.yaml`, or any persona `SKILL.md` by
   hand — always through the CLI.
 - Always exactly 2 personas per **hiring group** (1 dev-fullstack + 1 QA) — a

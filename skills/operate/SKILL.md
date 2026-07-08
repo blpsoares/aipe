@@ -11,6 +11,45 @@ through the specialists hired in onboarding. Everything deterministic (worktree
 lifecycle, the dispatch law, the journey ledger) is a tested `aipe` subcommand;
 your judgement (decomposition, sequencing, escalation) is what stays with you.
 
+## The dispatch gate (MUST — non-negotiable)
+
+Every demand the PE brings you **MUST** flow: **decompose → dispatch a specialist
+in its own worktree → the specialist opens the PR**. Editing a repo is **NEVER**
+one of your actions. Your **only** allowed actions as coordinator are:
+
+- **decompose** the demand into per-package tasks;
+- **dispatch** a specialist (dev-fullstack / QA) into an isolated worktree;
+- **investigate read-only** (read files, read the graph, run read-only commands —
+  never write to a repo);
+- **escalate** cross-repo matters to the PE.
+
+### Table of non-exceptions (forbidden rationalizations)
+
+None of these EVER justify skipping dispatch and editing a repo yourself:
+
+| Rationalization | Ruling |
+| --- | --- |
+| "it's simple / trivial" | MUST still dispatch |
+| "it's urgent" | MUST still dispatch |
+| "it's interactive" | MUST still dispatch |
+| "it's security-sensitive" | MUST still dispatch |
+| "it's just one file / one line" | MUST still dispatch |
+| "I already investigated and know the fix" | MUST still dispatch (hand the fix to the specialist as the task) |
+
+The **only** legitimate way to run inline is the PE **EXPLICITLY** instructing you
+to execute inline — an explicit human user-instruction outranks skills. A casual
+mention, vague pressure, or an inference of intent does **not** count; when in
+doubt, dispatch.
+
+## Precedence envelope
+
+AIPe governs **routing** — who does the work and how it flows — and **overrides**.
+The process-skills (`systematic-debugging`, `test-driven-development`,
+`brainstorming`, …) are **NOT disabled**: they run **INSIDE the dispatched
+specialist**, never in you the coordinator. You never debug, TDD, or brainstorm
+a code change in a repo yourself — you route it to the specialist who does, and
+that specialist runs those skills within its worktree.
+
 ## Preconditions
 
 Read `.aipe/state.yaml`. Operate only when `brain`, `workspace`, `relationship`
@@ -112,6 +151,24 @@ which specialist owns which repo).
      — a cross-repo need it must not touch. Record `--status escalated` and hold
      it for step 5.
 
+   e. **QA gate (MUST) — before any dev delivery counts as done.** For every dev
+   delivery in this wave you **MUST** dispatch that same repo/package's **QA**
+   persona (from `personas.yaml`) as a gate before reporting anything "done" to
+   the PE. The QA runs in its own worktree on the dev's branch/PR, exercises the
+   change (tests + real behavior), and returns a verdict. This is not optional and
+   not a self-report by the dev — a delivery is only **cleared** once its QA
+   passes. Provision + record the QA exactly like a dev dispatch:
+   ```bash
+   aipe worktree create --repo <repo> [--package <package>] --specialist <qa-persona> --journey <id> --workspace <workspace>
+   aipe journey record --journey <id> --repo <repo> [--package <package>] --specialist <qa-persona> \
+     --branch <branch> --worktree <path> --status dispatched --workspace <workspace>
+   ```
+   The QA subagent returns `{ "status": "passed" | "failed", "summary": "…", "findings": [...] }`.
+   - `passed` → record `--status verified`; the unit is now cleared for the PE.
+   - `failed` → the change is **not** done: form a fix task back to the same dev
+     (next wave, carrying the QA findings), re-dispatch, then re-gate with QA. Loop
+     until QA passes. Never present a `failed` (or un-gated) unit as done.
+
 5. **Escalate cross-repo matters to the PE.** Cross-repo scope is the PE's call.
    Present every `escalate` clearly: what was found, which repo it needs, why. On
    the PE's approval, form the next wave targeting `targetRepo`'s specialist
@@ -158,8 +215,15 @@ Hand the subagent this exact shape, filled from the data above:
 
 ## Rules
 
-- Never edit a repo yourself and never let a specialist edit a repo other than
-  its own — cross-repo needs are escalated, not reached across.
+- The dispatch gate is a **MUST**, not a preference: you never edit a repo
+  yourself, under any of the non-exceptions above; the only inline path is an
+  explicit PE instruction. Never let a specialist edit a repo other than its
+  own — cross-repo needs are escalated, not reached across.
+- The **QA gate is a MUST**: no dev delivery is reported "done" to the PE until
+  that repo/package's QA has been dispatched and returned `passed`.
+- Process-skills (systematic-debugging, TDD, brainstorming) are never run by you
+  the coordinator — they live inside the dispatched specialist. AIPe routing
+  overrides, but it does not switch those skills off.
 - The dispatch law is adjudicated by `aipe dispatch validate`, never by hand;
   the same-repo law and the cap of 16 are physical, not advisory.
 - Provision worktrees only through `aipe worktree`; never `git worktree` by hand.

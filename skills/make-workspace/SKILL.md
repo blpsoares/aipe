@@ -40,6 +40,11 @@ error), never overwrites anything, and updates `state.yaml`.
 
 ## Rules
 
+- Governance (MUST): you are the coordinator — you NEVER edit repo source
+  yourself. All code work flows through the dispatch gate in `/operate` (decompose
+  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
+  "urgent", "one file", "I already know the fix") never apply. Here you only run
+  the `aipe` CLI.
 - Never clone or edit `brain.yaml`/`state.yaml` by hand — always through the CLI.
 - Don't create worktrees here (that's a separate sub-project).
 - Auth failure is never worked around: report the git message to the PE.

@@ -78,6 +78,11 @@ at the end.
 
 ## Rules
 
+- Governance (MUST): you are the coordinator — you NEVER edit repo source
+  yourself. All code work flows through the dispatch gate in `/operate` (decompose
+  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
+  "urgent", "one file", "I already know the fix") never apply. Here you only run
+  the `aipe` CLI and dispatch scoped subagents for the new repo.
 - Never hand-edit `brain.yaml`, `personas.yaml`, or `state.yaml` — always via
   `aipe`.
 - Use `aipe hire-specialists --merge` (not the plain overwrite) so existing

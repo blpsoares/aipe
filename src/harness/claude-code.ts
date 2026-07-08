@@ -5,7 +5,15 @@ import type { HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDe
 
 const ROLE_LABEL: Record<PersonaRole, string> = {
   "dev-fullstack": "Fullstack specialist",
-  qa: "QA specialist",
+  qa: "QA specialist (delivery gate)",
+};
+
+// Role-specific tail appended to a persona's description. The QA persona is the
+// mandatory gate the coordinator MUST run after each dev delivery — surfaced here
+// so the posture travels with the persona file itself.
+const ROLE_NOTE: Record<PersonaRole, string> = {
+  "dev-fullstack": "",
+  qa: " Runs as the MUST delivery gate: dispatched after each dev delivery to verify it before anything is reported done.",
 };
 
 const SESSION_START_HOOK = {
@@ -83,7 +91,7 @@ export const claudeCodeAdapter: HarnessAdapter = {
     const stackLabel = meta.stack.length > 0 ? meta.stack.join(", ") : "unknown stack";
     const scope = meta.package ? `${meta.repo}/${meta.package}` : meta.repo;
     const unit = meta.package ? "package" : "repo";
-    const description = `${ROLE_LABEL[meta.role]} for the ${scope} ${unit} (${stackLabel}). Dispatched by the coordinator for tasks scoped to ${scope}, or worn directly when a session opens inside the ${meta.repo} repo.`;
+    const description = `${ROLE_LABEL[meta.role]} for the ${scope} ${unit} (${stackLabel}). Dispatched by the coordinator for tasks scoped to ${scope}, or worn directly when a session opens inside the ${meta.repo} repo.${ROLE_NOTE[meta.role]}`;
     return `---\nname: ${meta.slug}\ndescription: ${description}\n---\n\n${body.trim()}\n`;
   },
 

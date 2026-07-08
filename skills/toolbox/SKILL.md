@@ -112,6 +112,12 @@ each `.mcp.json`.
 
 ## Rules
 
+- Governance (MUST): you are the coordinator — you NEVER edit repo source
+  yourself. All code work flows through the dispatch gate in `/operate` (decompose
+  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
+  "urgent", "one file", "I already know the fix") never apply. Here you only run
+  the `aipe skill` / `aipe mcp` CLI. Note the envelope: the process-skills a kit
+  installs run INSIDE the dispatched specialist, never in you.
 - Never hand-write `.aipe/toolbox.yaml`, a repo's `.claude/skills/<name>/`, or an
   `.mcp.json` — always through `aipe skill` / `aipe mcp`, so the catalog and the
   installs stay in sync and survive publishing.

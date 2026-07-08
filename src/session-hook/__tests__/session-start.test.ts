@@ -69,6 +69,20 @@ test("state 3: everything done → full coordinator with repos", async () => {
   }
 });
 
+test("operant coordinator carries the MUST dispatch gate + envelope end-to-end", async () => {
+  const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } });
+  try {
+    const ctx = JSON.parse(await runHook(dir)).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain("DISPATCH GATE");
+    expect(ctx).toContain("already investigated");
+    expect(ctx).toContain("EXPLICITLY");
+    expect(ctx).toContain("systematic-debugging");
+    expect(ctx).toContain("QA");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("opt-out present in every state", async () => {
   const dir = await makeWs({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } });
   try {
