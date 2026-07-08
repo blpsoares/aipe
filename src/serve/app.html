@@ -128,8 +128,24 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .sw.on { background: var(--accent); border-color: var(--accent); }
 .sw.on .knob { transform: translateX(18px); }
 /* org chart (SVG tree) */
-.orgwrap { overflow-x: auto; overflow-y: hidden; padding: 10px 6px; }
+/* user-select:none so dragging over the SVG <text> labels pans instead of
+   selecting text; the click that opens a specialist's CV still fires. */
+.orgwrap { overflow-x: auto; overflow-y: hidden; padding: 10px 6px; user-select: none; -webkit-user-select: none; -moz-user-select: none; }
 .orgwrap svg { display: block; }
+/* org toolbar: search + zoom/reset/fullscreen controls */
+.org-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.org-search { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); color: var(--ink-3); transition: border-color .15s; }
+.org-search:focus-within { border-color: var(--line-2); }
+.org-search .ic { flex: 0 0 auto; }
+.org-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: 13px; }
+.org-ctrls { display: inline-flex; gap: 6px; flex: 0 0 auto; }
+.org-ctrls .icon-btn { font-size: 16px; font-weight: 700; }
+.org-stage { display: contents; }
+/* fullscreen: the stage fills the screen with the app background */
+.org-stage:fullscreen { display: flex; flex-direction: column; background: var(--bg); padding: 16px; gap: 12px; }
+.org-stage:fullscreen .org-desktop { flex: 1; display: flex; }
+.org-stage:fullscreen .orgwrap { flex: 1; height: 100%; }
+.org-stage:-webkit-full-screen { display: flex; flex-direction: column; background: var(--bg); padding: 16px; }
 /* vertical org tree — the mobile-friendly rendering of the organogram */
 .org-mobile { display: none; }
 .otree { display: flex; flex-direction: column; }
@@ -282,6 +298,27 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .cvstats { display: flex; gap: 16px; margin-top: 2px; padding-top: 11px; border-top: 1px solid var(--line); }
 .cvstat { font-size: 11.5px; color: var(--ink-3); display: flex; gap: 5px; align-items: baseline; }
 .cvstat b { font-size: 15px; font-weight: 750; color: var(--ink); }
+/* live specialist monitor */
+.mon-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; align-items: start; }
+.mon-pane { display: flex; flex-direction: column; min-width: 0; }
+.mon-pane > .eyebrow { margin-bottom: 10px; }
+.mon-stream { display: flex; flex-direction: column; gap: 8px; max-height: 62vh; overflow-y: auto; padding-right: 4px; }
+.mon-line { display: flex; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); animation: slidein .25s ease both; }
+.mon-line .who { font-size: 11px; font-weight: 700; color: var(--ink-3); flex: 0 0 auto; }
+.mon-line .mtx { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.mon-line.say .mtx { color: var(--ink); }
+.mon-line.tool { background: color-mix(in srgb, var(--sky) 7%, var(--panel-2)); }
+.mon-line.tool .mtx { font-family: var(--mono); font-size: 12px; color: var(--sky); }
+.mon-files { display: flex; flex-direction: column; gap: 6px; max-height: 62vh; overflow-y: auto; }
+.mon-file { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); animation: slidein .25s ease both; }
+.mon-file .ft { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent-wash); padding: 1px 6px; border-radius: 5px; flex: 0 0 auto; }
+.mon-file .fp2 { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+.mon-file .fw { margin-left: auto; font-size: 10.5px; color: var(--ink-3); flex: 0 0 auto; }
+.mon-agentsel { display: flex; gap: 6px; flex-wrap: wrap; }
+.mon-chip { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); font-size: 12px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.mon-chip.on { color: var(--accent-ink); background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.mon-empty { padding: 40px 24px; text-align: center; color: var(--ink-3); }
+@media (max-width: 860px) { .mon-grid { grid-template-columns: 1fr; } }
 /* org chart legend */
 .orglegend { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 18px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .orglegend .lg-h { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
@@ -412,6 +449,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
     </div>
     <button class="nav-i on" data-view="overview"><span class="ic">◎</span><span data-t="nav_overview">Overview</span></button>
     <button class="nav-i" data-view="org"><span class="ic">◈</span><span data-t="nav_org">Org chart</span></button>
+    <button class="nav-i" data-view="monitor"><span class="ic">◉</span><span data-t="nav_monitor">Monitor</span></button>
     <button class="nav-i" data-view="pipeline"><span class="ic">▦</span><span data-t="nav_pipeline">Pipeline</span></button>
     <button class="nav-i" data-view="workers"><span class="ic">◑</span><span data-t="nav_workers">Team</span></button>
     <button class="nav-i" data-view="toolbox"><span class="ic">⬡</span><span data-t="nav_toolbox">Toolbox</span></button>
@@ -478,6 +516,8 @@ const STR = {
     pipeline:"Pipeline", openboard:"Open board", liveact:"Live activity",
     s_dispatched:"Dispatched", s_delivered:"Delivered", s_escalated:"Escalated", s_merged:"Merged",
     org_sub:"Coordinator → repo · monorepo → package → specialist", t_repo:"repo", t_monorepo:"monorepo", t_module:"package", t_group:"group", nospec:"no specialists yet",
+    org_search_ph:"Filter by repo or specialist…", org_zoom:"Zoom", org_zoom_in:"Zoom in", org_zoom_out:"Zoom out", org_reset:"Reset view", org_fullscreen:"Fullscreen", org_nomatch:"No repo or specialist matches the filter.",
+    nav_monitor:"Monitor", mon_sub:"What each specialist is doing, live", mon_empty:"No specialist is active right now. Live output appears here the moment a subagent is dispatched.", mon_stream:"Working", mon_files:"Files changing", mon_agents:"Specialists", mon_nofiles:"No file changes yet", mon_all:"All",
     legend:"Legend", lg_coord:"Coordinator — plans journeys & authors the spec", lg_repo:"Repo — a single-package repository", lg_monorepo:"Monorepo — a repo split into packages", lg_module:"Package — a unit of work inside a monorepo", lg_group:"Group — packages hired together", lg_specialist:"Specialist — a hired dev/QA persona", lg_relation:"Relation — a dependency between units",
     pipe_sub:"{a} journeys · {b} dispatches", filter:"Filter",
     work_sub:"{h} hired · {a} active · {i} available", all:"All", dispatch:"+ Dispatch",
@@ -512,6 +552,8 @@ const STR = {
     pipeline:"Pipeline", openboard:"Abrir quadro", liveact:"Atividade ao vivo",
     s_dispatched:"Despachado", s_delivered:"Entregue", s_escalated:"Escalado", s_merged:"Integrado",
     org_sub:"Coordenador → repo · monorepo → pacote → especialista", t_repo:"repo", t_monorepo:"monorepo", t_module:"pacote", t_group:"grupo", nospec:"nenhum especialista ainda",
+    org_search_ph:"Filtrar por repo ou especialista…", org_zoom:"Zoom", org_zoom_in:"Aproximar", org_zoom_out:"Afastar", org_reset:"Restaurar visão", org_fullscreen:"Tela cheia", org_nomatch:"Nenhum repo ou especialista corresponde ao filtro.",
+    nav_monitor:"Monitor", mon_sub:"O que cada especialista está fazendo, ao vivo", mon_empty:"Nenhum especialista ativo agora. A saída ao vivo aparece aqui assim que um subagente é despachado.", mon_stream:"Trabalhando", mon_files:"Arquivos mudando", mon_agents:"Especialistas", mon_nofiles:"Nenhuma alteração de arquivo ainda", mon_all:"Todos",
     legend:"Legenda", lg_coord:"Coordenador — planeja jornadas e escreve a spec", lg_repo:"Repo — repositório de um único pacote", lg_monorepo:"Monorepo — repo dividido em pacotes", lg_module:"Pacote — unidade de trabalho dentro de um monorepo", lg_group:"Grupo — pacotes contratados juntos", lg_specialist:"Especialista — persona dev/QA contratada", lg_relation:"Relação — dependência entre unidades",
     pipe_sub:"{a} jornadas · {b} dispatches", filter:"Filtrar",
     work_sub:"{h} contratados · {a} ativos · {i} disponíveis", all:"Todos", dispatch:"+ Despachar",
@@ -688,9 +730,26 @@ const views = {
   org() {
     return `<div class="view-in grid" style="gap:16px">
       <div class="between"><div><h1 class="view-h">${t("nav_org")}</h1><div class="sub">${t("org_sub")}</div></div><span class="conn"><span class="dot"></span>${t("live")}</span></div>
-      <div class="card org-desktop"><div class="orgwrap" id="orgwrap">${renderOrgSvg()}</div></div>
-      <div class="org-mobile">${renderOrgTree()}</div>
+      <div class="org-toolbar">
+        <label class="org-search"><span class="ic" aria-hidden="true">🔍</span><input id="orgSearch" type="search" value="${esc(_orgQuery)}" placeholder="${esc(t("org_search_ph"))}" aria-label="${esc(t("org_search_ph"))}" autocomplete="off" spellcheck="false" /></label>
+        <div class="org-ctrls" role="group" aria-label="${esc(t("org_zoom"))}">
+          <button class="icon-btn" onclick="orgZoom(-1)" title="${esc(t("org_zoom_out"))}" aria-label="${esc(t("org_zoom_out"))}">−</button>
+          <button class="icon-btn" onclick="orgZoom(1)" title="${esc(t("org_zoom_in"))}" aria-label="${esc(t("org_zoom_in"))}">+</button>
+          <button class="icon-btn" onclick="orgZoom(0)" title="${esc(t("org_reset"))}" aria-label="${esc(t("org_reset"))}">⟲</button>
+          <button class="icon-btn" onclick="orgFullscreen()" title="${esc(t("org_fullscreen"))}" aria-label="${esc(t("org_fullscreen"))}">⛶</button>
+        </div>
+      </div>
+      <div class="org-stage" id="orgstage">
+        <div class="card org-desktop"><div class="orgwrap" id="orgwrap">${renderOrgSvg()}</div></div>
+        <div class="org-mobile">${renderOrgTree()}</div>
+      </div>
       ${orgLegend()}
+    </div>`;
+  },
+  monitor() {
+    return `<div class="view-in grid" style="gap:16px">
+      <div class="between"><div><h1 class="view-h">${t("nav_monitor")}</h1><div class="sub">${t("mon_sub")}</div></div><span class="conn" id="monConn"><span class="dot"></span>${t("live")}</span></div>
+      <div id="monwrap"></div>
     </div>`;
   },
   pipeline() {
@@ -840,8 +899,21 @@ function cvCard(w){
 // colored by state (active pulses), over the cross-repo relation edges. Redrawn
 // whenever the snapshot changes, so status shifts appear in real time.
 function orgColor(st){ return st==="active"?"var(--sky)":st==="delivered"?"var(--accent)":st==="escalated"?"var(--amber)":"var(--slate)"; }
+// ── Org search/filter: reduces the visible repos & specialists so a crowded
+//    graph stays navigable. A worker matches on name/role/package or its repo
+//    name; a repo column shows if its name matches or it has a matching worker.
+let _orgQuery = "";
+const orgHas = (txt) => String(txt||"").toLowerCase().includes(_orgQuery);
+function orgWorkerMatch(w){ return orgHas(w.name) || orgHas(w.role) || orgHas(w.package) || orgHas(w.repo); }
+function orgRepoVisible(name){ if(!_orgQuery) return true; if(orgHas(name)) return true; return DATA.workers.some(w=>w.repo===name && orgWorkerMatch(w)); }
+function orgWorkersFor(name){
+  const ws = DATA.workers.filter(w=>w.repo===name);
+  if(!_orgQuery || orgHas(name)) return ws; // no filter, or repo name itself matches → show all
+  return ws.filter(orgWorkerMatch);
+}
 function renderOrgSvg(){
-  const repos = DATA.repos.map(r=>r.name);
+  const repos = DATA.repos.filter(r=>orgRepoVisible(r.name)).map(r=>r.name);
+  if(repos.length===0) return `<div class="sub" style="padding:24px 12px">${esc(t("org_nomatch"))}</div>`;
   const yC=42, yR=152, yS0=262, sH=64, pkgH=28, grpGap=14, colW=212, gap=34;
   // Per repo, group specialists by package (w.package); "" = repo-level. Each
   // package becomes a labelled cluster, so a monorepo's units are visually
@@ -850,7 +922,7 @@ function renderOrgSvg(){
     const info = DATA.repos.find(x=>x.name===r);
     const mono = !!(info.packages && info.packages.length>0);
     const g = new Map();
-    DATA.workers.filter(w=>w.repo===r).forEach(w=>{ const k=w.package||""; if(!g.has(k)) g.set(k,[]); g.get(k).push(w); });
+    orgWorkersFor(r).forEach(w=>{ const k=w.package||""; if(!g.has(k)) g.set(k,[]); g.get(k).push(w); });
     const rows=[]; let y=yS0;
     for(const [pkg, ws] of g){
       if(pkg){ rows.push({type:"pkg",label:pkg,y}); y+=pkgH; }
@@ -870,7 +942,7 @@ function renderOrgSvg(){
     P.push(`<text class="oedge-l" x="${mid}" y="${y-lift+3}" text-anchor="middle">${esc(e.type)}</text>`); });
   cols.forEach(c=>{ P.push(`<path class="olink" d="M ${cxAll} ${yC+22} C ${cxAll} ${yR}, ${c.cx} ${yR}, ${c.cx} ${yR-14}"/>`);
     c.rows.forEach(row=>{ P.push(`<path class="olink" d="M ${c.cx} ${yR+34} L ${c.cx} ${row.y-2}"/>`); }); });
-  const node=(cx,y,w,h,fill,stroke,label,sub,click,tone,pulse)=>{ const x0=cx-w/2; return `<g class="onode" ${click} tabindex="0">
+  const node=(cx,y,w,h,fill,stroke,label,sub,click,tone,pulse)=>{ const x0=cx-w/2; const aria=esc(sub?`${label} — ${sub}`:label); return `<g class="onode" ${click} tabindex="0" role="${click?"button":"img"}" aria-label="${aria}">
     <rect x="${x0}" y="${y}" width="${w}" height="${h}" rx="12" fill="${fill}" stroke="${stroke}" stroke-width="1.4"/>
     ${tone?`<circle class="${pulse?'odot-active':''}" cx="${x0+14}" cy="${y+h/2}" r="4.5" fill="${tone}"/>`:""}
     <text class="otitle" x="${cx+(tone?7:0)}" y="${y+(sub?21:h/2+4)}" text-anchor="middle" fill="var(--ink)" font-size="13">${esc(label)}</text>
@@ -898,12 +970,14 @@ function renderOrgSvg(){
 // wide SVG's horizontal scroll on a phone.
 function renderOrgTree(){
   const coord = DATA.context.coordinator || "coordinator";
+  const repos = DATA.repos.filter(r=>orgRepoVisible(r.name));
+  if(repos.length===0) return `<div class="otree"><div class="sub" style="padding:16px 4px">${esc(t("org_nomatch"))}</div></div>`;
   return `<div class="otree">
     <div class="ot-coord"><span class="ot-dot" style="background:var(--accent)"></span><div><div class="ot-name">${esc(coord)}</div><div class="ot-sub">coordinator</div></div></div>
     <div class="ot-branches">
-      ${DATA.repos.map(r=>{
+      ${repos.map(r=>{
         const mono = r.packages.length>0;
-        const people = DATA.workers.filter(w=>w.repo===r.name);
+        const people = orgWorkersFor(r.name);
         const kindLbl = mono ? `${t("t_monorepo")}${r.kind?" · "+r.kind:""}` : (r.kind||t("t_repo"));
         return `<div class="ot-repo ${mono?"mono":""}">
           <div class="ot-rhead"><span class="ot-rname">${esc(r.name)}</span><span class="ot-kind">${esc(kindLbl)}</span></div>
@@ -930,37 +1004,153 @@ function orgLegend(){
 // double-click resets. Clicks on a specialist node still open their CV (drag is
 // suppressed when the pointer starts on a clickable node).
 let _orgZ = {s:1,x:0,y:0};
-function initOrgPanZoom(){
+// Apply the current pan/zoom to whatever org SVG is on screen. Module-level so the
+// visible zoom buttons (orgZoom) and the pan handlers share one source of truth.
+function applyOrgTransform(){
   const wrap = document.getElementById("orgwrap"); if(!wrap) return;
   const svg = wrap.querySelector("svg"); if(!svg) return;
+  svg.style.transformOrigin="0 0";
+  svg.style.transform=`translate(${_orgZ.x}px,${_orgZ.y}px) scale(${_orgZ.s})`;
+}
+// Visible zoom controls: dir +1 in, -1 out, 0 reset. Zooms toward the wrap centre.
+function orgZoom(dir){
+  const wrap = document.getElementById("orgwrap"); if(!wrap) return;
+  if(dir===0){ _orgZ={s:1,x:0,y:0}; applyOrgTransform(); return; }
+  const r=wrap.getBoundingClientRect(), mx=r.width/2, my=r.height/2;
+  const ns=Math.min(3,Math.max(0.3,_orgZ.s*(dir>0?1.2:1/1.2))), k=ns/_orgZ.s;
+  _orgZ.x=mx-(mx-_orgZ.x)*k; _orgZ.y=my-(my-_orgZ.y)*k; _orgZ.s=ns; applyOrgTransform();
+}
+window.orgZoom = orgZoom;
+// Fullscreen the org stage (graph + toolbar context), re-initializing pan/zoom on
+// enter/exit via the fullscreenchange listener wired once below.
+function orgFullscreen(){
+  const el = document.getElementById("orgstage"); if(!el) return;
+  const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+  if(fsEl){ (document.exitFullscreen||document.webkitExitFullscreen||(()=>{})).call(document); }
+  else { (el.requestFullscreen||el.webkitRequestFullscreen||(()=>{})).call(el); }
+}
+window.orgFullscreen = orgFullscreen;
+document.addEventListener("fullscreenchange", ()=>{ if(CUR==="org"){ _orgZ={s:1,x:0,y:0}; initOrgPanZoom(); } });
+// Re-render just the graph (SVG + mobile tree) after a filter change, preserving
+// the search input's focus (a full go("org") would rebuild and blur it).
+function refreshOrg(){
+  const wrap=document.getElementById("orgwrap"); if(wrap) wrap.innerHTML=renderOrgSvg();
+  const mob=document.querySelector(".org-mobile"); if(mob) mob.innerHTML=renderOrgTree();
+  initOrgPanZoom();
+}
+function initOrgPanZoom(){
+  const wrap = document.getElementById("orgwrap"); if(!wrap) return;
+  const svg = wrap.querySelector("svg");
   // keep the current zoom/pan across live re-renders (don't reset on every tick)
   wrap.style.overflow="hidden"; wrap.style.cursor="grab"; wrap.style.touchAction="none";
-  svg.style.transformOrigin="0 0";
-  const apply=()=>{ svg.style.transform=`translate(${_orgZ.x}px,${_orgZ.y}px) scale(${_orgZ.s})`; };
-  apply();
+  applyOrgTransform();
   wrap.onwheel=(e)=>{ e.preventDefault(); const r=wrap.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
     const ns=Math.min(3,Math.max(0.3,_orgZ.s*Math.exp(-e.deltaY*0.0015))), k=ns/_orgZ.s;
-    _orgZ.x=mx-(mx-_orgZ.x)*k; _orgZ.y=my-(my-_orgZ.y)*k; _orgZ.s=ns; apply(); };
+    _orgZ.x=mx-(mx-_orgZ.x)*k; _orgZ.y=my-(my-_orgZ.y)*k; _orgZ.s=ns; applyOrgTransform(); };
   let drag=null;
   wrap.onpointerdown=(e)=>{ if(e.target.closest(".onode[onclick]"))return; drag={x:e.clientX,y:e.clientY,ox:_orgZ.x,oy:_orgZ.y}; wrap.style.cursor="grabbing"; try{wrap.setPointerCapture(e.pointerId)}catch(_){} };
-  wrap.onpointermove=(e)=>{ if(!drag)return; _orgZ.x=drag.ox+(e.clientX-drag.x); _orgZ.y=drag.oy+(e.clientY-drag.y); apply(); };
+  wrap.onpointermove=(e)=>{ if(!drag)return; _orgZ.x=drag.ox+(e.clientX-drag.x); _orgZ.y=drag.oy+(e.clientY-drag.y); applyOrgTransform(); };
   wrap.onpointerup=()=>{ drag=null; wrap.style.cursor="grab"; };
-  wrap.ondblclick=()=>{ _orgZ={s:1,x:0,y:0}; apply(); };
+  wrap.ondblclick=()=>{ _orgZ={s:1,x:0,y:0}; applyOrgTransform(); };
+  // keyboard activation of a focused specialist node (accessibility)
+  if(svg) svg.onkeydown=(e)=>{ if(e.key!=="Enter"&&e.key!==" ") return; const g=e.target.closest&&e.target.closest(".onode[onclick]"); if(!g) return; e.preventDefault(); g.dispatchEvent(new MouseEvent("click",{bubbles:true})); };
+  // wire the search box (idempotent: assigning oninput, not addEventListener)
+  const search=document.getElementById("orgSearch");
+  if(search) search.oninput=(e)=>{ _orgQuery=e.target.value.trim().toLowerCase(); refreshOrg(); };
+}
+
+// ── Live specialist monitor ──────────────────────────────────────────────────
+// A single EventSource("api/monitor") feeds every dispatched subagent's realtime
+// activity. The left pane streams what the agent is "typing" (text + commands);
+// the right pane lists the files it is changing. Agents are selectable; "All"
+// interleaves everyone. The stream keeps flowing even off-view (small caps).
+let MON = { es:null, agents:new Map(), stream:[], files:[], sel:"all" };
+const MON_MAX = 300;
+function monLabel(persona, agent){ return persona && persona!==agent ? persona : agent; }
+function monPush(ev){
+  if(!MON.agents.has(ev.agent)) MON.agents.set(ev.agent, monLabel(ev.persona, ev.agent));
+  else if(ev.persona && ev.persona!==ev.agent) MON.agents.set(ev.agent, monLabel(ev.persona, ev.agent));
+  if(ev.kind==="file"){ MON.files.push(ev); if(MON.files.length>MON_MAX) MON.files.shift(); }
+  else { MON.stream.push(ev); if(MON.stream.length>MON_MAX) MON.stream.shift(); }
+  if(CUR==="monitor") renderMonitor();
+}
+function monVisible(list){ return MON.sel==="all" ? list : list.filter(e=>e.agent===MON.sel); }
+function monStreamHTML(){
+  const list = monVisible(MON.stream).slice(-120);
+  if(!list.length) return `<div class="sub" style="padding:12px 2px">—</div>`;
+  return list.map(e=>{
+    const who = esc(MON.agents.get(e.agent)||e.agent);
+    if(e.kind==="tool"){ const body = e.cmd?`$ ${esc(e.cmd)}`:`${esc(e.tool)} · ${esc(e.text||"")}`; return `<div class="mon-line tool"><span class="who">${who}</span><span class="mtx">${body}</span></div>`; }
+    return `<div class="mon-line say"><span class="who">${who}</span><span class="mtx">${esc(e.text||"")}</span></div>`;
+  }).join("");
+}
+function monFilesHTML(){
+  const list = monVisible(MON.files).slice(-120).reverse();
+  if(!list.length) return `<div class="sub" style="padding:12px 2px">${t("mon_nofiles")}</div>`;
+  return list.map(e=>`<div class="mon-file"><span class="ft">${esc(e.tool||"edit")}</span><span class="fp2">${esc(e.file||"")}</span><span class="fw">${esc(MON.agents.get(e.agent)||e.agent)}</span></div>`).join("");
+}
+function monSelHTML(){
+  if(MON.agents.size<=1) return "";
+  const chip=(id,lbl)=>`<button class="mon-chip ${MON.sel===id?"on":""}" onclick="monSelect('${esc(id)}')">${esc(lbl)}</button>`;
+  return `<div class="mon-agentsel">${chip("all",t("mon_all"))}${[...MON.agents].map(([id,lbl])=>chip(id,lbl)).join("")}</div>`;
+}
+function monSelect(id){ MON.sel=id; renderMonitor(); }
+window.monSelect = monSelect;
+function renderMonitor(){
+  const wrap = document.getElementById("monwrap"); if(!wrap) return;
+  if(MON.agents.size===0 && MON.stream.length===0 && MON.files.length===0){
+    wrap.innerHTML = `<div class="card mon-empty">${esc(t("mon_empty"))}</div>`;
+    return;
+  }
+  // preserve scroll position of the stream if it exists
+  const prev = document.querySelector(".mon-stream"); const atBottom = prev ? (prev.scrollHeight-prev.scrollTop-prev.clientHeight < 40) : true;
+  wrap.innerHTML = `
+    ${monSelHTML()}
+    <div class="mon-grid" style="margin-top:${MON.agents.size>1?"12px":"0"}">
+      <div class="mon-pane"><div class="eyebrow">${t("mon_stream")}</div><div class="mon-stream" id="monStream">${monStreamHTML()}</div></div>
+      <div class="mon-pane"><div class="eyebrow">${t("mon_files")}</div><div class="mon-files">${monFilesHTML()}</div></div>
+    </div>`;
+  const s = document.getElementById("monStream"); if(s && atBottom) s.scrollTop = s.scrollHeight;
+}
+function initMonitor(){
+  renderMonitor();
+  if(MON.es) return; // one shared connection for the session
+  try {
+    MON.es = new EventSource("api/monitor");
+    MON.es.addEventListener("monitor", (m)=>{ if(!m.data) return; let ev; try{ ev=JSON.parse(m.data); }catch(_){ return; } monPush(ev); });
+    MON.es.onerror = ()=>{ const c=document.getElementById("monConn"); if(c){ c.classList.add("down"); } };
+  } catch(_){}
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
+// The current view is persisted in the URL hash (#/<view>) and mirrored to
+// localStorage, so a reload (F5) restores the view instead of dropping to Overview.
+function validView(v){ return v && Object.prototype.hasOwnProperty.call(views, v) ? v : "overview"; }
+function storedView(){
+  const h = (location.hash || "").replace(/^#\/?/, "");
+  if (h && Object.prototype.hasOwnProperty.call(views, h)) return h;
+  return validView(localStorage.getItem("aipe-view"));
+}
 function go(v){
+  v = validView(v);
   CUR = v;
+  localStorage.setItem("aipe-view", v);
+  const hash = "#/" + v;
+  if (location.hash !== hash) { _routing = true; location.hash = hash; _routing = false; }
   $$(".nav-i").forEach(n=>n.classList.toggle("on", n.dataset.view===v));
   $$("#tabbar button").forEach(b=>b.classList.toggle("on", b.dataset.view===v));
   $("#tbTitle").textContent = t("nav_" + v) || v;
   $("#view").innerHTML = views[v]();
   if(v==="org") initOrgPanZoom();
+  if(v==="monitor") initMonitor();
   $("#app").classList.remove("mobileopen");
   closeCmd();
   if (v==="terminal"){ connectTerm(); const inp=$("#termIn"); if(inp) setTimeout(()=>inp.focus(),0); }
 }
 window.go = go;
+let _routing = false;
+// Browser back/forward (and manual hash edits) route without pushing a new hash.
+window.addEventListener("hashchange", ()=>{ if(_routing) return; const v=storedView(); if(v!==CUR) go(v); });
 $$(".nav-i[data-view]").forEach(n => n.onclick = () => go(n.dataset.view));
 $$("#tabbar button").forEach(b => b.onclick = () => go(b.dataset.view));
 document.addEventListener("click", (e) => {
@@ -1014,6 +1204,7 @@ function commands(){
   return [
     { g:V, ic:"◎", label:`${goto} ${t("nav_overview")}`, run:()=>go("overview") },
     { g:V, ic:"◈", label:`${goto} ${t("nav_org")}`, run:()=>go("org") },
+    { g:V, ic:"◉", label:`${goto} ${t("nav_monitor")}`, run:()=>go("monitor") },
     { g:V, ic:"▦", label:`${goto} ${t("nav_pipeline")}`, run:()=>go("pipeline") },
     { g:V, ic:"◑", label:`${goto} ${t("nav_workers")}`, run:()=>go("workers") },
     { g:V, ic:"⧗", label:`${goto} ${t("nav_activity")}`, run:()=>go("activity") },
@@ -1074,7 +1265,7 @@ async function boot(){
     const r = await fetch("api/snapshot", { cache:"no-store" });
     if (r.ok){ setSnap(await r.json()); }
   } catch(e){}
-  go(CUR);
+  go(storedView());
   connectSSE();
 }
 let ES = null;

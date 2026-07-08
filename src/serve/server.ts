@@ -11,6 +11,7 @@ import type { Server, ServerWebSocket } from "bun";
 import appAsset from "./app.html" with { type: "text" };
 import { buildSnapshot } from "../dashboard/snapshot";
 import { handleRequest } from "./handler";
+import { startMonitor } from "./monitor";
 import { createTerminalSession, defaultShell, type TerminalSession } from "./terminal";
 
 export interface ServeOpts {
@@ -94,6 +95,43 @@ function snapshotStream(workspace: string): Response {
   });
 }
 
+// SSE stream of live specialist-monitor events (what each dispatched subagent is
+// doing right now). Read-only tail of the harness transcripts — see monitor.ts.
+function monitorStream(workspace: string): Response {
+  let tail: ReturnType<typeof startMonitor> | null = null;
+  let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
+
+  const stream = new ReadableStream({
+    start(controller) {
+      const enc = new TextEncoder();
+      const emit = (chunk: string): void => {
+        if (closed) return;
+        try {
+          controller.enqueue(enc.encode(chunk));
+        } catch {
+          closed = true;
+        }
+      };
+      tail = startMonitor(workspace, (ev) => emit(`event: monitor\ndata: ${JSON.stringify(ev)}\n\n`));
+      heartbeat = setInterval(() => emit(": ping\n\n"), HEARTBEAT_MS);
+    },
+    cancel() {
+      closed = true;
+      tail?.close();
+      if (heartbeat) clearInterval(heartbeat);
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-store",
+      connection: "keep-alive",
+    },
+  });
+}
+
 interface WsData {
   session?: TerminalSession;
 }
@@ -122,6 +160,10 @@ export function startServer(opts: ServeOpts): Server<WsData> {
 
       if (url.pathname === "/api/stream") {
         return snapshotStream(workspace);
+      }
+
+      if (url.pathname === "/api/monitor") {
+        return monitorStream(workspace);
       }
 
       return handleRequest(req, { workspace, html: app });
