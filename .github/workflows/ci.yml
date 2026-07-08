@@ -1,0 +1,47 @@
+name: ci
+
+# Gate on every push to main and every PR: version guard, type-check, tests, and
+# a build smoke (compile the host binary and boot it). So a broken commit can't
+# reach main unnoticed — nobody has to remember to run these locally. The release
+# workflow re-runs the same gate before publishing, so a bad tag never ships.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Version consistency guard
+        run: bun run version:check
+
+      - name: Type-check
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+      - name: Build smoke (host binary boots)
+        run: |
+          bun run build:host
+          V="$(./dist/aipe-linux-x64 --version)"
+          test -n "$V" && echo "booted aipe $V"
+          ./dist/aipe-linux-x64 --help >/dev/null
