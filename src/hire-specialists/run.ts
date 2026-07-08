@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
+import { renderAgentMd } from "./agent";
 import { dedupeReportsByName, resolveNames } from "./naming";
 import { personaSlug, renderSkillMd } from "./render";
 import { readPersonas } from "./read-personas";
@@ -20,13 +21,22 @@ async function writePersonaFiles(
     const repo = brain.repos.find((r) => r.name === report.repo);
     if (!repo) continue;
     const slug = personaSlug(report.name);
-    const content = renderSkillMd(report, repo.stack ?? []);
+    const stack = repo.stack ?? [];
+    const content = renderSkillMd(report, stack);
+    // The persona agent type: its frontmatter `name` is the real display name so
+    // dispatched subagents show as the persona, not "claude".
+    const agent = renderAgentMd({ name: report.name, role: report.role, repo: report.repo, stack, body: report.body });
     const skillDir = join(workspaceDir, repo.path, ".claude", "skills", slug);
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(skillDir, "SKILL.md"), content, "utf8");
+    const agentDir = join(workspaceDir, repo.path, ".claude", "agents");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(join(agentDir, `${slug}.md`), agent, "utf8");
+    // Source of truth (published, re-hydratable): keep both next to each other.
     const sourceDir = join(workspaceDir, ".aipe", "personas", report.repo, slug);
     await mkdir(sourceDir, { recursive: true });
     await writeFile(join(sourceDir, "SKILL.md"), content, "utf8");
+    await writeFile(join(sourceDir, "agent.md"), agent, "utf8");
   }
 }
 

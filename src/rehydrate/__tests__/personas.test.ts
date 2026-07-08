@@ -44,6 +44,24 @@ test("restores persona SKILL.md into a present repo", async () => {
   }
 });
 
+test("backfills the persona agent type from the roster's real name", async () => {
+  const dir = await ws(true);
+  try {
+    // a roster gives the display name (SKILL frontmatter only carries the slug)
+    await writeFile(
+      join(dir, ".aipe", "personas.yaml"),
+      stringify({ personas: [{ name: "Joaquim", role: "dev-fullstack", repo: "embark", path: "./embark/.claude/skills/joaquim" }] }),
+      "utf8",
+    );
+    await rehydratePersonas(dir);
+    const agentMd = await readFile(join(dir, "embark", ".claude", "agents", "joaquim.md"), "utf8");
+    expect(agentMd).toContain("name: Joaquim");
+    expect(agentMd).toContain("You are Joaquim.");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("reports repo-missing when the repo dir isn't cloned yet", async () => {
   const dir = await ws(false);
   try {
