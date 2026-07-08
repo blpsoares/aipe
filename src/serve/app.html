@@ -298,6 +298,37 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .cvstats { display: flex; gap: 16px; margin-top: 2px; padding-top: 11px; border-top: 1px solid var(--line); }
 .cvstat { font-size: 11.5px; color: var(--ink-3); display: flex; gap: 5px; align-items: baseline; }
 .cvstat b { font-size: 15px; font-weight: 750; color: var(--ink); }
+/* live specialist monitor — one lane per active specialist */
+.mon-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mon-chip { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); font-size: 12px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.mon-chip.on { color: var(--accent-ink); background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.mon-lanes { display: flex; flex-direction: column; gap: 16px; }
+.mon-lane { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; animation: slidein .25s ease both; }
+.mon-lane.idle { opacity: .72; }
+.mon-lane-head { display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.mon-lane-head .who2 { font-weight: 720; min-width: 0; overflow-wrap: anywhere; }
+.mon-lane-head .atype { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); background: var(--panel); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; flex: 0 0 auto; }
+.mon-live { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--accent-ink); flex: 0 0 auto; }
+.mon-live .ld { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.mon-live.off { color: var(--ink-3); }
+.mon-live.off .ld { background: var(--line-2); }
+.mon-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; align-items: start; padding: 14px 15px; }
+.mon-pane { display: flex; flex-direction: column; min-width: 0; }
+.mon-pane > .eyebrow { margin-bottom: 10px; }
+.mon-stream { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; padding-right: 4px; }
+.mon-line { display: flex; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); animation: slidein .2s ease both; }
+.mon-line .kt { font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); flex: 0 0 auto; padding-top: 2px; }
+.mon-line .mtx { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.mon-line.say .mtx { color: var(--ink); }
+.mon-line.tool { background: color-mix(in srgb, var(--sky) 7%, var(--panel-2)); }
+.mon-line.tool .kt { color: var(--sky); }
+.mon-line.tool .mtx { font-family: var(--mono); font-size: 12px; color: var(--sky); }
+.mon-files { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; }
+.mon-file { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); animation: slidein .2s ease both; }
+.mon-file .ft { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent-wash); padding: 1px 6px; border-radius: 5px; flex: 0 0 auto; }
+.mon-file .fp2 { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; min-width: 0; }
+.mon-empty { padding: 40px 24px; text-align: center; color: var(--ink-3); }
+@media (max-width: 860px) { .mon-grid { grid-template-columns: 1fr; } }
 /* org chart legend */
 .orglegend { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 18px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
 .orglegend .lg-h { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
@@ -432,6 +463,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
     <button class="nav-i" data-view="workers"><span class="ic">◑</span><span data-t="nav_workers">Team</span></button>
     <button class="nav-i" data-view="toolbox"><span class="ic">⬡</span><span data-t="nav_toolbox">Toolbox</span></button>
     <button class="nav-i" data-view="activity"><span class="ic">⧗</span><span data-t="nav_activity">Activity</span><span class="badge" id="navBadge">1</span></button>
+    <button class="nav-i" data-view="monitor"><span class="ic">◉</span><span data-t="nav_monitor">Monitor</span></button>
     <button class="nav-i" data-view="terminal"><span class="ic">›_</span><span data-t="nav_terminal">Terminal</span></button>
     <div class="sb-foot">
       <button class="nav-i" data-view="settings"><span class="ic">⚙</span><span data-t="nav_settings">Settings</span></button>
@@ -462,6 +494,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
   <button data-view="pipeline"><span class="ic">▦</span><span data-t="nav_pipeline">Pipeline</span></button>
   <button data-view="workers"><span class="ic">◑</span><span data-t="nav_workers">Team</span></button>
   <button data-view="activity"><span class="ic">⧗</span><span data-t="nav_activity">Activity</span><span class="tbadge"></span></button>
+  <button data-view="monitor"><span class="ic">◉</span><span data-t="nav_monitor">Monitor</span></button>
   <button data-view="terminal"><span class="ic">›_</span><span data-t="nav_terminal">Terminal</span></button>
 </nav>
 
@@ -486,6 +519,7 @@ const hue = (n) => { let h=0; for(const c of n) h=(h*31+c.charCodeAt(0))%360; re
 const STR = {
   en: {
     nav_overview:"Overview", nav_org:"Org chart", nav_pipeline:"Pipeline", nav_workers:"Team", nav_toolbox:"Toolbox", nav_activity:"Activity", nav_terminal:"Terminal", collapse:"Collapse",
+    nav_monitor:"Monitor", mon_sub:"What each active specialist is doing, live — one lane per specialist", mon_empty:"No specialist is active right now. A lane appears here the moment a subagent is dispatched.", mon_stream:"Working", mon_files:"Files changing", mon_nofiles:"No file changes yet", mon_active_only:"Active only", mon_all:"All", mon_hidden:"{n} finished — show all", mon_reason:"reasoning", mon_cmd:"command", mon_active:"active", mon_idle:"idle",
     search:"Search or run a command", live:"live",
     ok_h:"All systems nominal", ok_p:"Every dispatch is progressing. Nothing is blocked.",
     warn_h:"{n} escalation needs you", warn_p:"{who} escalated a change on {repo} — review and approve the next wave.", warn_p0:"A specialist raised an escalation — review it and approve the next wave.",
@@ -521,6 +555,7 @@ const STR = {
   },
   pt: {
     nav_overview:"Visão geral", nav_org:"Organograma", nav_pipeline:"Pipeline", nav_workers:"Especialistas", nav_toolbox:"Ferramentas", nav_activity:"Atividade", nav_terminal:"Terminal", collapse:"Recolher",
+    nav_monitor:"Monitor", mon_sub:"O que cada especialista ativo está fazendo, ao vivo — uma lane por especialista", mon_empty:"Nenhum especialista ativo agora. Uma lane aparece aqui assim que um subagente é despachado.", mon_stream:"Trabalhando", mon_files:"Arquivos mudando", mon_nofiles:"Nenhuma alteração de arquivo ainda", mon_active_only:"Só ativos", mon_all:"Todos", mon_hidden:"{n} concluídos — mostrar todos", mon_reason:"raciocínio", mon_cmd:"comando", mon_active:"ativo", mon_idle:"ocioso",
     search:"Buscar ou rodar um comando", live:"ao vivo",
     ok_h:"Tudo sob controle", ok_p:"Todo dispatch progredindo. Nada bloqueado.",
     warn_h:"{n} escalação precisa de você", warn_p:"{who} escalou uma mudança em {repo} — revise e aprove a próxima wave.", warn_p0:"Um especialista abriu uma escalação — revise e aprove a próxima wave.",
@@ -752,6 +787,12 @@ const views = {
     return `<div class="view-in grid" style="gap:16px">
       <div class="between"><div><h1 class="view-h">${t("nav_activity")}</h1><div class="sub">${t("act_sub")}</div></div><span class="conn"><span class="dot"></span>${t("streaming")}</span></div>
       <div class="card pad"><div class="feed" id="fullFeed">${DATA.activity.map(evHTML).join("")}</div></div>
+    </div>`;
+  },
+  monitor() {
+    return `<div class="view-in grid" style="gap:16px">
+      <div class="between"><div><h1 class="view-h">${t("nav_monitor")}</h1><div class="sub">${t("mon_sub")}</div></div><span class="conn" id="monConn"><span class="dot"></span>${t("live")}</span></div>
+      <div id="monwrap"></div>
     </div>`;
   },
   terminal() {
@@ -1029,6 +1070,89 @@ function initOrgPanZoom(){
   if(search) search.oninput=(e)=>{ _orgQuery=e.target.value.trim().toLowerCase(); refreshOrg(); };
 }
 
+// ── Live specialist monitor ──────────────────────────────────────────────────
+// One shared EventSource("api/monitor") feeds every dispatched subagent's
+// realtime activity plus a per-agent roster event (kind "agent") carrying the
+// persona label, agentType and whether that specialist is currently active.
+// We render ONE lane per specialist — left pane = that agent's stream (reasoning
+// + commands, tagged by activity type); right pane = the files THAT agent is
+// changing. By default only ACTIVE specialists get a lane (finished/historical
+// agents and the coordinator's Explore helpers are hidden); a toggle reveals all.
+let MON = { es:null, agents:new Map(), lanes:new Map(), showAll:false };
+const MON_MAX = 200;
+function monLane(id){ let l=MON.lanes.get(id); if(!l){ l={ stream:[], files:[] }; MON.lanes.set(id,l); } return l; }
+function monMeta(id){ let m=MON.agents.get(id); if(!m){ m={ persona:id, agentType:"", active:true }; MON.agents.set(id,m); } return m; }
+// A specialist earns a lane by default; the coordinator's exploratory helpers do not.
+function isSpecialist(m){ return (m.agentType||"") !== "Explore"; }
+function monVisibleAgents(){
+  const ids=[...MON.agents.keys()].filter(id=>{ const m=MON.agents.get(id); if(!isSpecialist(m)) return MON.showAll; return MON.showAll || m.active; });
+  // active first, then by label
+  return ids.sort((a,b)=>{ const ma=MON.agents.get(a), mb=MON.agents.get(b); if(ma.active!==mb.active) return ma.active?-1:1; return String(ma.persona).localeCompare(String(mb.persona)); });
+}
+function monHiddenCount(){ let n=0; for(const [,m] of MON.agents){ if(isSpecialist(m) && !m.active) n++; } return n; }
+function monPush(ev){
+  if(ev.kind==="agent"){
+    const m=monMeta(ev.agent); if(ev.persona) m.persona=ev.persona; if(ev.agentType!==undefined) m.agentType=ev.agentType; m.active=ev.active===true;
+    monLane(ev.agent);
+  } else {
+    const m=monMeta(ev.agent); if(ev.persona) m.persona=ev.persona; if(ev.agentType!==undefined) m.agentType=ev.agentType;
+    const l=monLane(ev.agent);
+    if(ev.kind==="file"){ l.files.push(ev); if(l.files.length>MON_MAX) l.files.shift(); }
+    else { l.stream.push(ev); if(l.stream.length>MON_MAX) l.stream.shift(); }
+  }
+  if(CUR==="monitor") renderMonitor();
+}
+function monStreamHTML(l){
+  const list=l.stream.slice(-100);
+  if(!list.length) return `<div class="sub" style="padding:12px 2px">—</div>`;
+  return list.map(e=>{
+    if(e.kind==="tool"){ const body=e.cmd?`$ ${esc(e.cmd)}`:`${esc(e.tool||"")}${e.text?` · ${esc(e.text)}`:""}`; return `<div class="mon-line tool"><span class="kt">${t("mon_cmd")}</span><span class="mtx">${body}</span></div>`; }
+    return `<div class="mon-line say"><span class="kt">${t("mon_reason")}</span><span class="mtx">${esc(e.text||"")}</span></div>`;
+  }).join("");
+}
+function monFilesHTML(l){
+  const list=l.files.slice(-100).reverse();
+  if(!list.length) return `<div class="sub" style="padding:12px 2px">${t("mon_nofiles")}</div>`;
+  return list.map(e=>`<div class="mon-file"><span class="ft">${esc(e.tool||"edit")}</span><span class="fp2">${esc(e.file||"")}</span></div>`).join("");
+}
+function monLaneHTML(id){
+  const m=MON.agents.get(id), l=monLane(id);
+  const liveCls=m.active?"":"off", liveTxt=m.active?t("mon_active"):t("mon_idle");
+  const atype=m.agentType?`<span class="atype">${esc(m.agentType)}</span>`:"";
+  return `<section class="mon-lane ${m.active?"":"idle"}" data-agent="${esc(id)}">
+    <div class="mon-lane-head"><span class="who2">${esc(m.persona||id)}</span>${atype}<span class="mon-live ${liveCls}"><span class="ld"></span>${liveTxt}</span></div>
+    <div class="mon-grid">
+      <div class="mon-pane"><div class="eyebrow">${t("mon_stream")}</div><div class="mon-stream" data-stream="${esc(id)}">${monStreamHTML(l)}</div></div>
+      <div class="mon-pane"><div class="eyebrow">${t("mon_files")}</div><div class="mon-files">${monFilesHTML(l)}</div></div>
+    </div>
+  </section>`;
+}
+function monToggle(){ MON.showAll=!MON.showAll; renderMonitor(); }
+window.monToggle = monToggle;
+function renderMonitor(){
+  const wrap=document.getElementById("monwrap"); if(!wrap) return;
+  const ids=monVisibleAgents(), hidden=monHiddenCount();
+  const toolbar=(MON.agents.size>0)?`<div class="mon-toolbar"><button class="mon-chip ${MON.showAll?"":"on"}" onclick="monToggle()">${t("mon_active_only")}</button><button class="mon-chip ${MON.showAll?"on":""}" onclick="monToggle()">${t("mon_all")}</button></div>`:"";
+  if(ids.length===0){
+    const hint=(!MON.showAll && hidden>0)?`<div class="sub" style="margin-top:12px"><a class="link" href="#" onclick="monToggle();return false;">${esc(t("mon_hidden").replace("{n}",hidden))}</a></div>`:"";
+    wrap.innerHTML=`${toolbar}<div class="card mon-empty" style="margin-top:${MON.agents.size?"12px":"0"}">${esc(t("mon_empty"))}${hint}</div>`;
+    return;
+  }
+  // preserve each lane's stream scroll position (stick to bottom when already there)
+  const atBottom={}; document.querySelectorAll(".mon-stream").forEach(s=>{ atBottom[s.dataset.stream]=(s.scrollHeight-s.scrollTop-s.clientHeight<40); });
+  wrap.innerHTML=`${toolbar}<div class="mon-lanes" style="margin-top:${MON.agents.size?"12px":"0"}">${ids.map(monLaneHTML).join("")}</div>`;
+  document.querySelectorAll(".mon-stream").forEach(s=>{ if(atBottom[s.dataset.stream]!==false) s.scrollTop=s.scrollHeight; });
+}
+function initMonitor(){
+  renderMonitor();
+  if(MON.es) return; // one shared connection for the session
+  try {
+    MON.es=new EventSource("api/monitor");
+    MON.es.addEventListener("monitor",(m)=>{ if(!m.data) return; let ev; try{ ev=JSON.parse(m.data); }catch(_){ return; } monPush(ev); });
+    MON.es.onerror=()=>{ const c=document.getElementById("monConn"); if(c) c.classList.add("down"); };
+  } catch(_){}
+}
+
 // ── Router ───────────────────────────────────────────────────────────────────
 // The current view is persisted in the URL hash (#/<view>) and mirrored to
 // localStorage, so a reload (F5) restores the view instead of dropping to Overview.
@@ -1049,6 +1173,7 @@ function go(v){
   $("#tbTitle").textContent = t("nav_" + v) || v;
   $("#view").innerHTML = views[v]();
   if(v==="org") initOrgPanZoom();
+  if(v==="monitor") initMonitor();
   $("#app").classList.remove("mobileopen");
   closeCmd();
   if (v==="terminal"){ connectTerm(); const inp=$("#termIn"); if(inp) setTimeout(()=>inp.focus(),0); }
@@ -1113,6 +1238,7 @@ function commands(){
     { g:V, ic:"▦", label:`${goto} ${t("nav_pipeline")}`, run:()=>go("pipeline") },
     { g:V, ic:"◑", label:`${goto} ${t("nav_workers")}`, run:()=>go("workers") },
     { g:V, ic:"⧗", label:`${goto} ${t("nav_activity")}`, run:()=>go("activity") },
+    { g:V, ic:"◉", label:`${goto} ${t("nav_monitor")}`, run:()=>go("monitor") },
     { g:A, ic:"›_", label:t("c_openterm"), run:()=>go("terminal") },
     { g:A, ic:"✎", label:t("c_writespec"), run:()=>alert("(mock)") },
     { g:A, ic:"◐", label:t("c_theme"), run:()=>$("#themeBtn").click() },
