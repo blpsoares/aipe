@@ -25,8 +25,8 @@ import { run as serve } from "./serve/cli";
 import { run as detectPackages } from "./detect-packages/cli";
 import { run as validatePersonas } from "./validate-personas/cli";
 import { run as model } from "./model/cli";
-import { run as checkUpdate } from "./update/cli";
-import { cachedUpdateInfo, updateNotice } from "./update/check";
+import { checkUpdate, upgrade } from "./update/cli";
+import { maybeOfferUpdate } from "./update/notify";
 
 export const VERSION = "0.2.1";
 
@@ -53,6 +53,8 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "validate-personas": validatePersonas,
   model: model,
   "check-update": checkUpdate,
+  upgrade: upgrade,
+  update: upgrade,
 };
 
 const HELP = [
@@ -81,6 +83,7 @@ const HELP = [
   "  read-state         Print the coordinator awareness fields (used by hooks)",
   "  session-context    Emit the SessionStart hook JSON (coordinator awareness)",
   "  check-update       Notify if a newer aipe release is available (else silent)",
+  "  upgrade            Self-update to the newest release (alias: update)",
   "",
   "Common options:",
   "  --workspace <dir>  Workspace directory (defaults to the current directory)",
@@ -93,14 +96,12 @@ export async function dispatch(argv: string[]): Promise<number> {
 
   if (command === undefined || command === "--help" || command === "-h" || command === "help") {
     console.log(HELP);
+    await maybeOfferUpdate(VERSION, "help");
     return 0;
   }
   if (command === "--version" || command === "-v" || command === "version") {
     console.log(VERSION);
-    // Cache-only (no network) so --version stays instant; `check-update` refreshes it.
-    const info = await cachedUpdateInfo(VERSION);
-    const notice = info && updateNotice(info);
-    if (notice) console.log(notice);
+    await maybeOfferUpdate(VERSION, "version");
     return 0;
   }
 
@@ -110,7 +111,11 @@ export async function dispatch(argv: string[]): Promise<number> {
     console.log(HELP);
     return 1;
   }
-  return handler(rest);
+  const code = await handler(rest);
+  // In a real terminal, offer the update after the command (strict no-op in
+  // hooks/subagents/pipes/CI — see maybeOfferUpdate).
+  await maybeOfferUpdate(VERSION, command);
+  return code;
 }
 
 if (import.meta.main) {

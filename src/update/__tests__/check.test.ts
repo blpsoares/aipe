@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test";
-import { compareVersions, pickLatestSemver, toSemver, updateNotice } from "../check";
+import { compareVersions, parseYesNo, pickLatestSemver, toSemver, updateNotice } from "../check";
+
+test("parseYesNo defaults to yes on Enter and accepts y/yes/sim", () => {
+  expect(parseYesNo("")).toBe(true); // Enter → default yes
+  expect(parseYesNo("y")).toBe(true);
+  expect(parseYesNo("Yes")).toBe(true);
+  expect(parseYesNo("sim")).toBe(true);
+  expect(parseYesNo("n")).toBe(false);
+  expect(parseYesNo("no")).toBe(false);
+  expect(parseYesNo("nope")).toBe(false);
+});
 
 test("compareVersions orders semver numerically", () => {
   expect(compareVersions("0.2.0", "0.1.0")).toBeGreaterThan(0);
