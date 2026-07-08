@@ -5,6 +5,7 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readLedger, recordDispatch, setJourneySpec, startJourney } from "./ledger";
+import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { DISPATCH_STATUSES } from "./types";
 import type { DispatchStatus } from "./types";
@@ -159,6 +160,24 @@ async function specCommand(args: string[]): Promise<number> {
   return 0;
 }
 
+// `aipe journey reconcile [--journey <id>]` — auto-detect merges: poll each
+// delivered dispatch's PR via `gh pr view --json state` and mark the MERGED ones
+// merged on the ledger. With no --journey, reconciles every journey.
+async function reconcileCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const id = getFlag(args, "--journey");
+  const results = id ? [await reconcileJourney(workspace, id, ghPrState)] : await reconcileAll(workspace, ghPrState);
+  let totalChecked = 0;
+  let totalMerged = 0;
+  for (const r of results) {
+    totalChecked += r.checked;
+    totalMerged += r.merged.length;
+    for (const pr of r.merged) console.log(`MERGED journey=${r.journey} ${pr}`);
+  }
+  console.log(`STATE reconcile checked=${totalChecked} merged=${totalMerged}`);
+  return 0;
+}
+
 export async function run(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -170,9 +189,11 @@ export async function run(args: string[]): Promise<number> {
       return showCommand(rest);
     case "spec":
       return specCommand(rest);
+    case "reconcile":
+      return reconcileCommand(rest);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
-      console.log("Usage: aipe journey <start|record|show|spec> [options]");
+      console.log("Usage: aipe journey <start|record|show|spec|reconcile> [options]");
       return 1;
   }
 }

@@ -33,13 +33,20 @@ imprime `COLLISION ...` e sai **não-zero** (2). `--force` sobrescreve mesmo ati
 
 ### Stale reconciliation
 
-Um lock só é **ATIVO** se as duas condições valem:
-1. `pid` vivo (`process.kill(pid, 0)`; `EPERM` conta como vivo, `ESRCH` = morto).
-2. Existe dispatch **`dispatched`** correspondente (mesmo repo/package, e journey se
-   informado) em algum journey.
+Um lock é **ATIVO** quando existe dispatch **`dispatched`** correspondente E (se um
+pid real foi gravado) esse pid está vivo. Dois sinais de staleness independentes:
+1. Órfão — não há dispatch `dispatched` correspondente (mesmo repo/package, e
+   journey se informado) em nenhum journey. Sinal **primário e durável**: uma sessão
+   que terminou chama `dispatch release` (em delivered/escalated/merged), virando o
+   status para longe de `dispatched`.
+2. Holder morto — `pid > 0` e `process.kill(pid, 0)` lança `ESRCH` (`EPERM` conta
+   como vivo). Sinal **secundário** de crash. O pid do processo `aipe` CLI é
+   efêmero e inútil (morre no ato), então **pid ≤ 0 significa "sem tracking de pid
+   — o ledger governa"**. O coordenador passa `--pid <sessionpid>` (seu pid de
+   sessão longevo) só quando quer reconciliação por crash.
 
-Órfão (sem dispatch `dispatched`) ou pid morto → **sobrescrevível**: o claim
-reconcilia (toma o lock) e sai 0, reportando `RECONCILED prev=...`.
+Órfão ou pid morto → **sobrescrevível**: o claim reconcilia (toma o lock) e sai 0,
+reportando `RECONCILED prev=...`.
 
 Take-over também é atômico: `unlink` do lock stale + `link` do tmp num loop curto;
 se outro processo recriar um lock ATIVO no meio, o perdedor volta a ver colisão.
