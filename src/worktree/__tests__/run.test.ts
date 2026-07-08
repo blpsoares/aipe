@@ -48,6 +48,152 @@ async function makeWorkspace(): Promise<{ dir: string; repoAbs: string }> {
   return { dir, repoAbs };
 }
 
+// Like makeWorkspace but the repo `embark` is a *bare* clone (no working tree,
+// core.bare=true) — the layout that broke git add/status and remove path
+// resolution.
+async function makeBareWorkspace(): Promise<{ dir: string; repoAbs: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-wtb-"));
+  const originAbs = join(dir, "origin.git");
+  const seedAbs = join(dir, "seed");
+  const repoAbs = join(dir, "embark");
+
+  await sh(["git", "init", "--bare", "-b", "main", originAbs]);
+  await sh(["git", "init", "-b", "main", seedAbs]);
+  await sh(["git", "-C", seedAbs, "config", "user.email", "pe@example.com"]);
+  await sh(["git", "-C", seedAbs, "config", "user.name", "Real PE"]);
+  await writeFile(join(seedAbs, "README.md"), "# embark\n", "utf8");
+  await sh(["git", "-C", seedAbs, "add", "-A"]);
+  await sh(["git", "-C", seedAbs, "commit", "-m", "init"]);
+  await sh(["git", "-C", seedAbs, "remote", "add", "origin", originAbs]);
+  await sh(["git", "-C", seedAbs, "push", "-u", "origin", "main"]);
+
+  await sh(["git", "clone", "--bare", originAbs, repoAbs]);
+
+  const brain: BrainFile = {
+    context: { name: "opvibes", coordinator: "Nicolas" },
+    repos: [{ name: "embark", url: originAbs, path: "./embark" }],
+  };
+  await mkdir(join(dir, ".aipe"), { recursive: true });
+  await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(brain), "utf8");
+  return { dir, repoAbs };
+}
+
+async function writeLedger(dir: string, id: string, dispatches: unknown[]): Promise<void> {
+  await mkdir(join(dir, ".aipe", "journeys"), { recursive: true });
+  await writeFile(
+    join(dir, ".aipe", "journeys", `${id}.yaml`),
+    stringify({ id, dispatches, authorizations: [] }),
+    "utf8",
+  );
+}
+
+test("createWorktree on a bare repo yields a working tree where git add/status work (A3)", async () => {
+  const { dir } = await makeBareWorkspace();
+  try {
+    const created = await createWorktree(dir, { repo: "embark", specialist: "Joaquim", journey: "j1" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    // The shared repo must stay bare; only the worktree is non-bare.
+    const bareRepo = await sh(["git", "-C", created.path, "rev-parse", "--is-bare-repository"]);
+    expect(bareRepo.stdout).toBe("false");
+
+    await writeFile(join(created.path, "work.txt"), "hello", "utf8");
+    const add = await sh(["git", "-C", created.path, "add", "-A"]);
+    expect(add.code).toBe(0);
+    const status = await sh(["git", "-C", created.path, "status", "--porcelain"]);
+    expect(status.code).toBe(0);
+    expect(status.stdout).toContain("work.txt");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("round-trip create→remove works on a bare repo layout (A2)", async () => {
+  const { dir } = await makeBareWorkspace();
+  try {
+    const created = await createWorktree(dir, { repo: "embark", specialist: "Joaquim", journey: "j1" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    // create's reported path must match git's ground truth (worktree list).
+    const list = await sh(["git", "-C", join(dir, "embark"), "worktree", "list", "--porcelain"]);
+    expect(list.stdout).toContain(`worktree ${created.path}`);
+    expect(await exists(created.path)).toBe(true);
+
+    const removed = await removeWorktree(dir, { repo: "embark", specialist: "Joaquim", journey: "j1" });
+    expect(removed.ok).toBe(true);
+    if (removed.ok) expect(removed.path).toBe(created.path);
+    expect(await exists(created.path)).toBe(false);
+    expect(await listWorktrees(dir, "j1")).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("removeWorktree still blocks unpushed commits on a bare repo worktree (A3 guardrail)", async () => {
+  const { dir } = await makeBareWorkspace();
+  try {
+    const created = await createWorktree(dir, { repo: "embark", specialist: "Joaquim", journey: "j1" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    // Commit locally without pushing: the guardrail must catch this even though
+    // a bare/mirror clone has no refs/remotes/* namespace.
+    await sh(["git", "-C", created.path, "commit", "--allow-empty", "-m", "wip"]);
+    const blocked = await removeWorktree(dir, { repo: "embark", specialist: "Joaquim", journey: "j1" });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.blocked).toBe(true);
+    expect(await exists(created.path)).toBe(true);
+
+    const forced = await removeWorktree(dir, { repo: "embark", specialist: "Joaquim", journey: "j1", force: true });
+    expect(forced.ok).toBe(true);
+    expect(await exists(created.path)).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("pruneWorktrees keeps ACTIVE dispatches, removes only TERMINAL ones (A1)", async () => {
+  const { dir } = await makeWorkspace();
+  try {
+    const active = await createWorktree(dir, { repo: "embark", specialist: "Ativo", journey: "jl" });
+    const terminal = await createWorktree(dir, { repo: "embark", specialist: "Terminado", journey: "jl" });
+    if (!active.ok || !terminal.ok) throw new Error("setup");
+
+    await writeLedger(dir, "jl", [
+      { repo: "embark", specialist: "Ativo", branch: active.branch, worktree: active.path, status: "delivered" },
+      { repo: "embark", specialist: "Terminado", branch: terminal.branch, worktree: terminal.path, status: "merged" },
+    ]);
+
+    const rows = await pruneWorktrees(dir, "jl");
+    const byslug = Object.fromEntries(rows.map((r) => [r.slug, r.status]));
+    expect(byslug["ativo"]).toBe("skipped");
+    expect(byslug["terminado"]).toBe("removed");
+
+    // active worktree survives; terminal one is gone
+    const left = (await listWorktrees(dir, "jl")).map((r) => r.slug);
+    expect(left).toEqual(["ativo"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("pruneWorktrees --force removes ACTIVE dispatches too (A1)", async () => {
+  const { dir } = await makeWorkspace();
+  try {
+    const active = await createWorktree(dir, { repo: "embark", specialist: "Ativo", journey: "jf" });
+    if (!active.ok) throw new Error("setup");
+    await writeLedger(dir, "jf", [
+      { repo: "embark", specialist: "Ativo", branch: active.branch, worktree: active.path, status: "dispatched" },
+    ]);
+
+    const rows = await pruneWorktrees(dir, "jf", true);
+    expect(rows.find((r) => r.slug === "ativo")?.status).toBe("removed");
+    expect(await listWorktrees(dir, "jf")).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("createWorktree makes the worktree on the aipe branch with per-worktree identity", async () => {
   const { dir, repoAbs } = await makeWorkspace();
   try {

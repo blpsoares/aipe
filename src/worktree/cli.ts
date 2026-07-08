@@ -92,9 +92,13 @@ async function pruneCommand(args: string[]): Promise<number> {
     console.log(`${r.status.toUpperCase()} ${r.repo} ${r.slug}${r.detail ? ` ${r.detail}` : ""}`);
   }
   const removed = rows.filter((r) => r.status === "removed").length;
-  const blocked = rows.filter((r) => r.status !== "removed").length;
-  console.log(`STATE pruned=${removed} kept=${blocked}`);
-  return blocked > 0 ? 1 : 0;
+  const skipped = rows.filter((r) => r.status === "skipped").length;
+  const kept = rows.filter((r) => r.status !== "removed").length;
+  // Skipping a live dispatch is the safe, expected outcome — not a failure.
+  // Only genuine trouble (dirty/unpushed → blocked, or git error) exits non-zero.
+  const failed = rows.filter((r) => r.status === "blocked" || r.status === "error").length;
+  console.log(`STATE pruned=${removed} kept=${kept} skipped=${skipped}`);
+  return failed > 0 ? 1 : 0;
 }
 
 export async function run(args: string[]): Promise<number> {

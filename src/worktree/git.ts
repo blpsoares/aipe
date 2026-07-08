@@ -93,13 +93,45 @@ export async function setWorktreeIdentity(repoAbs: string, wtAbs: string, name: 
   await run(["git", "-C", wtAbs, "config", "--worktree", "user.name", name]);
 }
 
+// A worktree cut from a *bare* repo inherits core.bare=true, which makes
+// `git add`/`status` inside it fail ("this operation must be run in a work
+// tree") and, in turn, poisons the isDirtyOrUnpushed guardrail. Override
+// core.bare=false at *worktree* scope (extensions.worktreeConfig) so only this
+// worktree is treated as non-bare; the shared repo stays bare.
+export async function setWorktreeNonBare(repoAbs: string, wtAbs: string): Promise<void> {
+  await run(["git", "-C", repoAbs, "config", "extensions.worktreeConfig", "true"]);
+  await run(["git", "-C", wtAbs, "config", "--worktree", "core.bare", "false"]);
+}
+
+// Single source of truth for where a worktree actually lives: whatever `git
+// worktree list` reports for its branch. git may materialize a bare-repo
+// worktree at a path other than the one create requested; both create (to
+// report) and remove (to locate) reconcile against this so they never diverge.
+export async function worktreePathByBranch(repoAbs: string, branch: string): Promise<string | undefined> {
+  return (await listPorcelain(repoAbs)).find((w) => w.branch === branch)?.path;
+}
+
 // "Not safe to auto-remove": uncommitted changes, or commits on this worktree's
 // HEAD that are not reachable from any remote ref (unpushed work). The
 // deliverable is the PR + pushed history, so removing either would lose work.
 export async function isDirtyOrUnpushed(wtAbs: string): Promise<boolean> {
   const status = await run(["git", "-C", wtAbs, "status", "--porcelain"]);
   if (status.stdout.length > 0) return true;
-  const unpushed = await run(["git", "-C", wtAbs, "rev-list", "--count", "HEAD", "--not", "--remotes"]);
+  // "Unpushed" = commits on HEAD reachable from no ref *other than* this
+  // worktree's own branch. We diff HEAD against every other local branch and
+  // remote-tracking ref explicitly (rather than `--not --remotes`), because a
+  // bare/mirror clone has no refs/remotes/* namespace — there `--remotes`
+  // matches nothing and would flag even a clean, freshly-created worktree.
+  const cur = await run(["git", "-C", wtAbs, "symbolic-ref", "--quiet", "--short", "HEAD"]);
+  const refsList = await run([
+    "git", "-C", wtAbs, "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes",
+  ]);
+  const others = refsList.stdout
+    .split("\n")
+    .map((r) => r.trim())
+    .filter((r) => r.length > 0 && r !== `refs/heads/${cur.stdout}`);
+  const negatives = others.length > 0 ? others : ["--remotes"];
+  const unpushed = await run(["git", "-C", wtAbs, "rev-list", "--count", "HEAD", "--not", ...negatives]);
   return unpushed.code === 0 && unpushed.stdout !== "" && unpushed.stdout !== "0";
 }
 
