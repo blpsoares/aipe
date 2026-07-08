@@ -1,0 +1,14 @@
+version: 2
+
+# Keeps the GitHub Actions used by ci.yml / release.yml current on their own — a
+# weekly, grouped PR (gated by ci.yml) instead of anyone tracking action bumps.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
