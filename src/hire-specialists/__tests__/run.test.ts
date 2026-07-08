@@ -85,6 +85,13 @@ test("all (repo, role) pairs reported → phase done, SKILL.md files written, pe
     const source = await readFile(join(dir, ".aipe", "personas", "embark", "joaquim", "SKILL.md"), "utf8");
     expect(source).toContain("You are Joaquim.");
 
+    // an agent type is emitted alongside the skill, with the REAL display name so
+    // dispatched subagents show "Joaquim" instead of "claude".
+    const agentMd = await readFile(join(dir, "embark", ".claude", "agents", "joaquim.md"), "utf8");
+    expect(agentMd).toContain("name: Joaquim");
+    expect(agentMd).toContain("You are Joaquim.");
+    expect(await exists(join(dir, ".aipe", "personas", "embark", "joaquim", "agent.md"))).toBe(true);
+
     const registry = parse(await readFile(join(dir, ".aipe", "personas.yaml"), "utf8"));
     expect(registry.personas).toHaveLength(5); // coordinator + 4 personas
 
