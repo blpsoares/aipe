@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { deriveWorkers, deriveRepos, deriveCounts, evMsg, diffActivity } from "../runtime/store";
+import { deriveWorkers, deriveRepos, deriveCounts, evMsg, diffActivity, applySnapshot, activity } from "../runtime/store";
 import { fqidOf, dkey } from "../runtime/dom";
 
 const idT = (k: string) => k; // t() identidade para testes de evMsg
@@ -52,4 +52,20 @@ test("diffActivity: mudança de status gera changed", () => {
   const r = diffActivity(prev, cur, 2000, idT);
   expect(r.changed.length).toBe(1);
   expect(r.changed[0]!.status).toBe("delivered");
+});
+
+test("applySnapshot: activity respeita o cap de 60, mais recente no índice 0", () => {
+  // First snapshot with no dispatches: primes the module-level prevMap (empty).
+  applySnapshot({ ok: true, journeys: [] }, 0, idT);
+  // 70 successive snapshots, each introducing one brand-new dispatch (distinct
+  // specialist → distinct dkey → always "changed" → unshifted onto activity).
+  for (let i = 0; i < 70; i++) {
+    applySnapshot(
+      { ok: true, journeys: [{ id: "j", dispatches: [{ repo: "a", specialist: "S" + i, status: "dispatched" }] }] },
+      1000 + i,
+      idT,
+    );
+  }
+  expect(activity.value.length).toBe(60);
+  expect(activity.value[0]!.w).toBe("S69"); // newest event most-recent-first
 });

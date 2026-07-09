@@ -80,7 +80,7 @@ export interface RawSnapshot {
 
 export interface Snapshot {
   ok: boolean;
-  context: { name: string; coordinator: string };
+  context: { name?: string; coordinator?: string };
   workers: Worker[];
   repos: Repo[];
   relations: unknown[];
@@ -231,7 +231,7 @@ let prevMap: Map<string, Dispatch> | null = null;
 export function applySnapshot(raw: RawSnapshot, now: number, t: Translator = (k) => k): Dispatch[] {
   const next: Snapshot = {
     ok: !!raw.ok,
-    context: raw.context ? { name: raw.context.name || "—", coordinator: raw.context.coordinator || "—" } : snapshot.value.context,
+    context: raw.context ?? snapshot.value.context,
     workers: deriveWorkers(raw),
     repos: deriveRepos(raw),
     relations: raw.relations || [],
