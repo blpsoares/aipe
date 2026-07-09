@@ -6,10 +6,11 @@
 // fresh snapshot the instant `.aipe/` changes (fs.watch, debounced) AND reconciles
 // on a slow timer so a missed filesystem event can never leave the UI stale.
 import { watch } from "node:fs";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
-import appAsset from "./app.html" with { type: "text" };
 import { buildSnapshot } from "../dashboard/snapshot";
+import { buildClient } from "./app/build-client";
 import { handleRequest } from "./handler";
 import { startMonitor } from "./monitor";
 import { createTerminalSession, defaultShell, type TerminalSession } from "./terminal";
@@ -25,10 +26,33 @@ export function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
-// The import attribute `type: "text"` yields the file's contents as a string at
-// runtime (and `--compile` embeds it); the cast just corrects TS, which types
-// bare `*.html` imports as an HTMLBundle.
-const app = appAsset as unknown as string;
+// Compilado: bundle pré-buildado embutido (gerado por scripts/build.ts antes do
+// `--compile`). Dev: rebuild on-the-fly com cache por mtime de main.tsx. The
+// dynamic import + try/catch keeps module load from failing in dev, where the
+// generated asset does not exist on disk.
+let PREBUILT: string | null = null;
+try {
+  // @ts-expect-error - asset gerado, ausente em dev
+  PREBUILT = (await import("./app/app.generated.html", { with: { type: "text" } })).default;
+} catch {
+  PREBUILT = null;
+}
+
+let devCache: { html: string; key: number } | null = null;
+function isCompiled(): boolean {
+  const p = Bun.main || process.argv[1] || "";
+  return p.startsWith("/$bunfs/") || p.startsWith("~BUN") || p.startsWith("B:\\");
+}
+
+export async function getAppHtml(): Promise<string> {
+  if (isCompiled() && PREBUILT) return PREBUILT;
+  const entry = new URL("./app/main.tsx", import.meta.url).pathname;
+  const key = (await stat(entry)).mtimeMs;
+  if (!devCache || devCache.key !== key) {
+    devCache = { html: await buildClient({ minify: false }), key };
+  }
+  return devCache.html;
+}
 
 const RECONCILE_MS = 3000;
 const HEARTBEAT_MS = 25000;
@@ -166,7 +190,7 @@ export function startServer(opts: ServeOpts): Server<WsData> {
         return monitorStream(workspace);
       }
 
-      return handleRequest(req, { workspace, html: app });
+      return handleRequest(req, { workspace, getHtml: getAppHtml });
     },
     websocket: {
       open(ws: ServerWebSocket<WsData>) {

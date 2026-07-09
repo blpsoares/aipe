@@ -6,14 +6,14 @@ import { buildSnapshot } from "../dashboard/snapshot";
 
 export interface HandlerCtx {
   workspace: string;
-  html: string;
+  getHtml: () => Promise<string>;
 }
 
 export async function handleRequest(req: Request, ctx: HandlerCtx): Promise<Response> {
   const url = new URL(req.url);
 
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-    return new Response(ctx.html, {
+    return new Response(await ctx.getHtml(), {
       headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
     });
   }
