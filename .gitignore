@@ -2,3 +2,4 @@ node_modules/
 .DS_Store
 *.log
 dist/
+src/serve/app/app.generated.html

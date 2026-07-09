@@ -11,6 +11,7 @@
 // use, so this needs network access. Output lands in dist/, gitignored.
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { buildClient, genRoutes } from "../src/serve/app/build-client";
 
 interface Target {
   label: string; // dist filename suffix; the launcher maps uname → this
@@ -71,6 +72,12 @@ async function main(): Promise<number> {
     return 1;
   }
   await mkdir(DIST, { recursive: true });
+
+  console.log("Building client (Preact routes + bundle)...");
+  await genRoutes();
+  const html = await buildClient({ minify: true });
+  await Bun.write(join(ROOT, "src", "serve", "app", "app.generated.html"), html);
+
   console.log(`Building ${targets.length} target(s) → ${DIST}`);
 
   let failures = 0;

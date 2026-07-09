@@ -1,0 +1,51 @@
+/* ── Tokens ─────────────────────────────────────────────────────────────────
+   Emerald "ops" console. True-grey neutrals with a faint green bias, one
+   emerald accent used with restraint; status hues (sky/amber/slate) are separate
+   from the accent. Both themes are first-class.
+   Ported verbatim from src/serve/app.html:8-431 (:root vars + theme overrides). */
+:root {
+  --bg: #f4f4f6; --bg-2: #eeeef1;
+  --panel: #ffffff; --panel-2: #f6f6f8; --panel-3: #ececef; --raise: #ffffff;
+  --ink: #17171b; --ink-2: #52525b; --ink-3: #84848e;
+  --line: #e7e7ea; --line-2: #d7d7dc;
+  --accent: #059669; --accent-2: #10b981; --accent-ink: #047857; --accent-wash: #ecfdf5;
+  --sky: #0284c7; --amber: #b45309; --slate: #64748b; --rose: #e11d48;
+  --sky-w: #e0f2fe; --amber-w: #fef3c7; --slate-w: #f1f5f9;
+  --shadow-1: 0 1px 2px rgba(16,22,19,.06);
+  --shadow-2: 0 1px 3px rgba(16,22,19,.08), 0 8px 24px rgba(16,22,19,.08);
+  --shadow-3: 0 12px 32px rgba(16,22,19,.14), 0 2px 8px rgba(16,22,19,.08);
+  --radius: 12px; --radius-lg: 16px;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --sb: 248px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101013; --bg-2: #151519;
+    --panel: #1a1a1f; --panel-2: #202027; --panel-3: #29292f; --raise: #1d1d23;
+    --ink: #ececee; --ink-2: #9c9ca6; --ink-3: #6a6a74;
+    --line: rgba(255,255,255,.08); --line-2: rgba(255,255,255,.14);
+    --accent: #10b981; --accent-2: #34d399; --accent-ink: #6ee7b7; --accent-wash: rgba(16,185,129,.10);
+    --sky: #38bdf8; --amber: #fbbf24; --slate: #94a0ad; --rose: #fb7185;
+    --sky-w: rgba(56,189,248,.13); --amber-w: rgba(251,191,36,.13); --slate-w: rgba(148,163,184,.13);
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 2px 6px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.45);
+    --shadow-3: 0 16px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f4f4f6; --bg-2: #eeeef1; --panel: #fff; --panel-2: #f6f6f8; --panel-3: #ececef; --raise:#fff;
+  --ink: #17171b; --ink-2: #52525b; --ink-3: #84848e; --line: #e7e7ea; --line-2: #d7d7dc;
+  --accent: #059669; --accent-2: #10b981; --accent-ink: #047857; --accent-wash: #ecfdf5;
+  --sky: #0284c7; --amber: #b45309; --slate: #64748b; --rose: #e11d48;
+  --sky-w: #e0f2fe; --amber-w: #fef3c7; --slate-w: #f1f5f9;
+  --shadow-1: 0 1px 2px rgba(16,22,19,.06); --shadow-2: 0 1px 3px rgba(16,22,19,.08), 0 8px 24px rgba(16,22,19,.08); --shadow-3: 0 12px 32px rgba(16,22,19,.14), 0 2px 8px rgba(16,22,19,.08);
+}
+:root[data-theme="dark"] {
+  --bg: #101013; --bg-2: #151519; --panel: #1a1a1f; --panel-2: #202027; --panel-3: #29292f; --raise:#1d1d23;
+  --ink: #ececee; --ink-2: #9c9ca6; --ink-3: #6a6a74; --line: rgba(255,255,255,.08); --line-2: rgba(255,255,255,.14);
+  --accent: #10b981; --accent-2: #34d399; --accent-ink: #6ee7b7; --accent-wash: rgba(16,185,129,.10);
+  --sky: #38bdf8; --amber: #fbbf24; --slate: #94a0ad; --rose: #fb7185;
+  --sky-w: rgba(56,189,248,.13); --amber-w: rgba(251,191,36,.13); --slate-w: rgba(148,163,184,.13);
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 2px 6px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.45); --shadow-3: 0 16px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.4);
+}

@@ -14,7 +14,7 @@ async function ws(): Promise<string> {
   return dir;
 }
 
-const ctx = (workspace: string) => ({ workspace, html: "<!doctype html><title>AIPe</title>OK" });
+const ctx = (workspace: string) => ({ workspace, getHtml: async () => "<!doctype html><title>AIPe</title>OK" });
 
 test("GET / serves the SPA html", async () => {
   const dir = await ws();

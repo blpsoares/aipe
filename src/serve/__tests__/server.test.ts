@@ -24,7 +24,7 @@ test("isLoopback recognizes loopback hosts only", () => {
 
 test("server serves the SPA, snapshot JSON, and an SSE snapshot event", async () => {
   const dir = await ws();
-  const server = startServer({ workspace: dir, port: 0, host: "127.0.0.1", allowRemoteTerminal: false });
+  const server = startServer({ workspace: dir, port: 0, host: "127.0.0.1" });
   const base = `http://127.0.0.1:${server.port}`;
   try {
     const index = await fetch(`${base}/`);
@@ -48,36 +48,6 @@ test("server serves the SPA, snapshot JSON, and an SSE snapshot event", async ()
     await reader.cancel();
     expect(buf).toContain("event: snapshot");
     expect(buf).toContain("opvibes");
-  } finally {
-    server.stop(true);
-    await rm(dir, { recursive: true, force: true });
-  }
-});
-
-test("websocket terminal runs a command and frames the turn", async () => {
-  if (process.platform === "win32") return;
-  const dir = await ws();
-  const server = startServer({ workspace: dir, port: 0, host: "127.0.0.1", allowRemoteTerminal: false });
-  try {
-    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/api/terminal`);
-    const out: string[] = [];
-    const gotEnd = new Promise<number>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("timeout")), 8000);
-      ws.onmessage = (ev) => {
-        const msg = JSON.parse(String(ev.data));
-        if (msg.t === "ready") ws.send(JSON.stringify({ t: "run", d: "echo ws-hello" }));
-        if (msg.t === "out") out.push(msg.d);
-        if (msg.t === "end") {
-          clearTimeout(timer);
-          resolve(msg.code);
-        }
-      };
-      ws.onerror = () => reject(new Error("ws error"));
-    });
-    const code = await gotEnd;
-    expect(code).toBe(0);
-    expect(out.join("")).toContain("ws-hello");
-    ws.close();
   } finally {
     server.stop(true);
     await rm(dir, { recursive: true, force: true });

@@ -1,19 +1,19 @@
 // The pure HTTP surface of `aipe serve`: given a Request and the workspace +
-// embedded SPA, return a Response. No sockets, no streaming, no shell — so it is
+// embedded SPA, return a Response. No sockets, no streaming — so it is
 // unit-testable in isolation. The live server (server.ts) wraps this with the
-// SSE snapshot stream and the WebSocket terminal.
+// SSE snapshot and monitor streams.
 import { buildSnapshot } from "../dashboard/snapshot";
 
 export interface HandlerCtx {
   workspace: string;
-  html: string;
+  getHtml: () => Promise<string>;
 }
 
 export async function handleRequest(req: Request, ctx: HandlerCtx): Promise<Response> {
   const url = new URL(req.url);
 
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-    return new Response(ctx.html, {
+    return new Response(await ctx.getHtml(), {
       headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
     });
   }

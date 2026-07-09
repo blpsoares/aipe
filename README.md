@@ -109,21 +109,15 @@ purpose-built experiences, not one reflowed layout:
   → repo clusters → specialist nodes colored by state, over the relation edges),
   a pipeline **board** (columns = stages, cards = dispatches with PRs), and a
   detail panel for the selected worker/repo/dispatch.
-- **Mobile flow:** a tab bar over workers-by-repo, a collapsible org tree, a
-  per-journey pipeline timeline, and the terminal.
+- **Mobile flow:** a tab bar over workers-by-repo, a collapsible org tree, and a
+  per-journey pipeline timeline.
 
 It reads the **same extended `buildSnapshot`** the TUI dashboard uses, updates
 **live over SSE** (`fs.watch` on `.aipe/` + a reconcile safety net — realtime, no
 lost update), and is **theme-aware** (light/dark). The SPA is self-contained
 (HTML/CSS/JS inlined, embedded in the binary via a text import, no external CDN),
 so `--compile` keeps working. Everything stays local; nothing leaves the machine.
-
-An **embedded terminal** lets the PE drive the workspace from the browser (run
-`aipe`, `git`, tests). Under the zero-dependency rule there is no native PTY, so
-it is a persistent-shell command console (cwd/env persist across commands, ANSI
-color forced); full-screen TUIs (vim, `less`) are out of scope. It binds
-localhost by default and **refuses** a non-loopback bind unless
-`--allow-remote-terminal`.
+It binds localhost by default.
 
 ```sh
 aipe serve                       # http://127.0.0.1:4317
