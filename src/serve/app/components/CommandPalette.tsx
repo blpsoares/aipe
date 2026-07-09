@@ -10,6 +10,7 @@
 //    of a hardcoded list, so the palette can't drift from the sidebar/routes.
 //  - Opening a worker doesn't render a drawer here — it sets
 //    `store.openWorkerName`, the seam Task 10's WorkerDrawer renders off.
+import { Fragment } from "preact";
 import { signal, type Signal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { routes } from "../routes.generated";
@@ -21,6 +22,14 @@ import { fqid } from "../runtime/dom";
 import { cycleTheme } from "./ThemeToggle";
 
 const appRoutes = routes as Route[];
+
+// The monolith's palette (app.html:1236-1241) lists goto for EXACTLY these 6
+// views, in this order — note it excludes /toolbox and /settings, which the
+// sidebar has but the palette does not. This is a parity migration, so we pin
+// the goto list to these paths rather than deriving from all of routes.generated
+// (which would silently add "Go to Toolbox"/"Go to Settings"). We still resolve
+// each path through routes.generated to keep its label/icon in sync.
+const GOTO_PATHS = ["/overview", "/org", "/pipeline", "/team", "/activity", "/monitor"];
 
 export interface CmdItem {
   g: string;
@@ -57,12 +66,15 @@ export function commands(): CmdItem[] {
   const A = t("g_actions");
   const goto = t("c_goto");
 
-  const gotoCmds: CmdItem[] = appRoutes.map((r) => ({
-    g: V,
-    ic: r.nav.icon,
-    label: `${goto} ${t(r.nav.label)}`,
-    run: () => navigate(r.path),
-  }));
+  const gotoCmds: CmdItem[] = GOTO_PATHS.map((path) => {
+    const r = appRoutes.find((x) => x.path === path);
+    return {
+      g: V,
+      ic: r?.nav.icon ?? "",
+      label: `${goto} ${t(r?.nav.label ?? "")}`,
+      run: () => navigate(path),
+    };
+  });
 
   return [
     ...gotoCmds,
@@ -159,14 +171,9 @@ export function CommandPalette() {
             const groupHeader = o.g !== lastG;
             lastG = o.g;
             return (
-              <>
-                {groupHeader && (
-                  <div class="grp" key={`g-${o.g}`}>
-                    {o.g}
-                  </div>
-                )}
+              <Fragment key={`row-${i}`}>
+                {groupHeader && <div class="grp">{o.g}</div>}
                 <div
-                  key={`i-${i}`}
                   class={`opt${i === selection ? " sel" : ""}`}
                   onClick={() => o.run()}
                   onMouseEnter={() => {
@@ -177,7 +184,7 @@ export function CommandPalette() {
                   {o.label}
                   {i === selection && <span class="kbd k2">↵</span>}
                 </div>
-              </>
+              </Fragment>
             );
           })}
         </div>

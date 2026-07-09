@@ -16,10 +16,23 @@ afterEach(() => {
   location.hash = "";
 });
 
-test("commands() has no terminal command and includes goto/theme/writespec", () => {
+test("commands() palette lists EXACTLY the 6 monolith nav views, in order (no toolbox/settings/terminal)", () => {
   const list = commands();
+  const goto = t("c_goto");
+  // The 6 goto views the monolith palette shows, in app.html:1236-1241 order.
+  // Note nav_workers is our /team view's label key.
+  const expectedGoto = ["nav_overview", "nav_org", "nav_pipeline", "nav_workers", "nav_activity", "nav_monitor"].map(
+    (k) => `${goto} ${t(k)}`,
+  );
+  const gotoLabels = list.filter((c) => c.g === t("g_views")).map((c) => c.label);
+  expect(gotoLabels).toEqual(expectedGoto);
+
+  // Absent from the palette even though they exist as routes/sidebar items.
+  expect(list.some((c) => c.label === `${goto} ${t("nav_toolbox")}`)).toBe(false);
+  expect(list.some((c) => c.label === `${goto} ${t("nav_settings")}`)).toBe(false);
   expect(list.some((c) => c.label.toLowerCase().includes("terminal"))).toBe(false);
-  expect(list.find((c) => c.label === `${t("c_goto")} ${t("nav_overview")}`)).toBeTruthy();
+
+  // Action commands still present.
   expect(list.find((c) => c.label === t("c_theme"))).toBeTruthy();
   expect(list.find((c) => c.label === t("c_writespec"))).toBeTruthy();
 });
