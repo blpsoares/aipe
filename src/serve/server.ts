@@ -43,7 +43,12 @@ function isCompiled(): boolean {
 }
 
 export async function getAppHtml(): Promise<string> {
-  if (isCompiled() && PREBUILT) return PREBUILT;
+  if (isCompiled()) {
+    if (!PREBUILT) {
+      throw new Error("client asset not embedded — build via scripts/build.ts");
+    }
+    return PREBUILT;
+  }
   const entry = new URL("./app/main.tsx", import.meta.url).pathname;
   const key = (await stat(entry)).mtimeMs;
   if (!devCache || devCache.key !== key) {

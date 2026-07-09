@@ -3,4 +3,3 @@ node_modules/
 *.log
 dist/
 src/serve/app/app.generated.html
-src/serve/app/routes.generated.ts
