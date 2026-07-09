@@ -8,6 +8,7 @@
 // of the monolith's getElementById()-based initOrgPanZoom/applyOrgTransform,
 // but the math (wheel-zoom-at-cursor, drag-pan, dblclick-reset, the
 // pointerdown-on-a-clickable-node drag guard) is unchanged.
+import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { snapshot, openWorkerName, type Repo, type Worker } from "../runtime/store";
 import { t } from "../runtime/i18n";
@@ -138,6 +139,11 @@ export function OrgChart() {
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
+    // app.html:1041 — suppress native scroll/touch gestures so the drag-pan owns
+    // the surface (overflow:hidden hides .orgwrap's overflow-x:auto scrollbar,
+    // touchAction:none stops touch devices from scrolling instead of panning).
+    wrap.style.overflow = "hidden";
+    wrap.style.touchAction = "none";
     wrap.style.cursor = "grab";
     let drag: { x: number; y: number; ox: number; oy: number } | null = null;
 
@@ -283,7 +289,7 @@ export function OrgChart() {
           const cat = c.info.kind || "";
           const rsub = c.mono ? (cat ? `${t("t_monorepo")} · ${cat}` : t("t_monorepo")) : cat || t("t_repo");
           return (
-            <>
+            <Fragment key={c.r}>
               <OrgNode
                 key={`repo-${c.r}`}
                 cx={c.cx}
@@ -324,7 +330,7 @@ export function OrgChart() {
                   />
                 ),
               )}
-            </>
+            </Fragment>
           );
         })}
       </svg>

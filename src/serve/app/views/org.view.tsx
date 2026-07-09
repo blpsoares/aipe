@@ -59,7 +59,10 @@ function OrgView() {
             autocomplete="off"
             spellcheck={false}
             onInput={(e) => {
-              orgQuery.value = (e.target as HTMLInputElement).value.trim().toLowerCase();
+              // Store the RAW typed value so the (controlled) input keeps the
+              // user's case/whitespace on screen — no caret jump. Matching is
+              // case-insensitive (orgHas/orgNeedle lowercase at compare time).
+              orgQuery.value = (e.target as HTMLInputElement).value;
             }}
           />
         </label>

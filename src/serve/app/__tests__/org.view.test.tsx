@@ -81,9 +81,25 @@ test("search input reflects orgQuery and typing updates the signal + filters liv
   const { container } = render(<OrgView />);
   const input = container.querySelector("#orgSearch") as HTMLInputElement;
   expect(input.value).toBe("");
-  fireEvent.input(input, { target: { value: "Core" } });
-  expect(orgQuery.value).toBe("core"); // trimmed + lowercased
+  fireEvent.input(input, { target: { value: "core" } });
+  expect(orgQuery.value).toBe("core");
   const nodeTitles = [...container.querySelectorAll(".orgwrap svg .onode .otitle")].map((n) => n.textContent);
+  expect(nodeTitles).not.toContain("web");
+});
+
+test("search input preserves the typed CASE on screen (no caret-jumping lowercase rewrite) while matching stays case-insensitive", () => {
+  loadFixture();
+  const { container } = render(<OrgView />);
+  const input = container.querySelector("#orgSearch") as HTMLInputElement;
+  // Type "Core" (uppercase C) — the displayed value must keep the user's case,
+  // NOT be folded to "core" (which would snap the caret to the end in a browser).
+  fireEvent.input(input, { target: { value: "Core" } });
+  expect(orgQuery.value).toBe("Core"); // raw value stored
+  const rerendered = container.querySelector("#orgSearch") as HTMLInputElement;
+  expect(rerendered.value).toBe("Core"); // controlled input still shows "Core"
+  // …yet the case-insensitive match still filters to repo "core".
+  const nodeTitles = [...container.querySelectorAll(".orgwrap svg .onode .otitle")].map((n) => n.textContent);
+  expect(nodeTitles).toContain("core");
   expect(nodeTitles).not.toContain("web");
 });
 
@@ -187,6 +203,15 @@ test("pointerdown on a clickable specialist node does NOT start a drag (orgTrans
   fireEvent.pointerDown(node, { clientX: 50, clientY: 50, pointerId: 1 });
   fireEvent.pointerMove(container.querySelector(".orgwrap")!, { clientX: 90, clientY: 90, pointerId: 1 });
   expect(orgTransform.value).toEqual(before);
+});
+
+test("pan/zoom effect suppresses native scroll on .orgwrap (overflow:hidden + touchAction:none + cursor:grab)", () => {
+  loadFixture();
+  const { container } = render(<OrgView />);
+  const wrap = container.querySelector(".orgwrap") as HTMLElement;
+  expect(wrap.style.overflow).toBe("hidden");
+  expect(wrap.style.touchAction).toBe("none");
+  expect(wrap.style.cursor).toBe("grab");
 });
 
 test("pointerdown on the wrap background (not a node) DOES start a drag; pointermove pans", () => {

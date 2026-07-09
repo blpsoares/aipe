@@ -24,11 +24,20 @@ export function orgColor(status: string | undefined): string {
   return status === "active" ? "var(--sky)" : status === "delivered" ? "var(--accent)" : status === "escalated" ? "var(--amber)" : "var(--slate)";
 }
 
-// app.html:918
+// app.html:918. `orgQuery` holds the RAW typed value (so the search input can
+// display the user's case/whitespace without the caret jumping); the needle is
+// trimmed + lowercased here at comparison time, matching the monolith which
+// lowercased `_orgQuery` only for internal matching.
 export function orgHas(txt: unknown): boolean {
   return String(txt ?? "")
     .toLowerCase()
-    .includes(orgQuery.value);
+    .includes(orgNeedle());
+}
+
+// The active filter needle: the raw typed query trimmed + lowercased. Empty
+// string ("" — also the case for a whitespace-only query) means "no filter".
+export function orgNeedle(): string {
+  return orgQuery.value.trim().toLowerCase();
 }
 
 // app.html:918
@@ -38,7 +47,7 @@ export function orgWorkerMatch(w: Pick<Worker, "name" | "role" | "package" | "re
 
 // app.html:919
 export function orgRepoVisible(workers: Worker[], name: string): boolean {
-  if (!orgQuery.value) return true;
+  if (!orgNeedle()) return true;
   if (orgHas(name)) return true;
   return workers.some((w) => w.repo === name && orgWorkerMatch(w));
 }
@@ -46,7 +55,7 @@ export function orgRepoVisible(workers: Worker[], name: string): boolean {
 // app.html:920
 export function orgWorkersFor(workers: Worker[], name: string): Worker[] {
   const ws = workers.filter((w) => w.repo === name);
-  if (!orgQuery.value || orgHas(name)) return ws; // no filter, or repo name itself matches -> show all
+  if (!orgNeedle() || orgHas(name)) return ws; // no filter, or repo name itself matches -> show all
   return ws.filter(orgWorkerMatch);
 }
 
