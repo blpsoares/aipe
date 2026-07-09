@@ -1,6 +1,4 @@
 import { signal, type Signal } from "@preact/signals";
-import { routes } from "../routes.generated";
-import type { Route } from "../route-types";
 import { closeMobile } from "./ui";
 
 // ── Hash router ──────────────────────────────────────────────────────────
@@ -18,10 +16,21 @@ import { closeMobile } from "./ui";
 // and break the very reload-safety this hash scheme exists to preserve.
 
 const STORAGE_KEY = "aipe-view";
-const appRoutes = routes as Route[];
+
+// Known route paths, duplicated (manually kept in sync) from each
+// views/*.view.tsx route.path rather than imported from routes.generated.ts.
+// That generated module transitively imports every view; a view that itself
+// imports navigate()/currentPath from this module (as views legitimately do,
+// for their nav CTAs) would create a cycle — view -> router ->
+// routes.generated -> (back to) the same view — that throws a
+// "Cannot access '<binding>' before initialization" ReferenceError while the
+// modules are still resolving. Since the 8 views are fixed (routes.generated.ts
+// only ever globs views/*.view.tsx, and no new view files are added mid-task),
+// this list is stable; update it if a views/*.view.tsx path ever changes.
+const KNOWN_PATHS = ["/overview", "/org", "/pipeline", "/team", "/toolbox", "/activity", "/monitor", "/settings"];
 
 function isValidPath(p: string | null | undefined): p is string {
-  return !!p && appRoutes.some((r) => r.path === p);
+  return !!p && KNOWN_PATHS.includes(p);
 }
 
 function pathFromHash(): string | null {

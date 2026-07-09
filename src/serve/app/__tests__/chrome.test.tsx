@@ -156,10 +156,10 @@ test("<App> switches the rendered #view content when navigate() changes the rout
   const { container } = render(<App />);
   const view = container.querySelector("#view")!;
   expect(view).toBeTruthy();
-  // Overview view stub content is present, pipeline's is not.
-  expect(view.querySelector(".view-h")!.textContent).toBe(t("nav_overview"));
-  expect(view.textContent).toContain(t("nav_overview"));
-  expect(view.textContent).not.toContain(t("nav_pipeline"));
+  // Overview is a real view (Task 11): it renders a `.hero`, not the
+  // `.view-h` stub heading. Pipeline is still a stub (no `.hero`/`.kpis`).
+  expect(view.querySelector(".hero")).toBeTruthy();
+  expect(view.querySelector(".kpis")).toBeTruthy();
 
   // act() flushes the signal-scheduled re-render (a bare navigate() only marks
   // the currentPath signal dirty; the batched re-render lands on the next tick).
@@ -167,7 +167,7 @@ test("<App> switches the rendered #view content when navigate() changes the rout
 
   // The view area actually re-rendered a different component — overview content
   // is gone, pipeline content is now mounted (not just currentPath/highlight).
+  expect(view.querySelector(".hero")).toBeNull();
   expect(view.querySelector(".view-h")!.textContent).toBe(t("nav_pipeline"));
   expect(view.textContent).toContain(t("nav_pipeline"));
-  expect(view.textContent).not.toContain(t("nav_overview"));
 });
