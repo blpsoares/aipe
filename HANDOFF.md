@@ -22,7 +22,10 @@
 - **Dos 14 itens do brief:** **#1, #2, #3 já estão resolvidos** pela reescrita (a
   triagem confirmou por código + testes). **#8 (Terminal) removido.** Restam:
   **#4, #5, #6, #7, #9, #10** (serve) + **Trilha 2** (#11, #12, #13, remover sdd-lite)
-  + **Trilha 3** (#14 privacidade do workspace).
+  + **Trilha 3** (#14 privacidade do workspace)
+  + **Trilha 4 — seção 4B** (os 5 pilares de confiabilidade de entrega: o **núcleo de
+  garantia do AIPe**, onde #11/#12/#13 ganham o quadro completo — ler antes de tocar
+  em skills/awareness/journey).
 - Este handoff traz, por item: **status, arquivos exatos, abordagem, esforço e riscos**
   (vindos de uma triagem automatizada contra o código novo).
 
@@ -168,6 +171,101 @@ Sugiro branch `feat/workspace-privacy`. Estado atual já correto: o `.gitignore`
 - registro pré-salvo para reinstalar via rehydrate no re-clone.
 
 Validar contra os testes de `src/make-workspace` (e o design em `docs/superpowers/specs/2026-07-01-make-workspace-design.md`, `2026-07-05-workspace-portability-design.md`).
+
+---
+
+## 4B. TRILHA 4 (TRANSVERSAL) — Pilares de confiabilidade de entrega (núcleo de garantia do AIPe)
+
+> **Por que isso existe:** o #12 (autoria de regras) resolve a **qualidade da
+> instrução**, mas um worker pode seguir uma instrução excelente e **entregar
+> errado sem perceber**. Confiabilidade não é um documento — é um **sistema de
+> garantias**. Esta trilha pega as estratégias estruturais que o superpowers usa
+> e as pluga **dentro** da orquestração real do AIPe (dispatch/worktree/journey).
+> A tese do produto: o AIPe tem a peça que o superpowers não tem (orquestração de
+> especialistas de verdade); somando estes 5 gates, vira um **sistema multi-agente
+> com garantias de confiabilidade embutidas**. #11, #12 e #13 são **partes** disto —
+> aqui eles ganham o quadro completo.
+>
+> **Regra de ouro dos pilares:** nenhuma etapa pode ser marcada "done" com base em
+> **auto-relato**. Todo "done" exige **evidência verificável por um terceiro**.
+
+### Pilar 1 — Verificação-antes-de-concluir (gate universal de evidência)
+- **Princípio (superpowers `verification-before-completion`):** "evidência antes de afirmar. Rode o comando, mostre a saída, ANTES de dizer que está pronto." Nunca "acho que funciona".
+- **Estado no AIPe:** invertido — o dev afirma "done" e o QA chancela depois (é o **#11**). O worker afirma conclusão; a verificação vem depois (ou não vem).
+- **O que construir:**
+  - Um **gate reutilizável** que TODO worker atravessa antes de poder marcar um dispatch como entregue — não só o coordenador. Concretamente: uma skill `skills/verify-before-done/SKILL.md` (ou uma seção MUST embutida em `operate`/`hire-specialists`) que exige anexar **evidência** ao ledger da journey: comando(s) rodado(s) + saída relevante (testes verdes, build ok, feature dirigida no app real).
+  - Amarrar no domínio: em `src/journey/` o status só pode virar `delivered` se o registro de evidência existir (validar no `src/session-hook/awareness.ts` e/ou na escrita do ledger). Sem evidência → o dispatch fica em `in testing`/`needs-verification`, não `delivered`.
+- **Compõe com:** é a forma universal do **#11** (PR-após-QA). O #11 inverte a ordem *coordenador↔QA*; o Pilar 1 estende "provar antes de afirmar" para **cada especialista**.
+- **Aceite:** impossível um worker marcar `delivered` sem evidência no ledger; o snapshot/serve mostra a evidência (link/resumo) por dispatch.
+
+### Pilar 2 — Revisão adversarial independente por unidade de trabalho
+- **Princípio (superpowers `requesting-code-review` + reviewer discipline):** a confiabilidade vem de um **cético independente**, não do auto-relato. Regra literal do reviewer: *"não confie no relatório — verifique contra o diff/artefato."* (Nesta sessão isso pegou um merge-blocker que 20 reviews individuais perderam.)
+- **Estado no AIPe:** existe papel de QA, mas ele **desconfia**? A revisão é estrutural/adversarial ou é carimbo?
+- **O que construir:**
+  - Tornar a review um **gate obrigatório por unidade de entrega** (por dispatch/PR), com um reviewer que recebe **o artefato (diff)**, não o relato, e cuja skill manda **verificar contra o diff** e **calibrar severidade** (Crítico/Importante/Menor). Modelar em `skills/` uma `review-delivery/SKILL.md` espelhando o rubric do superpowers (spec-compliance + qualidade; "do not trust the report").
+  - Loop de correção: achado Crítico/Importante → volta pro worker → re-review. Só então `delivered`.
+  - Ao final de uma journey (várias entregas), um **review de conjunto** (whole-branch) — o que pega o que os reviews por-unidade não veem.
+- **Compõe com:** é o "QA que desconfia" que o #11 pressupõe; e usa o padrão de autoria do **#12** pra escrever o rubric.
+- **Aceite:** todo dispatch entregue tem um registro de review independente (quem revisou, achados, veredito) no ledger; nada vira `merged` com Crítico/Importante aberto.
+
+### Pilar 3 — Isolamento de contexto (unidade fresca) + ledger durável de journey
+- **Princípio (superpowers `subagent-driven-development`):** contexto fresco por tarefa (evita poluição/deriva) + **ledger que sobrevive a compactação** (a sessão esquece; o ledger e o git lembram). O erro mais caro observado: re-despachar trabalho já feito por perda de contexto.
+- **Estado no AIPe:** metade feita — worktrees isolam **arquivos**. Falta o **ledger de progresso durável** por journey e tratar "contexto fresco por unidade" como princípio.
+- **O que construir:**
+  - Um **ledger durável por journey** (já há base em `src/journey/`) que registre, por dispatch: task, worker, status, evidência (Pilar 1), review (Pilar 2), commits (`base..head`), timestamps. Fonte-da-verdade que **nenhuma sessão re-executa** um dispatch já `delivered`/`merged`.
+  - Regra de retomada: ao reabrir uma journey (nova sessão/coordenador), **ler o ledger primeiro**; o que está `delivered`/`merged` é intocável. Codificar isso em `operate`/`awareness` (MUST: "consulte o ledger antes de despachar; não re-despache o já entregue").
+  - Isolamento: cada dispatch roda com o mínimo de contexto necessário (o AIPe já monta o envelope do especialista) — reforçar que o coordenador **cura** o contexto do worker, não despeja o histórico.
+- **Compõe com:** o `journey reconcile` (existe) + o `WorkerStatus "merged"` do **#11(c)** são o começo da parte "sincroniza estado real". O ledger durável é a espinha.
+- **Aceite:** matar/retomar uma journey no meio nunca re-despacha trabalho concluído; o ledger reconstrói o estado sem depender da memória da sessão.
+
+### Pilar 4 — TDD / evidência de teste obrigatória para os workers
+- **Princípio (superpowers `test-driven-development`, skill rígida):** RED→GREEN com evidência. "Funciona" = teste que falhava passou. É o que dá confiabilidade ao "está pronto".
+- **Estado no AIPe:** o AIPe força TDD nos especialistas? Se não, é a diferença entre "o especialista disse que fez" e "existe um teste que prova".
+- **O que construir:**
+  - Embutir TDD como **skill rígida** no envelope dos workers de código (referenciar/instalar `test-driven-development` no toolbox do especialista; exigir **evidência RED→GREEN** no registro de entrega — encaixa direto no Pilar 1).
+  - Para trabalho não-testável por unidade (docs, config, UI visual), o Pilar 1 aceita evidência de outra natureza (feature dirigida no app real, saída de comando), mas **sempre evidência**, nunca auto-relato.
+- **Compõe com:** alimenta o Pilar 1 (a evidência preferencial é o teste) e o **#12** (TDD escrito como skill rígida, com o arsenal de gates).
+- **Aceite:** entregas de código trazem teste novo/alterado + evidência de que falhava antes.
+
+### Pilar 5 — Autoria de regras (#12) + tabela anti-racionalização específica do AIPe
+- **Princípio (superpowers, a meta-técnica mais transferível):** não basta dizer o que fazer — é preciso **antecipar como o LLM vai se convencer a NÃO fazer** e nomear isso numa tabela `Pensamento → Realidade` ("esses pensamentos significam PARE — você está racionalizando").
+- **O que construir:** além do #12 (destilar o arsenal numa meta-skill), criar uma **tabela de red-flags dos modos de falha do próprio AIPe**, embutida nas skills relevantes (`operate`, `hire-specialists`, `relationship`, verify-before-done, review-delivery). Exemplos reais do AIPe para pré-empapar:
+  | Pensamento | Realidade |
+  |---|---|
+  | "Abro o PR agora, o QA pega depois." | O PR só abre **depois** do QA passar (Pilar 1 + #11). |
+  | "A skill instalada deve estar atualizada." | Skills instaladas driftam — re-sincronize do repo (#13) antes de confiar. |
+  | "O especialista já entende o contexto." | Cure o envelope; não presuma contexto herdado (Pilar 3). |
+  | "Está óbvio que funciona, não preciso rodar." | Evidência antes de afirmar. Rode e mostre a saída (Pilar 1/4). |
+  | "Esse dispatch parece já feito, deixa eu refazer pra garantir." | Consulte o ledger; o que está `delivered`/`merged` é intocável (Pilar 3). |
+  | "O review é só um carimbo." | O reviewer desconfia e verifica contra o artefato (Pilar 2). |
+- **Compõe com:** é o **#12** levado ao limite — a autoria de regras aplicada aos **modos de falha específicos** do AIPe, não só à forma.
+- **Aceite:** cada skill core tem sua tabela de red-flags dos modos de falha que ela previne.
+
+### Transversal — fonte única de skills vs drift (liga no #13)
+- **Por que o superpowers não sofre drift:** as skills carregam de **uma fonte única** (o plugin), lidas ao vivo. O AIPe **copia** skills para cada workspace → envelhecem → daí o **#13**.
+- **Curto prazo:** #13 (re-sincronizar as instaladas a partir do repo em `aipe update`/rehydrate).
+- **Médio prazo (decisão de arquitetura):** avaliar workers referenciarem uma **fonte única versionada** em vez de cópias — trade-off real com a **portabilidade/privacidade da Trilha 3** (workspace precisa ser auto-contido). Não é de graça; documentar o trade-off antes de mudar.
+
+### O loop de garantia (como um dispatch flui pelos gates)
+```
+despacha (coordenador cura o envelope, Pilar 3)
+  → worker implementa com TDD (Pilar 4)
+  → worker verifica e ANEXA evidência ao ledger (Pilar 1)   ── sem isto, não avança
+  → review adversarial independente contra o artefato (Pilar 2)
+     ├─ achado Crítico/Importante → volta pro worker → re-review
+     └─ limpo → status "delivered" (com evidência + review no ledger)
+  → só então abre PR / QA final → "in testing" → merge → status "merged" (#11)
+  → ledger durável registra tudo; retomada nunca re-despacha o concluído (Pilar 3)
+```
+Todas as skills que descrevem este fluxo são escritas com o arsenal do #12 (gates, red-flags, fluxos, checklists-todo, precedência).
+
+### Sequência sugerida para a Trilha 4
+1. **#12** primeiro (a meta-skill de autoria) — é a linguagem em que os outros gates serão escritos.
+2. **Pilar 1** (verify-before-done) + **#11** — o gate de evidência é o de maior impacto isolado.
+3. **Pilar 4** (TDD nos workers) — alimenta o Pilar 1.
+4. **Pilar 2** (review adversarial) — precisa dos artefatos que o Pilar 1 produz.
+5. **Pilar 3** (ledger durável + regra de não-re-despacho) + **#13** (sync) — consolida estado e evita retrabalho.
+6. **Pilar 5** (tabelas anti-racionalização) — polvilhado em todas as skills conforme forem reforçadas.
 
 ---
 
