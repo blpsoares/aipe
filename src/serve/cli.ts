@@ -1,19 +1,16 @@
 #!/usr/bin/env bun
 // `aipe serve` — the AIPe Web Console: a zero-dependency Bun HTTP server that
 // renders the whole company (org chart, workers by state, pipeline stages, detail)
-// as a responsive desktop+mobile web app, live over SSE, with an embedded shell
-// terminal so the PE can drive the workspace from the browser.
+// as a responsive desktop+mobile web app, live over SSE.
 //
 //   aipe serve [--port <n>] [--host <addr>] [--workspace <dir>]
-//              [--allow-remote-terminal] [--background|-d|--detached]
+//              [--background|-d|--detached]
 //
-// Binds 127.0.0.1 by default; nothing leaves the machine. The terminal is a
-// persistent-shell command console (no PTY, per the zero-dependency rule): it
-// runs aipe/git/tests fine; full-screen TUIs (vim, less) are out of scope.
+// Binds 127.0.0.1 by default; nothing leaves the machine.
 //
 // --background/-d/--detached spawns the server as a detached child, prints its
 // PID + how to stop it, and returns immediately so it outlives the shell.
-import { isLoopback, startServer } from "./server";
+import { startServer } from "./server";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -88,20 +85,16 @@ export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const port = Math.max(0, Number(getFlag(args, "--port") ?? "4317") || 4317);
   const host = getFlag(args, "--host") ?? "127.0.0.1";
-  const allowRemoteTerminal = args.includes("--allow-remote-terminal");
 
   if (wantsBackground(args)) {
     spawnDetached(args);
     return 0;
   }
 
-  const server = startServer({ workspace, port, host, allowRemoteTerminal });
+  const server = startServer({ workspace, port, host });
   const shown = host === "0.0.0.0" ? "localhost" : host;
   console.log(`aipe serve — web console at http://${shown}:${server.port}`);
   console.log(`aipe serve — workspace ${workspace}`);
-  if (!isLoopback(host) && !allowRemoteTerminal) {
-    console.log("aipe serve — terminal disabled on a non-loopback host (pass --allow-remote-terminal to enable)");
-  }
   console.log("aipe serve — Ctrl-C to stop");
 
   const stop = () => {

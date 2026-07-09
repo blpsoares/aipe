@@ -1,7 +1,7 @@
 // The pure HTTP surface of `aipe serve`: given a Request and the workspace +
-// embedded SPA, return a Response. No sockets, no streaming, no shell — so it is
+// embedded SPA, return a Response. No sockets, no streaming — so it is
 // unit-testable in isolation. The live server (server.ts) wraps this with the
-// SSE snapshot stream and the WebSocket terminal.
+// SSE snapshot and monitor streams.
 import { buildSnapshot } from "../dashboard/snapshot";
 
 export interface HandlerCtx {

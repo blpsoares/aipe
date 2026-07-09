@@ -1,6 +1,6 @@
 // The live `aipe serve` server: the pure GET handler + a realtime SSE snapshot
-// stream (`/api/stream`) + a WebSocket terminal (`/api/terminal`), all on Bun's
-// built-in HTTP server. Zero external dependencies.
+// stream (`/api/stream`) + a live specialist-monitor stream (`/api/monitor`),
+// all on Bun's built-in HTTP server. Zero external dependencies.
 //
 // Realtime with no loss, low complexity (the PE's call): the SSE stream pushes a
 // fresh snapshot the instant `.aipe/` changes (fs.watch, debounced) AND reconciles
@@ -8,18 +8,16 @@
 import { watch } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { Server, ServerWebSocket } from "bun";
+import type { Server } from "bun";
 import { buildSnapshot } from "../dashboard/snapshot";
 import { buildClient } from "./app/build-client";
 import { handleRequest } from "./handler";
 import { startMonitor } from "./monitor";
-import { createTerminalSession, defaultShell, type TerminalSession } from "./terminal";
 
 export interface ServeOpts {
   workspace: string;
   port: number;
   host: string;
-  allowRemoteTerminal: boolean;
 }
 
 export function isLoopback(host: string): boolean {
@@ -156,31 +154,18 @@ function monitorStream(workspace: string): Response {
   });
 }
 
-interface WsData {
-  session?: TerminalSession;
-}
+export function startServer(opts: ServeOpts): Server<undefined> {
+  const { workspace, port, host } = opts;
 
-export function startServer(opts: ServeOpts): Server<WsData> {
-  const { workspace, port, host, allowRemoteTerminal } = opts;
-  const terminalAllowed = isLoopback(host) || allowRemoteTerminal;
-
-  return Bun.serve<WsData>({
+  return Bun.serve({
     port,
     hostname: host,
-    // The SSE snapshot stream and the terminal WebSocket are long-lived; Bun's
-    // default 10s idle timeout would cut the stream before the 25s heartbeat.
-    // 255s is Bun's max — the heartbeat keeps the SSE connection alive under it.
+    // The SSE snapshot/monitor streams are long-lived; Bun's default 10s idle
+    // timeout would cut the stream before the 25s heartbeat. 255s is Bun's
+    // max — the heartbeat keeps the SSE connection alive under it.
     idleTimeout: 255,
-    async fetch(req, server) {
+    async fetch(req) {
       const url = new URL(req.url);
-
-      if (url.pathname === "/api/terminal") {
-        if (!terminalAllowed) {
-          return new Response("terminal disabled on a non-loopback host — restart with --allow-remote-terminal", { status: 403 });
-        }
-        if (server.upgrade(req, { data: {} })) return undefined;
-        return new Response("expected a websocket upgrade", { status: 400 });
-      }
 
       if (url.pathname === "/api/stream") {
         return snapshotStream(workspace);
@@ -191,43 +176,6 @@ export function startServer(opts: ServeOpts): Server<WsData> {
       }
 
       return handleRequest(req, { workspace, getHtml: getAppHtml });
-    },
-    websocket: {
-      open(ws: ServerWebSocket<WsData>) {
-        const session = createTerminalSession({
-          cwd: workspace,
-          onData: (chunk) => ws.send(JSON.stringify({ t: "out", d: chunk })),
-          onTurnEnd: (code) => ws.send(JSON.stringify({ t: "end", code })),
-          onExit: (code) => {
-            try {
-              ws.send(JSON.stringify({ t: "exit", code }));
-            } catch {
-              // socket already gone
-            }
-            try {
-              ws.close();
-            } catch {
-              // already closed
-            }
-          },
-        });
-        ws.data.session = session;
-        ws.send(JSON.stringify({ t: "ready", cwd: workspace, shell: defaultShell() }));
-      },
-      message(ws: ServerWebSocket<WsData>, raw) {
-        const session = ws.data.session;
-        if (!session) return;
-        try {
-          const msg = JSON.parse(typeof raw === "string" ? raw : raw.toString());
-          if (msg && msg.t === "run" && typeof msg.d === "string") session.run(msg.d);
-        } catch {
-          // ignore malformed frames
-        }
-      },
-      close(ws: ServerWebSocket<WsData>) {
-        ws.data.session?.close();
-        ws.data.session = undefined;
-      },
     },
   });
 }

@@ -12,6 +12,10 @@ import { CommandPalette, openPalette } from "./components/CommandPalette";
 import { WorkerDrawer } from "./components/WorkerDrawer";
 import { currentPath } from "./runtime/router";
 import { collapsed, mobileOpen, closeMobile } from "./runtime/ui";
+import { bootstrap } from "./runtime/sse";
+import { wireActivityNotifications } from "./runtime/notify";
+import { evMsg, type Dispatch } from "./runtime/store";
+import { t } from "./runtime/i18n";
 
 const appRoutes = routes as RouteContract[];
 
@@ -71,5 +75,12 @@ export function App() {
 // Guard: only mount when the shell's #app div exists (i.e. the real browser
 // bundle, shell.html:11). In tests, importing this module for <App> must NOT
 // trigger a side-effecting render into a nonexistent node.
+// Real bootstrap (initial snapshot fetch → applySnapshot → SSE connect →
+// activity-diff notify wiring), equivalent to app.html's boot() (app.html:1292-1301).
+// Only runs in the browser against a real #app mount — never on import by tests,
+// which render <App /> themselves without a #app element in the document.
 const mount = typeof document !== "undefined" ? document.getElementById("app") : null;
-if (mount) render(<App />, mount);
+if (mount) {
+  render(<App />, mount);
+  bootstrap((changed: Dispatch[]) => wireActivityNotifications(changed, (d) => evMsg(d, t)));
+}
