@@ -14,7 +14,7 @@ export async function fetchInitialSnapshot(fetchImpl: typeof fetch = globalThis.
     const r = await fetchImpl("api/snapshot", { cache: "no-store" });
     if (r.ok) return await r.json();
     return null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -32,24 +32,29 @@ export function connectSnapshotStream(
   onSnapshot: (s: unknown) => void,
   onStatus: (status: ConnStatus) => void,
   ES: typeof EventSource = globalThis.EventSource,
-): EventSource {
-  const es = new ES("api/stream");
-  es.onopen = () => onStatus("live");
-  es.addEventListener("snapshot", (m: any) => {
-    if (!m.data) return;
-    let s: unknown;
-    try {
-      s = JSON.parse(m.data);
-    } catch (e) {
-      return;
-    }
-    onSnapshot(s);
-    onStatus("live");
-  });
-  es.onerror = () => {
-    if (es.readyState === 2) onStatus("down");
-  };
-  return es;
+): EventSource | null {
+  try {
+    const es = new ES("api/stream");
+    es.onopen = () => onStatus("live");
+    es.addEventListener("snapshot", (m: any) => {
+      if (!m.data) return;
+      let s: unknown;
+      try {
+        s = JSON.parse(m.data);
+      } catch {
+        return;
+      }
+      onSnapshot(s);
+      onStatus("live");
+    });
+    es.onerror = () => {
+      if (es.readyState === 2) onStatus("down");
+    };
+    return es;
+  } catch {
+    onStatus("down");
+    return null;
+  }
 }
 
 /**
@@ -57,8 +62,16 @@ export function connectSnapshotStream(
  * boot() (app.html:1292-1301). i18n/view routing/DOM concerns stay out of
  * this module (Task 6/19 wire those); `onDispatchesChanged` is a seam for the
  * notify wiring, receiving the `changed` list from each applySnapshot call.
+ *
+ * Mirrors boot()'s sequential order (app.html:1295-1300): the initial fetch is
+ * AWAITED and applied BEFORE the SSE stream is connected, so a fresher snapshot
+ * arriving over the stream can never be clobbered by the slower initial fetch.
  */
-export function bootstrap(onDispatchesChanged?: (changed: Dispatch[]) => void): EventSource {
+export async function bootstrap(
+  onDispatchesChanged?: (changed: Dispatch[]) => void,
+  fetchImpl: typeof fetch = globalThis.fetch,
+  ES: typeof EventSource = globalThis.EventSource,
+): Promise<EventSource | null> {
   conn.value = "wait";
 
   const apply = (raw: unknown) => {
@@ -66,9 +79,8 @@ export function bootstrap(onDispatchesChanged?: (changed: Dispatch[]) => void): 
     onDispatchesChanged?.(changed);
   };
 
-  fetchInitialSnapshot().then((raw) => {
-    if (raw) apply(raw);
-  });
+  const initial = await fetchInitialSnapshot(fetchImpl);
+  if (initial) apply(initial);
 
-  return connectSnapshotStream(apply, (status) => (conn.value = status));
+  return connectSnapshotStream(apply, (status) => (conn.value = status), ES);
 }

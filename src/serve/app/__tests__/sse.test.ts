@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { connectSnapshotStream } from "../runtime/sse";
+import { connectSnapshotStream, bootstrap } from "../runtime/sse";
 
 class FakeES {
   onopen: any; onerror: any; readyState = 1;
@@ -27,4 +27,32 @@ test("onerror só marca down em readyState CLOSED(2)", () => {
   expect(status).toBe("live");
   es.readyState = 2; es.onerror();
   expect(status).toBe("down");
+});
+
+test("connectSnapshotStream degrada para down se o construtor lança", () => {
+  let status = "";
+  class ThrowingES { constructor() { throw new Error("boom"); } }
+  const es = connectSnapshotStream(() => {}, (st) => (status = st), ThrowingES as any);
+  expect(es).toBeNull();
+  expect(status).toBe("down");
+});
+
+test("bootstrap aguarda o fetch inicial antes de conectar o stream", async () => {
+  const order: string[] = [];
+  const fakeFetch = (async () => {
+    // resolve num tick posterior — se bootstrap não await, o connect corre antes
+    await Promise.resolve();
+    order.push("fetch");
+    return { ok: true, json: async () => ({ ok: true }) } as any;
+  }) as unknown as typeof fetch;
+
+  let connectedAt = -1;
+  class OrderES extends FakeES {
+    constructor(url: string) { super(url); order.push("connect"); connectedAt = order.length; }
+  }
+
+  await bootstrap(undefined, fakeFetch, OrderES as any);
+
+  expect(order).toEqual(["fetch", "connect"]);
+  expect(connectedAt).toBe(2);
 });
