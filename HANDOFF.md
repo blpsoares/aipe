@@ -136,7 +136,22 @@ Escopo fora do serve (skills, session-hook, dashboard). Sugiro branch `feat/rule
   - (b) Adicionar estado **"in testing"** no Pipeline/snapshot (QA em andamento).
   - (c) Pipeline refletir **merged:** fiar o `journey reconcile` (já existe, `src/journey/reconcile.ts`) + surfar `WorkerStatus "merged"` em `src/dashboard/snapshot.ts` (hoje é ledger-driven, não sincroniza GitHub, não há status "merged"). **Nota:** o client já tem o STAGE "merged" no Pipeline; o gap é o **server/snapshot** produzir esse status.
 
-- **#12 — Audit de rigor MUST/THEN em TODAS as skills** (`skills/*/SKILL.md`). O MUST foi adicionado desigual (operate ~17, hire-specialists 6, relationship 5, make-workspace 3, toolbox 2, context-brain 1, aipe-add-repo 1). Deixar o enforcement rígido e consistente (MUST/THEN, checklists, precedência) em todas.
+- **#12 — Adotar a metodologia de autoria de regras do superpowers como CORE do AIPe, em TODAS as skills** (`skills/*/SKILL.md`).
+  - **A ideia NÃO é só `MUST`/`THEN`.** É extrair o **arsenal inteiro** que o superpowers usa para fazer o LLM seguir instrução **à risca** e transformar isso numa **convenção/meta-skill do AIPe** — porque essa "DNA de regras" define **qualidade de entrega e aderência do LLM à instrução** (é core do produto, não cosmético). Hoje o rigor está desigual entre as skills (ex.: `operate` ~17 MUST vs `context-brain`/`aipe-add-repo` 1); o objetivo é **todas** as skills escritas com o mesmo padrão rígido.
+  - **O arsenal a extrair do superpowers e padronizar (não apenas os keywords — o método inteiro):**
+    - **Gates rígidos** que travam a ação até a condição ser satisfeita: `<EXTREMELY-IMPORTANT>`, `<HARD-GATE>`, `<SUBAGENT-STOP>` e similares.
+    - **Modais imperativos** com o *porquê* junto: `MUST` / `NEVER` / `ALWAYS` / `DO NOT`.
+    - **Tabelas de racionalização / "Red Flags"** no formato `Pensamento → Realidade` ("esses pensamentos significam PARE — você está racionalizando").
+    - **Fluxogramas de decisão** (dot/digraph) — o LLM segue o grafo, não prosa ambígua.
+    - **Checklists que viram todos** (1 item = 1 tarefa rastreável) e **granularidade de 1-ação-por-passo**.
+    - **Anti-Patterns nomeados** + **"Common Mistakes" (Problema → Correção)**.
+    - **Priorização/precedência explícita** das instruções e **calibração de severidade** (Crítico vs Menor).
+    - **"When to use / when NOT"** (árvore de decisão), **self-review gates**, **exemplos trabalhados**, e o **"Announce: 'Using [skill] to [purpose]'"**.
+  - **Trabalho concreto (3 partes):**
+    1. **Estudar/destilar** os padrões do superpowers (`~/.claude/plugins/cache/superpowers*/skills/*`) num **guia de autoria de regras do AIPe** — de preferência uma **meta-skill** (ex.: `skills/authoring-rules/SKILL.md`) que descreva o arsenal + quando usar cada device. Esse guia vira a fonte-da-verdade do "como se escreve regra no AIPe".
+    2. **Reescrever/reforçar cada `skills/*/SKILL.md`** aplicando esse padrão de forma consistente (gates, red-flags, fluxos, checklists-todo, precedência) — não só polvilhar `MUST`.
+    3. **Validar** (`bun test` das skills/session-hook onde houver; ao mexer em `operate`/awareness, rodar os testes de `src/session-hook`), e garantir que o **#13 (sync de skills instaladas)** propague essas versões reforçadas para os workspaces.
+  - **Precedência-envelope:** o AIPe governa roteamento; process-skills (TDD/debugging/brainstorming) rodam no dev. Ao reforçar `operate`/`awareness` você mexe no cérebro do framework — cuidado e teste `src/session-hook`.
 
 - **#13 — Mecanismo de sync de skills instaladas.** Skills instaladas num workspace ficam stale vs o repo (ex.: `operate` instalado tinha 5 MUST vs 20 no repo). Implementar um comando/fluxo (ex.: dentro de `aipe update`/rehydrate — ver `src/update/`, `src/rehydrate/`) que **re-sincroniza as skills instaladas** a partir do repo, pro coordenador nunca rodar com skill velha.
 
@@ -184,7 +199,7 @@ Validar contra os testes de `src/make-workspace` (e o design em `docs/superpower
 4. **#9(WHO/WHAT/WHERE)** activity rica client-only (medium). [médio]
 5. **#7(a)** monitor "última atividade" client-only (small). [rápido]
 6. **#4** team agrupamentos (medium) + decidir "+Dispatch". [médio]
-7. **Trilha 2:** #10-sdd-lite remover (rápido) → #13 sync skills → #12 audit MUST → #11 PR-após-QA/in-testing/merged. [médio-grande, mexe em server/skills]
+7. **Trilha 2:** #10-sdd-lite remover (rápido) → #13 sync skills → **#12 (core: destilar a metodologia de autoria de regras do superpowers numa meta-skill do AIPe e aplicar em TODAS as skills — arsenal inteiro, não só MUST)** → #11 PR-após-QA/in-testing/merged. [médio-grande, mexe em server/skills; #12 é core de qualidade/instrução]
 8. **Trilha 3:** #14 privacidade do workspace (make-workspace remote PRIVATE). [médio, mexe em onboarding]
 9. **#7(b)** streaming de código cross-stack (large, server). [grande — deixar por último]
 10. **#10** toolbox add — só se o PE priorizar. [grande, server + segurança]
