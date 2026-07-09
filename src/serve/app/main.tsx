@@ -68,4 +68,8 @@ export function App() {
   );
 }
 
-render(<App />, document.getElementById("app")!);
+// Guard: only mount when the shell's #app div exists (i.e. the real browser
+// bundle, shell.html:11). In tests, importing this module for <App> must NOT
+// trigger a side-effecting render into a nonexistent node.
+const mount = typeof document !== "undefined" ? document.getElementById("app") : null;
+if (mount) render(<App />, mount);

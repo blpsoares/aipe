@@ -1,6 +1,7 @@
 import "./setup";
 import { test, expect, afterEach } from "bun:test";
-import { render, cleanup, fireEvent } from "@testing-library/preact";
+import { render, cleanup, fireEvent, act } from "@testing-library/preact";
+import { App } from "../main";
 import { Sidebar } from "../components/Sidebar";
 import { BottomNav } from "../components/BottomNav";
 import { Topbar } from "../components/Topbar";
@@ -86,16 +87,18 @@ test("BottomNav shows the escalation dot on Activity only when counts.escalated 
   expect(container.querySelector("#tabbar .tbadge")).toBeTruthy();
 });
 
-test("LangSwitch reads the lang signal and calls setLang; labels update without a manual re-render", () => {
-  const { container, rerender } = render(<Sidebar />);
+test("LangSwitch reads the lang signal and calls setLang; Sidebar labels update reactively (no manual re-render)", () => {
+  const { container } = render(<Sidebar />);
   expect(container.querySelector(".nav-i")!.textContent).toContain("Overview");
 
   const langEl = render(<LangSwitch />).container;
   fireEvent.click(langEl.querySelector('[data-lang="pt"]')!);
   expect(lang.value).toBe("pt");
 
-  rerender(<Sidebar />);
-  expect(container.querySelector(".nav-i")!.textContent).toContain(t("nav_overview"));
+  // No rerender() call: @preact/signals re-renders the already-mounted Sidebar
+  // because its render body reads t()/lang.value. If reactivity were broken this
+  // assertion would fail (label would still read "Overview").
+  expect(container.querySelector(".nav-i")!.textContent).toContain("Visão geral");
   expect(t("nav_overview")).toBe("Visão geral");
 });
 
@@ -146,4 +149,25 @@ test("navigate() persists to localStorage and mirrors into location.hash", () =>
 test("navigate() falls back to /overview for an unknown path", () => {
   navigate("/does-not-exist");
   expect(currentPath.value).toBe("/overview");
+});
+
+test("<App> switches the rendered #view content when navigate() changes the route", () => {
+  navigate("/overview");
+  const { container } = render(<App />);
+  const view = container.querySelector("#view")!;
+  expect(view).toBeTruthy();
+  // Overview view stub content is present, pipeline's is not.
+  expect(view.querySelector(".view-h")!.textContent).toBe(t("nav_overview"));
+  expect(view.textContent).toContain(t("nav_overview"));
+  expect(view.textContent).not.toContain(t("nav_pipeline"));
+
+  // act() flushes the signal-scheduled re-render (a bare navigate() only marks
+  // the currentPath signal dirty; the batched re-render lands on the next tick).
+  act(() => navigate("/pipeline"));
+
+  // The view area actually re-rendered a different component — overview content
+  // is gone, pipeline content is now mounted (not just currentPath/highlight).
+  expect(view.querySelector(".view-h")!.textContent).toBe(t("nav_pipeline"));
+  expect(view.textContent).toContain(t("nav_pipeline"));
+  expect(view.textContent).not.toContain(t("nav_overview"));
 });
