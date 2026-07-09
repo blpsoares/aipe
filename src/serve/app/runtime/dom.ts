@@ -44,3 +44,13 @@ interface FqidWorkerInput {
 export function fqid(w: FqidWorkerInput): string {
   return w.package ? `${w.repo}/${w.package}` : String(w.repo ?? "");
 }
+
+// Ported from app.html:840. Uses t("rel_now") instead of a hardcoded
+// "now"/"agora" so it follows the current language.
+export function reltime(ms: number, t: (k: string) => string): string {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (s < 8) return t("rel_now");
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  return Math.floor(s / 3600) + "h";
+}
