@@ -8,7 +8,7 @@ import type { Route as RouteContract } from "./route-types";
 import { Sidebar } from "./components/Sidebar";
 import { BottomNav } from "./components/BottomNav";
 import { Topbar } from "./components/Topbar";
-import { CommandPalette } from "./components/CommandPalette";
+import { CommandPalette, openPalette } from "./components/CommandPalette";
 import { WorkerDrawer } from "./components/WorkerDrawer";
 import { currentPath } from "./runtime/router";
 import { collapsed, mobileOpen, closeMobile } from "./runtime/ui";
@@ -55,7 +55,7 @@ export function App() {
       <div class={cls}>
         <Sidebar />
         <div class="main">
-          <Topbar />
+          <Topbar onOpenCommandPalette={openPalette} />
           <div class="view" id="view">
             <Shell />
           </div>

@@ -218,6 +218,11 @@ export const counts: Signal<Counts> = signal({ hired: 0, active: 0, delivered: 0
 export const activity: Signal<ActivityEvent[]> = signal([]);
 export const conn: Signal<"wait" | "live" | "down"> = signal("wait");
 
+// Shared seam between Task 9 (CommandPalette worker search) and Task 10
+// (WorkerDrawer): setting this signal is how the palette "opens" a worker;
+// the drawer renders off it (null = closed).
+export const openWorkerName: Signal<string | null> = signal(null);
+
 export const brandCtx: ReadonlySignal<string> = computed(() => snapshot.value.context.name || "—");
 
 // Module-level previous-dispatch map, equivalent to the monolith's `PREV`.

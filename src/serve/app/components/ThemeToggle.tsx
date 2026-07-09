@@ -1,6 +1,6 @@
 // Cycles document.documentElement's data-theme dark → light → auto (no
 // attribute) → dark, ported verbatim from app.html:668-672.
-function cycleTheme(): void {
+export function cycleTheme(): void {
   const html = document.documentElement;
   const cur = html.getAttribute("data-theme");
   const next = cur === "dark" ? "light" : cur === "light" ? "" : "dark";
