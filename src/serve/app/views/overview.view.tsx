@@ -3,15 +3,8 @@ import { fqid } from "../runtime/dom";
 import { navigate } from "../runtime/router";
 import { snapshot, counts, dispatches, activity } from "../runtime/store";
 import { ActivityFeed } from "../components/ActivityFeed";
+import { STAGES } from "../runtime/stages";
 import type { Route } from "../route-types";
-
-// Ported from app.html:599-604 (STAGES).
-const STAGES = [
-  { key: "dispatched", label: "Dispatched", cls: "active" },
-  { key: "delivered", label: "Delivered", cls: "delivered" },
-  { key: "escalated", label: "Escalated", cls: "escalated" },
-  { key: "merged", label: "Merged", cls: "merged" },
-] as const;
 
 // app.html:713-724
 function HeroStatus() {
