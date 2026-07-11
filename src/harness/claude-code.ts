@@ -62,9 +62,10 @@ export const claudeCodeAdapter: HarnessAdapter = {
 
     // 2. write the onboarding/operation flow skills
     for (const [name, body] of Object.entries(FLOW_SKILLS)) {
-      const dir = join(claudeDir, "skills", name);
+      const { relDir, filename } = this.flowSkillTarget(name);
+      const dir = join(workspaceDir, relDir);
       await mkdir(dir, { recursive: true });
-      await writeFile(join(dir, "SKILL.md"), body, "utf8");
+      await writeFile(join(dir, filename), body, "utf8");
     }
 
     return {
@@ -85,6 +86,10 @@ export const claudeCodeAdapter: HarnessAdapter = {
 
   personaTarget(slug: string): { relDir: string; filename: string } {
     return { relDir: join(".claude", "skills", slug), filename: "SKILL.md" };
+  },
+
+  flowSkillTarget(name: string): { relDir: string; filename: string } {
+    return { relDir: join(".claude", "skills", name), filename: "SKILL.md" };
   },
 
   wrapPersona(body: string, meta: PersonaMeta): string {

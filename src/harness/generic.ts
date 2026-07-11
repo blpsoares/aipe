@@ -39,7 +39,9 @@ export const genericAdapter: HarnessAdapter = {
     await writeFile(join(workspaceDir, "AGENTS.md"), agentsMd, "utf8");
 
     for (const [name, body] of Object.entries(FLOW_SKILLS)) {
-      await writeFile(join(flowsDir, `${name}.md`), body, "utf8");
+      const { relDir, filename } = this.flowSkillTarget(name);
+      await mkdir(join(workspaceDir, relDir), { recursive: true });
+      await writeFile(join(workspaceDir, relDir, filename), body, "utf8");
     }
 
     return {
@@ -60,6 +62,10 @@ export const genericAdapter: HarnessAdapter = {
 
   personaTarget(slug: string): { relDir: string; filename: string } {
     return { relDir: ".aipe-personas", filename: `${slug}.md` };
+  },
+
+  flowSkillTarget(name: string): { relDir: string; filename: string } {
+    return { relDir: join(".aipe", "flows"), filename: `${name}.md` };
   },
 
   wrapPersona(body: string, meta: PersonaMeta): string {

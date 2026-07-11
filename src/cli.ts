@@ -77,7 +77,7 @@ const HELP = [
   "  serve              Responsive web console (org chart, pipeline, terminal)",
   "  validate-personas  Preflight persona load-order readiness + live-check steps",
   "  model              Resolve model by tier + adjudicate authorization/volume gates",
-  "  rehydrate          Restore per-repo persona skills from .aipe/personas/",
+  "  rehydrate          Restore personas + toolbox and sync coordinator flow-skills",
   "  skill              Add/list toolbox skill-packages (frameworks) per repo",
   "  mcp                Add/list MCP servers (workspace-shared or per-repo)",
   "  read-state         Print the coordinator awareness fields (used by hooks)",
