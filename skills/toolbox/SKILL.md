@@ -5,12 +5,24 @@ description: Use to add or review the context's toolbox — extra skill-packages
 
 # /toolbox
 
+**Announce on entry:** "Using toolbox to add/review the context's tools."
+
 The toolbox is the set of extra capabilities the context can use beyond the
 personas: **skill-packages/frameworks** (like an SDD kit) and **MCP servers**.
 The catalog lives at `.aipe/toolbox.yaml` (published with the workspace); the
 actual installs live inside each repo (and, for MCPs, in `.mcp.json`), rebuilt
 by `aipe rehydrate` on another machine. Everything past your understanding of a
 tool is a deterministic `aipe` command.
+
+## When to use / when NOT
+
+**Use it when:** the PE wants a framework or MCP installed into some/all repos, or you
+need to **review** the catalog before dispatching so you route the right tool to a
+task (and don't over-apply a heavy framework to a trivial edit).
+
+**Do NOT use it when:** the tool is a per-task process concern — routing which kit a
+specialist uses happens at dispatch via `aipe skill match`, inside `/operate`, not
+here. This skill manages the **catalog + installs**, not runtime routing.
 
 ## Adding a skill-package / framework
 
@@ -110,16 +122,52 @@ Both refuse with `ERROR not-found …` if the name isn't catalogued, and leave
 every other skill/MCP untouched. `aipe mcp remove` preserves the other servers in
 each `.mcp.json`.
 
+## The no-secrets gate (MUST — non-negotiable)
+
+You **MUST NEVER** put a literal secret into a tool config. The catalog is
+**published with the workspace**, so a literal token or inline `user:pass@` URL leaks
+to everyone who sees the repo. Condition to pass: every sensitive value is an env
+reference (`"${PG_URL}"`), with the real value set in the machine's environment.
+`aipe mcp add` refuses a literal secret; `--allow-secrets` is only for a deliberate,
+demonstrably non-sensitive literal — never to silence the check on a real credential.
+
+**Table of non-exceptions (forbidden rationalizations).** Each thought means **STOP:**
+
+| Rationalization | Ruling |
+| --- | --- |
+| "it's just a dev/test token" | Published catalog leaks it. Use `"${VAR}"` |
+| "`--allow-secrets` will make the error go away" | That flag is for non-secrets only, never a real credential |
+| "I'll rotate it later" | It's already published once committed. Never inline it |
+
 ## Rules
 
-- Governance (MUST): you are the coordinator — you NEVER edit repo source
-  yourself. All code work flows through the dispatch gate in `/operate` (decompose
-  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
-  "urgent", "one file", "I already know the fix") never apply. Here you only run
-  the `aipe skill` / `aipe mcp` CLI. Note the envelope: the process-skills a kit
-  installs run INSIDE the dispatched specialist, never in you.
-- Never hand-write `.aipe/toolbox.yaml`, a repo's `.claude/skills/<name>/`, or an
-  `.mcp.json` — always through `aipe skill` / `aipe mcp`, so the catalog and the
-  installs stay in sync and survive publishing.
+- Governance (MUST): you are the coordinator — you **NEVER** edit repo source
+  yourself, because all code work must flow through the dispatch gate in `/operate`
+  (decompose → dispatch a specialist in a worktree → PR) to keep the audit trail and
+  worktree isolation intact; the non-exceptions there ("simple", "urgent", "one
+  file", "I already know the fix") never apply. Here you only run the `aipe skill` /
+  `aipe mcp` CLI. Envelope: the process-skills a kit installs run INSIDE the
+  dispatched specialist, NEVER in you.
+- Determinism (MUST): never hand-write `.aipe/toolbox.yaml`, a repo's
+  `.claude/skills/<name>/`, or an `.mcp.json` — always through `aipe skill` / `aipe
+  mcp`, so the catalog and the installs stay in sync and survive publishing.
+- Right-sizing (MUST): ALWAYS give a framework a `routing` hint and honor it — a heavy
+  kit (SDD) must NOT be routed onto a trivial task (a button colour, a one-liner);
+  over-applying a framework slows every small edit and trains the model to ignore it.
 - A shared skill is installed per repo but catalogued once at the root.
-- Secrets never enter the catalog — env references only.
+
+## Common mistakes
+
+- *Inlining a real token in an MCP config* → use `"${VAR}"`; never `--allow-secrets` a
+  credential (see the gate).
+- *Adding a framework with no `routing`* → add `taskTypes`/`skipFor`/`minSize` so
+  `aipe skill match` can decide mechanically instead of you interpreting prose.
+- *Routing SDD onto a styling/copy task* → that's what `skipFor` prevents; leave heavy
+  kits out of tasks that don't match.
+
+## Self-review gate (before considering the tool added)
+
+- [ ] No literal secret entered the catalog — every sensitive value is an env reference.
+- [ ] The install ran through `aipe skill` / `aipe mcp`, not a hand-edited file.
+- [ ] Frameworks carry a `routing` hint so `aipe skill match` can route them.
+- [ ] The CLI printed `INSTALLED …` / `OK …` (not an `ERROR`) for every target repo.

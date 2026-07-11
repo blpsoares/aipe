@@ -5,11 +5,23 @@ description: Use in step 3 of AIPe onboarding to discover cross-repo relations (
 
 # /relationship
 
+**Announce on entry:** "Using relationship to map cross-repo relations."
+
 Discovers how the repos in a context relate to each other, and documents that in
 `.aipe/relations/`. Unlike `/context-brain` and `/make-workspace`, this skill needs
 you (the coordinator) to dispatch subagents that actually read code — the merge,
 rendering, and state update that follow are handled by a deterministic CLI, same as
 the earlier onboarding steps.
+
+## When to use / when NOT
+
+**Use it when:** onboarding step 3 — `phase.workspace` is `done` (all repos cloned)
+and you need to discover cross-repo edges + backfill `stack`.
+
+**Do NOT use it when:** the workspace isn't cloned yet (run `/make-workspace` first —
+there's nothing to read); or you only added one repo (use `/aipe-add-repo`, which
+re-discovers incrementally with `--merge`). The subagents here are **read-only** —
+this skill never writes to a repo.
 
 ## Flow
 
@@ -109,18 +121,34 @@ the earlier onboarding steps.
 
 ## Rules
 
-- Governance (MUST): you are the coordinator — you NEVER edit repo source
-  yourself. All code work flows through the dispatch gate in `/operate` (decompose
-  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
-  "urgent", "one file", "I already know the fix") never apply. Here you only run
-  the `aipe` CLI and dispatch **read-only** subagents that MUST stay scoped to
-  their own repo.
-- Never write `graph.yaml`, `README.md`, `brain.yaml`, or `state.yaml` by hand —
-  always through the CLI.
-- Each subagent must stay scoped to its own repo — no cross-repo file access. The
-  CLI is what reconciles perspectives from different repos, not the agents
-  themselves.
-- Re-running `/relationship` after it already reached `done` re-dispatches all N
-  agents and overwrites `graph.yaml`/`README.md`/backfilled `stack` from scratch —
-  there's no incremental merge across full runs.
-- `stack` backfill never overwrites a value the PE already declared in `brain.yaml`.
+- Governance (MUST): you are the coordinator — you **NEVER** edit repo source
+  yourself, because all code work must flow through the dispatch gate in `/operate`
+  (decompose → dispatch a specialist in a worktree → PR) to keep the audit trail and
+  worktree isolation intact; the non-exceptions there ("simple", "urgent", "one
+  file", "I already know the fix") never apply. Here you only run the `aipe` CLI and
+  dispatch **read-only** subagents that MUST stay scoped to their own repo.
+- Scope (MUST): each subagent stays scoped to its own repo — **NEVER** cross-repo
+  file access — because the CLI is what reconciles perspectives from different repos;
+  a subagent reading across repos produces double-counted, unverifiable edges.
+- Determinism (MUST): never write `graph.yaml`, `README.md`, `brain.yaml`, or
+  `state.yaml` by hand — always through the CLI, so the graph stays machine-valid.
+- ALWAYS preserve a PE-declared value: `stack` backfill NEVER overwrites a `stack`
+  the PE already put in `brain.yaml`.
+- Re-running after `done` re-dispatches all N agents and overwrites
+  `graph.yaml`/`README.md`/backfilled `stack` from scratch — there's no incremental
+  merge across full runs (use `/aipe-add-repo` `--merge` for a single new repo).
+
+## Common mistakes
+
+- *One subagent analyzing several repos* → one read-only agent per repo (or per
+  package for a monorepo), each scoped to its own path.
+- *Hand-writing the graph after the agents report* → stage each report to
+  `.aipe/relations/.reports/<repo>.json` and let `aipe relationship` merge them.
+- *Inventing a relation `type`* → it must be exactly one of the five listed values.
+
+## Self-review gate (before telling the PE this step is done)
+
+- [ ] One read-only subagent per repo/package ran, each scoped to its own path.
+- [ ] Every result was staged to `.reports/` and merged via `aipe relationship`.
+- [ ] `STATE relationship=done` (every repo `OK`); any `MISSING` was re-dispatched.
+- [ ] No `graph.yaml`/`README.md` was hand-edited; PE-declared `stack` survived.

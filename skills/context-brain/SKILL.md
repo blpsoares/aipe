@@ -5,9 +5,20 @@ description: Use during onboarding of an AIPe context/team to map the repositori
 
 # /context-brain
 
+**Announce on entry:** "Using context-brain to map the repos into the brain file."
+
 Interactive collection of a team's context and deterministic writing of the brain file.
 You (coordinator) do NOT write the YAML by hand — collect the data from the PE and delegate
 the writing to the typed CLI, which validates and serializes it.
+
+## When to use / when NOT
+
+**Use it when:** onboarding step 1 — the workspace exists (`aipe-<name>/`) but there is
+no `.aipe/brain.yaml` yet, and you need to record the repos (URLs, paths, stacks).
+
+**Do NOT use it when:** a brain already exists and you only want to **add one repo** —
+use `/aipe-add-repo` (it preserves existing personas). Also not for cloning or
+analyzing code — this skill records **factual knowledge only**; it never reads source.
 
 ## Flow
 
@@ -68,20 +79,52 @@ the writing to the typed CLI, which validates and serializes it.
    - Lines `ERROR <field>: <message>` → show them to the PE, fix the flagged data and
      run it again. Never write anything by hand.
 
+## The no-fabrication gate (MUST — non-negotiable)
+
+You **MUST NOT** invent a repo `url`. A fabricated URL clones the wrong thing (or
+nothing) and silently corrupts every downstream phase — the map is the foundation the
+whole context is built on. Condition to pass the gate: **every `url` is either a real
+remote the PE gave you, or the repo's local filesystem path.**
+
+**Table of non-exceptions (forbidden rationalizations).** Each thought means **STOP:**
+
+| Rationalization | Ruling |
+| --- | --- |
+| "GitHub URLs are predictable, I'll guess it" | NEVER guess — use the local path, or ask the PE |
+| "the PE clearly meant github.com/<org>/<repo>" | Inference ≠ fact. Ask, or use the path |
+| "the repo has no remote, I'll make one up" | Use the **local path** as the url; `make-workspace` clones it fine |
+| "it's just a placeholder, I'll fix it later" | A wrong url in the brain poisons clone + relations. Get it right now |
+
+When `git -C <path> remote get-url origin` is empty, use the local path as the `url`.
+If a url is genuinely unknown and there is no remote, **ask the PE**.
+
 ## Rules
 
-- Governance (MUST): you are the coordinator — you NEVER edit repo source
-  yourself. All code work flows through the dispatch gate in `/operate` (decompose
-  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
-  "urgent", "one file", "I already know the fix") never apply. Here you only
-  collect data and run the `aipe` CLI.
-- Never edit `brain.yaml`/`state.yaml` directly here — always go through the CLI, to
-  guarantee a valid format.
-- One question at a time; don't dump them all at once.
-- If the workspace doesn't exist or doesn't look like an `aipe-<context>`, ask before
-  writing.
-- **Never fabricate a repo `url`.** When the PE gives only a path (or a repo has no git
-  remote — `git -C <path> remote get-url origin` comes back empty), use the **local path**
-  as the `url`: `make-workspace` clones fine from a local path. If a url is genuinely
-  unknown and there is no remote, **ask the PE** — never invent a plausible-looking URL
-  such as `https://github.com/<context>/<repo>.git`.
+- Governance (MUST): you are the coordinator — you **NEVER** edit repo source
+  yourself, because all code work must flow through the dispatch gate in `/operate`
+  (decompose → dispatch a specialist in a worktree → PR) to keep the audit trail and
+  worktree isolation intact; the non-exceptions there ("simple", "urgent", "one
+  file", "I already know the fix") never apply. Here you only collect data and run
+  the `aipe` CLI.
+- Determinism (MUST): never edit `brain.yaml`/`state.yaml` by hand — always through
+  the CLI, because only the CLI validates and serializes a format the later phases
+  can trust.
+- ALWAYS ask one question at a time; dumping them all at once loses answers and
+  produces a half-filled brain.
+- If the workspace doesn't exist or doesn't look like an `aipe-<context>`, **ask**
+  before writing — writing into the wrong folder is hard to unwind.
+
+## Common mistakes
+
+- *Inventing a plausible GitHub URL* → use the local path, or ask the PE (see the gate).
+- *Writing the YAML by hand to "save a step"* → always via `aipe context-brain`; the
+  CLI is the only validator.
+- *Folding two separate products into one monorepo entry* → separate git repos stay
+  separate repo entries; only real workspace packages become `packages`.
+
+## Self-review gate (before telling the PE this step is done)
+
+- [ ] Every repo's `url` is a real remote or a local path — nothing fabricated.
+- [ ] The brain was written by `aipe context-brain`, not by hand.
+- [ ] The CLI printed `OK brain=… / OK state=…` (not an `ERROR` line).
+- [ ] The context name came from the folder (`aipe-` stripped), not invented.

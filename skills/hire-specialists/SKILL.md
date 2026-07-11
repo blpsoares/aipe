@@ -16,6 +16,19 @@ drive naming and dispatch subagents that write persona prose — name resolution
 validation, and file writing are handled by a deterministic CLI, same as the
 earlier onboarding steps.
 
+**Announce on entry:** "Using hire-specialists to install the context's personas."
+
+## When to use / when NOT
+
+**Use it when:** onboarding step 4 (last) — `phase.relationship` is `done` and the
+context needs its dev+QA personas installed per hiring group.
+
+**Do NOT use it when:** relations aren't discovered yet (run `/relationship` first —
+there's no stack/relations to ground personas in); or you only added one repo (use
+`/aipe-add-repo`, which hires **only** the new repo and preserves existing names).
+Re-running here after `done` re-resolves names and overwrites **every** persona from
+scratch — never do that just to tweak one persona.
+
 ## Flow
 
 1. **Confirm the workspace.** By default the current directory (must be an
@@ -118,30 +131,60 @@ earlier onboarding steps.
     rest; at dispatch time you route the right kit per task with
     `aipe skill match`.
 
+## The QA-per-group gate (MUST — non-negotiable)
+
+Every hiring group gets **exactly** one dev-fullstack **and** one QA persona. QA is
+not optional staffing — it is what makes the **QA delivery gate** in `/operate`
+physically possible: no dev delivery is ever "done" until its repo/package's QA has
+been dispatched and returned `passed`. A group hired without a QA has no gate at
+operation time, so its deliveries can never be verified.
+
+**Table of non-exceptions (forbidden rationalizations for skipping a QA).** Each
+thought means **STOP:**
+
+| Rationalization | Ruling |
+| --- | --- |
+| "the dev can test their own work" | Self-test ≠ the gate. MUST hire a separate QA |
+| "this package is tiny" | MUST still hire dev + QA — 2 per group, always |
+| "one QA can cover the whole monorepo" | Hire per graph node; each package needs its own gate |
+| "we'll add QA later if needed" | No QA now = no delivery gate later. Hire it now |
+
 ## Rules
 
-- Governance (MUST): you are the coordinator — you NEVER edit repo source
-  yourself. All code work flows through the dispatch gate in `/operate` (decompose
-  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
-  "urgent", "one file", "I already know the fix") never apply. Here you only run
-  the `aipe` CLI and dispatch scoped subagents that write persona prose.
-- Every hiring group gets a QA persona precisely because QA is the **MUST
-  delivery gate** in operation: no dev delivery is "done" until its repo/package's
-  QA has been dispatched and passed. Never skip QA.
-- Never write `personas.yaml`, `state.yaml`, or any persona `SKILL.md` by
-  hand — always through the CLI.
-- Always exactly 2 personas per **hiring group** (1 dev-fullstack + 1 QA) — a
-  whole repo for a plain repo, or each package of a monorepo. Never skip QA. A
-  monorepo is hired per package (per graph node), not as one repo-wide pair,
-  unless you deliberately judge it cohesive enough to hire at the repo fqid.
-- Names must be resolved via `--resolve-names` (step 5) **before** dispatch —
-  an agent must be told its final name to write coherent identity prose.
-- Each subagent must stay scoped to its own repo when writing persona
-  content — no cross-repo file access.
-- Re-running `/hire-specialists` after it already reached `done` re-resolves
-  names, re-dispatches all 2N agents, and overwrites every persona `SKILL.md`
-  + `personas.yaml` from scratch — there's no incremental regeneration.
-- The hiring brief itself is never written to disk by this skill — only
-  documented, in prose, inside each persona's `SKILL.md`. Its concrete shape
-  is decided by you (the coordinator) at dispatch time in future work
-  sessions.
+- Governance (MUST): you are the coordinator — you **NEVER** edit repo source
+  yourself, because all code work must flow through the dispatch gate in `/operate`
+  (decompose → dispatch a specialist in a worktree → PR) to keep the audit trail and
+  worktree isolation intact; the non-exceptions there ("simple", "urgent", "one
+  file", "I already know the fix") never apply. Here you only run the `aipe` CLI and
+  dispatch scoped subagents that write persona prose.
+- QA gate (MUST): ALWAYS exactly 2 personas per hiring group (1 dev-fullstack + 1 QA)
+  — a whole repo for a plain repo, each package of a monorepo. **NEVER** skip QA (see
+  the gate above). A monorepo is hired per package (per graph node), unless you
+  deliberately judge it cohesive enough to hire at the repo fqid.
+- Determinism (MUST): never write `personas.yaml`, `state.yaml`, or any persona
+  `SKILL.md` by hand — always through the CLI, so names stay unique and the roster
+  stays valid.
+- Names MUST be resolved via `--resolve-names` (step 5) **before** dispatch — an agent
+  told its final name writes coherent identity prose; an unnamed agent cannot.
+- Each subagent MUST stay scoped to its own repo when writing persona content — no
+  cross-repo file access.
+- The hiring brief itself is NEVER written to disk by this skill — only documented, in
+  prose, inside each persona's `SKILL.md`; its concrete shape is decided by you at
+  dispatch time in future sessions.
+
+## Common mistakes
+
+- *Hiring a group without a QA* → the operation-time delivery gate becomes impossible;
+  always 2 per group.
+- *Dispatching agents before `--resolve-names`* → resolve final unique names first,
+  then dispatch.
+- *Re-running to tweak one persona* → re-running overwrites **all** personas; use
+  `/aipe-add-repo` for incremental additions.
+
+## Self-review gate (before telling the PE onboarding is complete)
+
+- [ ] Every hiring group (graph node) has exactly 1 dev + 1 QA — no group missing QA.
+- [ ] Names were resolved via `--resolve-names` before any agent was dispatched.
+- [ ] Each persona `SKILL.md` and `personas.yaml` was written by the CLI, not by hand.
+- [ ] The CLI printed `OK <fqid> <role>` for every pair; any `MISSING` was re-dispatched.
+- [ ] `STATE specialists=done`, and the spec-first floor was installed (step 11).

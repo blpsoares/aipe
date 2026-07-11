@@ -5,11 +5,23 @@ description: Use once onboarding is complete (all state.yaml phases done) and th
 
 # /operate
 
+**Announce on entry:** "Using operate to turn this demand into dispatched PRs."
+
 You are the coordinator. A demand arrived from the PE. Your job is to turn it
 into per-repo work delivered as PRs — never touching a repo yourself, always
 through the specialists hired in onboarding. Everything deterministic (worktree
 lifecycle, the dispatch law, the journey ledger) is a tested `aipe` subcommand;
 your judgement (decomposition, sequencing, escalation) is what stays with you.
+
+## When to use / when NOT
+
+**Use it when:** onboarding is complete (all `state.yaml` phases `done`) and the PE
+brings a demand — a bug, feature, or task spanning one or more repos.
+
+**Do NOT use it when:** onboarding is unfinished (resume onboarding instead — the
+SessionStart hook points to the next step); or the PE is only asking a read-only
+question about the context (answer directly, no journey). This skill is for **work
+that changes repos**, and that work **always** flows through dispatch — never inline.
 
 ## The dispatch gate (MUST — non-negotiable)
 
@@ -60,7 +72,22 @@ Have on hand (read directly): `.aipe/brain.yaml` (repos, paths, stack),
 `.aipe/relations/graph.yaml` (cross-repo edges), `.aipe/personas.yaml` (roster:
 which specialist owns which repo).
 
-## Flow
+## Flow (follow the graph, not ambiguous prose)
+
+```dot
+digraph operate {
+  rankdir=LR;
+  demand -> journey -> decompose -> sequence -> spec;
+  spec -> dispatch [label="PE approves (approved=true)"];
+  spec -> spec [label="not approved → wait/amend"];
+  dispatch -> dev -> qa;
+  qa -> pe [label="passed → verified"];
+  qa -> dev [label="failed → fix task, re-gate"];
+  dev -> escalate [label="cross-repo need"];
+  escalate -> pe [label="PE decides scope"];
+  pe -> close [label="PRs merged"];
+}
+```
 
 1. **Open a journey.** Mint one id for this demand and record it:
    ```bash
@@ -169,6 +196,17 @@ which specialist owns which repo).
      (next wave, carrying the QA findings), re-dispatch, then re-gate with QA. Loop
      until QA passes. Never present a `failed` (or un-gated) unit as done.
 
+   **Table of non-exceptions (forbidden rationalizations for skipping QA).** Each
+   thought below means **STOP — you are rationalizing:**
+
+   | Rationalization | Ruling |
+   | --- | --- |
+   | "the dev says the tests pass" | Self-report ≠ QA. MUST still dispatch QA |
+   | "the change is tiny / one line" | MUST still QA-gate |
+   | "I read the diff and it's fine" | Coordinator review ≠ the QA gate. MUST still dispatch QA |
+   | "the PE is waiting, ship it" | MUST still QA-gate; report only what is `verified` |
+   | "QA passed on an earlier wave" | A new change is a new gate. MUST re-QA the fix |
+
 5. **Escalate cross-repo matters to the PE.** Cross-repo scope is the PE's call.
    Present every `escalate` clearly: what was found, which repo it needs, why. On
    the PE's approval, form the next wave targeting `targetRepo`'s specialist
@@ -232,3 +270,26 @@ Hand the subagent this exact shape, filled from the data above:
 - Each specialist opens its **own** PR; commits carry the namespaced persona
   author (`aipe/<Persona>`) set by the worktree, with the PE's real account
   preserved via the inherited email.
+
+## Common mistakes
+
+- *Editing a repo yourself because the fix is obvious* → hand the fix to the
+  specialist as the task; you dispatch, never edit.
+- *Dispatching before the Orientation Spec is approved* → gate on `--show` reporting
+  `approved=true`; no dispatch before that.
+- *Reporting a dev delivery as "done" on the dev's word* → nothing is done until its
+  QA returns `passed` and you record `--status verified`.
+- *Re-dispatching work already `delivered`/`merged` in the ledger* → read the journey
+  ledger first; delivered/merged units are intocáveis, never re-dispatched.
+- *Two tasks on the same package in one wave* → the dispatch law rejects it; split
+  across waves. Adjudicate with `aipe dispatch validate`, never by hand.
+
+## Self-review gate (before reporting anything "done" to the PE)
+
+- [ ] A journey was opened; every dispatch/result is recorded in its ledger.
+- [ ] The Orientation Spec is `approved=true` and no dispatch preceded that.
+- [ ] Every repo edit went through a dispatched specialist in its own worktree —
+      zero inline edits (unless the PE explicitly instructed inline).
+- [ ] Every dev delivery has a QA `passed` recorded as `--status verified`.
+- [ ] Cross-repo needs were escalated to the PE, not reached across.
+- [ ] The set of PRs reported matches the ledger; merged worktrees are torn down.

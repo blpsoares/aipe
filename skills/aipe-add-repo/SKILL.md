@@ -5,6 +5,8 @@ description: Use to add a new repository to an already-onboarded context without
 
 # /aipe-add-repo
 
+**Announce on entry:** "Using aipe-add-repo to add one repo incrementally."
+
 Companies grow; hand-editing `brain.yaml` and re-running the whole onboarding
 does not scale. This skill adds one repo incrementally. Everything
 deterministic is an `aipe` command; only relation discovery and persona prose
@@ -13,6 +15,17 @@ need agents.
 Run this in one session, start to finish — it briefly marks the context as
 "reconfiguring" (relationship + specialists → pending) and returns it to `done`
 at the end.
+
+## When to use / when NOT
+
+**Use it when:** the context is already onboarded (`state.yaml` all `done`) and the PE
+wants to add **one** repo without redoing onboarding — preserving every existing
+persona and its name.
+
+**Do NOT use it when:** onboarding hasn't happened yet (run the onboarding flow from
+`/context-brain`); or existing relations are badly stale — then run the full
+`/relationship` (no `--merge`) to re-discover from scratch. This skill hires **only**
+the new repo's personas; it MUST NOT re-hire or rename existing ones.
 
 ## Flow
 
@@ -78,14 +91,35 @@ at the end.
 
 ## Rules
 
-- Governance (MUST): you are the coordinator — you NEVER edit repo source
-  yourself. All code work flows through the dispatch gate in `/operate` (decompose
-  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
-  "urgent", "one file", "I already know the fix") never apply. Here you only run
-  the `aipe` CLI and dispatch scoped subagents for the new repo.
-- Never hand-edit `brain.yaml`, `personas.yaml`, or `state.yaml` — always via
-  `aipe`.
-- Use `aipe hire-specialists --merge` (not the plain overwrite) so existing
-  personas and their names survive.
-- Complete steps 2–5 in one session; don't leave the context half-reconfigured.
-- Only the new repo's 2 agents are dispatched — do not re-hire existing repos.
+- Governance (MUST): you are the coordinator — you **NEVER** edit repo source
+  yourself, because all code work must flow through the dispatch gate in `/operate`
+  (decompose → dispatch a specialist in a worktree → PR) to keep the audit trail and
+  worktree isolation intact; the non-exceptions there ("simple", "urgent", "one
+  file", "I already know the fix") never apply. Here you only run the `aipe` CLI and
+  dispatch scoped subagents for the new repo.
+- Preserve existing personas (MUST): ALWAYS use `aipe hire-specialists --merge` (not
+  the plain overwrite) and pin every existing persona's name, because the plain run
+  re-resolves and overwrites **all** names — renaming a persona the PE already knows
+  breaks continuity and any in-flight worktree branches.
+- Incremental scope (MUST): dispatch **only** the new repo's 2 agents (dev + QA);
+  NEVER re-hire existing repos — that both wastes work and risks renaming them.
+- Determinism (MUST): never hand-edit `brain.yaml`, `personas.yaml`, or `state.yaml`
+  — always via `aipe`, so the merge stays valid.
+- Atomicity (MUST): complete steps 2–5 in one session; leaving the context
+  half-reconfigured (`relationship`/`specialists` stuck `pending`) blocks `/operate`
+  until it's healed.
+
+## Common mistakes
+
+- *Running plain `hire-specialists` instead of `--merge`* → it overwrites every
+  persona and renames them; always `--merge` with existing names pinned.
+- *Ending the session mid-reconfigure* → finish steps 2–5 so state returns to `done`.
+- *Fabricating the new repo's URL* → same rule as `/context-brain`: real remote or
+  local path, never invented.
+
+## Self-review gate (before telling the PE the repo is part of the context)
+
+- [ ] Only the new repo was cloned, relation-scanned, and hired — existing repos untouched.
+- [ ] `--merge` was used for both relations and hiring; existing persona names survived.
+- [ ] `state.yaml` is back to all-`done` — nothing left `pending`.
+- [ ] Every write went through `aipe`; no state file was hand-edited.
