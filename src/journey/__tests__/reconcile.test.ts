@@ -30,6 +30,20 @@ test("reconcile marks a delivered dispatch merged when gh reports MERGED", async
   }
 });
 
+test("reconcile marks a VERIFIED dispatch merged too (QA-passed unit whose PR merges)", async () => {
+  const dir = await ws();
+  try {
+    await startJourney(dir, "j1");
+    await recordDispatch(dir, "j1", { repo: "embark", specialist: "A", branch: "b", worktree: "w", pr: "http://pr/9", status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "ok" } });
+    const fake = async (): Promise<PrState> => "MERGED";
+    const res = await reconcileJourney(dir, "j1", fake);
+    expect(res.merged).toEqual(["http://pr/9"]);
+    expect((await readLedger(dir, "j1"))?.dispatches[0]?.status).toBe("merged");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("reconcile ignores non-delivered dispatches and PR-less ones", async () => {
   const dir = await ws();
   try {

@@ -15,9 +15,13 @@ export interface ReconcileResult {
   merged: string[]; // PR urls newly marked merged
 }
 
-// Reconcile one journey: any delivered dispatch whose PR is MERGED becomes
-// merged on the ledger. Only "delivered" dispatches are polled (dispatched work
-// isn't up for merge yet; escalated/merged/removed are terminal here).
+// Reconcile one journey: any open-but-shipped dispatch whose PR is MERGED becomes
+// merged on the ledger. Both "delivered" and "verified" are polled — a unit that
+// passed QA is `verified`, and its PR still merges later, so it must reconcile too
+// (dispatched work isn't up for merge yet; escalated/failed/merged/removed are
+// terminal here).
+const RECONCILABLE = new Set(["delivered", "verified"]);
+
 export async function reconcileJourney(
   workspaceDir: string,
   id: string,
@@ -29,7 +33,7 @@ export async function reconcileJourney(
   if (!ledger) return { journey: id, checked, merged };
 
   for (const d of ledger.dispatches) {
-    if (d.status !== "delivered" || !d.pr) continue;
+    if (!RECONCILABLE.has(d.status) || !d.pr) continue;
     checked++;
     const state = await fetchState(d.pr);
     if (state === "MERGED") {
