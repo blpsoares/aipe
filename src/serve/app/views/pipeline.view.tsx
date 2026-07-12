@@ -2,14 +2,20 @@ import { t } from "../runtime/i18n";
 import { fqidOf } from "../runtime/dom";
 import { dispatches, openWorkerName, type Dispatch } from "../runtime/store";
 import { STAGES } from "../runtime/stages";
+import { statusMeta } from "../runtime/statusMeta";
+import { StatusIcon } from "../components/StatusIcon";
+import { StatusLegend } from "../components/StatusLegend";
 import type { Route } from "../route-types";
 
 // app.html:859-861 (tkHTML). PR link stops propagation so clicking it opens
 // the PR in a new tab instead of the specialist drawer.
 function DispatchCard({ d }: { d: Dispatch }) {
   return (
-    <div class={`tk stg-${d.status}`} onClick={() => (openWorkerName.value = d.specialist ?? null)}>
-      <div class="who">{d.specialist}</div>
+    <div class={`tk stg-${d.status} tone-${statusMeta(d.status).tone}`} onClick={() => (openWorkerName.value = d.specialist ?? null)}>
+      <div class="who">
+        <span class="tk-ic" title={t(statusMeta(d.status).descKey)}><StatusIcon k={d.status} size={13} /></span>
+        {d.specialist}
+      </div>
       <div class="meta">
         <span class="tag">{fqidOf(d)}</span>·<span>{d.journey}</span>
         {d.pr ? (
@@ -32,13 +38,15 @@ function DispatchCard({ d }: { d: Dispatch }) {
 function Lane({ g }: { g: (typeof STAGES)[number] }) {
   const cards = dispatches.value.filter((d) => d.status === g.key);
   const dc = g.cls === "active" ? "var(--sky)" : g.cls === "escalated" ? "var(--amber)" : "var(--accent)";
+  const desc = t(statusMeta(g.key).descKey);
   return (
-    <div class="lane">
-      <h4>
+    <div class={`lane tone-${statusMeta(g.key).tone}`}>
+      <h4 title={desc}>
         <span class="d" style={{ background: dc }} />
         {t("s_" + g.key)}
         <span class="c num">{cards.length}</span>
       </h4>
+      <div class="lane-desc">{desc}</div>
       <div class="body">
         {cards.length ? cards.map((d, i) => <DispatchCard key={i} d={d} />) : <div class="sub" style={{ padding: "8px 2px" }}>—</div>}
       </div>
@@ -61,6 +69,7 @@ function PipelineView() {
         </div>
         <button class="btn btn-ghost">{t("filter")}</button>
       </div>
+      <StatusLegend />
       <div class="board">
         {STAGES.map((g) => (
           <Lane key={g.key} g={g} />

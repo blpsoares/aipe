@@ -67,7 +67,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .srow .sctl { flex: 0 0 auto; }
 .erow { padding: 10px 0; } .erow .stx { display: flex; align-items: center; gap: 10px; }
 .edot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-.edot.bg-active { background: var(--sky); } .edot.bg-delivered, .edot.bg-merged { background: var(--accent); } .edot.bg-escalated { background: var(--amber); }
+.edot.bg-active { background: var(--sky); } .edot.bg-delivered, .edot.bg-merged, .edot.bg-verified { background: var(--accent); } .edot.bg-escalated { background: var(--amber); } .edot.bg-failed { background: var(--rose); }
 .sw { width: 42px; height: 24px; border-radius: 999px; background: var(--panel-3); border: 1px solid var(--line-2); position: relative; transition: background .16s, border-color .16s; flex: 0 0 auto; }
 .sw .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 1px solid rgba(0,0,0,.06); box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .18s cubic-bezier(.32,.72,0,1); }
 .sw.on { background: var(--accent); border-color: var(--accent); }
@@ -170,12 +170,31 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .btn-ghost:hover { border-color: var(--line-2); }
 
 /* Chips */
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 650; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 650; }
 .chip .d { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.chip.active, .chip.dispatched { color: var(--sky); background: var(--sky-w); } .chip.active .d, .chip.dispatched .d { animation: pulse 2.4s infinite; }
-.chip.delivered, .chip.merged { color: var(--accent-ink); background: var(--accent-wash); }
-.chip.escalated { color: var(--amber); background: var(--amber-w); }
+.chip .sic { width: 13px; height: 13px; flex: 0 0 auto; }
+.chip.active, .chip.dispatched { color: var(--sky); background: var(--sky-w); } .chip.active .sic, .chip.dispatched .sic { animation: pulse 2.4s infinite; }
+.chip.delivered, .chip.merged, .chip.verified { color: var(--accent-ink); background: var(--accent-wash); }
+.chip.escalated, .chip.escalate { color: var(--amber); background: var(--amber-w); }
+.chip.failed { color: var(--rose); background: color-mix(in srgb, var(--rose) 13%, transparent); }
 .chip.available, .chip.idle, .chip.removed { color: var(--slate); background: var(--slate-w); }
+
+/* Stage guide (legend) — the plain-language glossary of pipeline stages */
+.legend { padding: 4px 6px 6px; }
+.legend-head { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 10px 12px; text-align: left; }
+.legend-toggle { font-size: 12px; font-weight: 600; color: var(--accent-ink); }
+.legend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 18px; padding: 4px 12px 10px; }
+.legend-item { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; }
+.legend-item .chip { flex: 0 0 auto; }
+.legend-desc { color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+
+/* Pipeline lane subtitle + card status icon */
+.lane-desc { color: var(--ink-3); font-size: 11.5px; line-height: 1.4; margin: 2px 2px 8px; }
+.tk .who { display: inline-flex; align-items: center; gap: 7px; }
+.tk-ic { display: inline-flex; flex: 0 0 auto; }
+.tone-sky .tk-ic { color: var(--sky); } .tone-accent .tk-ic { color: var(--accent); }
+.tone-amber .tk-ic { color: var(--amber); } .tone-rose .tk-ic { color: var(--rose); }
+.tone-slate .tk-ic { color: var(--slate); }
 
 /* Activity feed */
 .feed { display: flex; flex-direction: column; }
