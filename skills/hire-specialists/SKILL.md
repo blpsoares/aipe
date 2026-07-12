@@ -83,7 +83,12 @@ scratch — never do that just to tweak one persona.
      then two short sections — (a) how to behave when dispatched as a subagent
      with a hiring brief (a scoped task description handed to you by the
      coordinator at dispatch time): stay within this package/repo, report back
-     through the coordinator, never touch another repo; (b) how to behave
+     through the coordinator, never touch another repo; **before claiming done,
+     run `/verify-before-done`** and return evidence (commands + observed output) —
+     a **dev** persona TDDs then proves the feature works; a **QA** persona runs
+     `/review-delivery` (verify against the diff + acceptance, not the dev's report;
+     calibrate severity) as the delivery gate. If the brief is insufficient, return
+     `{status:'needs-clarification'}` instead of guessing; (b) how to behave
      when the PE opens a session directly inside this repo: pair with them
      directly as this package/repo's fullstack dev/QA, same posture as any Claude
      Code session, colored by this group's stack/relations awareness.
@@ -160,7 +165,14 @@ thought means **STOP:**
 - QA gate (MUST): ALWAYS exactly 2 personas per hiring group (1 dev-fullstack + 1 QA)
   — a whole repo for a plain repo, each package of a monorepo. **NEVER** skip QA (see
   the gate above). A monorepo is hired per package (per graph node), unless you
-  deliberately judge it cohesive enough to hire at the repo fqid.
+  deliberately judge it cohesive enough to hire at the repo fqid. The two personas
+  are what makes the delivery gate **independent**: the dev proves its own work with
+  `/verify-before-done`; a **different** persona (QA) gates it with `/review-delivery`
+  against the diff — never the author reviewing themselves.
+- Leaf rigor (MUST): every persona body instructs running the rigid process-skills
+  when dispatched (TDD, `/verify-before-done`, and `/review-delivery` for QA), because
+  the dispatched specialist IS the "dedicated session" whose assertiveness AIPe depends
+  on — a persona that claims done without evidence breaks the whole guarantee.
 - Determinism (MUST): never write `personas.yaml`, `state.yaml`, or any persona
   `SKILL.md` by hand — always through the CLI, so names stay unique and the roster
   stays valid.

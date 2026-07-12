@@ -12,6 +12,28 @@ import { installMcp, removeMcp, type InstallMcpInput } from "./mcp";
 import { kitNames, resolveKit } from "./registry";
 import { matchSkills } from "./routing";
 import { wirePdd } from "./pdd";
+// Reliability floor skills (run inside the dispatched specialist), embedded in
+// the binary so the preset installs them into every repo — this is what makes a
+// specialist's `/verify-before-done` and `/review-delivery` actually resolvable.
+import verifyBeforeDoneSkill from "../../skills/verify-before-done/SKILL.md" with { type: "text" };
+import reviewDeliverySkill from "../../skills/review-delivery/SKILL.md" with { type: "text" };
+
+const RELIABILITY_FLOOR: { name: string; description: string; objective: string; whenToUse: string; content: string }[] = [
+  {
+    name: "verify-before-done",
+    description: "Evidence gate: prove a unit is done before claiming it (dev + QA).",
+    objective: "No done-claim without attached evidence (commands + observed output).",
+    whenToUse: "Before returning delivered/passed from a dispatched specialist.",
+    content: verifyBeforeDoneSkill,
+  },
+  {
+    name: "review-delivery",
+    description: "Independent skeptic review of a delivery against the diff (QA gate).",
+    objective: "Verify a delivery against the diff + acceptance, never the dev's report.",
+    whenToUse: "When QA gates a dev delivery before it counts as done.",
+    content: reviewDeliverySkill,
+  },
+];
 import { installSkill, installSkillContent, removeSkill, type InstallSkillInput } from "./skills";
 import { materializeSpecKit } from "./spec-kit";
 import type { TaskSize } from "./types";
@@ -236,6 +258,26 @@ async function skillPreset(workspace: string): Promise<number> {
   }
   for (const r of result.rows) console.log(`${r.status.toUpperCase()} ${r.repo}`);
   console.log(`OK preset=sdd-lite (floor installed in ${repos.length} repo(s))`);
+
+  // Reliability floor: install verify-before-done + review-delivery into every
+  // repo so a dispatched specialist can actually invoke them (the ledger enforces
+  // the evidence outcome; these give the specialist the discipline to produce it).
+  for (const floor of RELIABILITY_FLOOR) {
+    const r = await installSkillContent(workspace, {
+      name: floor.name,
+      description: floor.description,
+      objective: floor.objective,
+      whenToUse: floor.whenToUse,
+      repos,
+      content: floor.content,
+    });
+    if (!r.ok) {
+      console.log(`ERROR ${r.error}`);
+      return 1;
+    }
+    console.log(`OK floor=${floor.name} (installed in ${repos.length} repo(s))`);
+  }
+
   console.log("SUGGEST enable spec-kit on non-trivial packages and pdd on migration repos:");
   console.log("SUGGEST   aipe skill add spec-kit --repo <r>   |   aipe skill add pdd --repo <r>");
   return 0;

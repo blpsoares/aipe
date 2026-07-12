@@ -89,6 +89,25 @@ digraph operate {
 }
 ```
 
+0. **Read the ledger first (MUST — before any dispatch).** If this demand already
+   has a journey (you are resuming, or a new session/coordinator picked it up), read
+   it before doing anything:
+   ```bash
+   aipe journey show --journey <id> --workspace <workspace>
+   ```
+   Units marked `[MERGED — immutable]` or `[VERIFIED — cleared]` are **done** — never
+   re-dispatch them. The ledger, not your memory, is the source of truth (your context
+   may have been compacted). The CLI enforces this: it **REJECTs** a re-dispatch of a
+   merged unit, and requires `--reason` to reopen a delivered/verified one.
+
+   **Table of non-exceptions (forbidden rationalizations for re-dispatching done work):**
+
+   | Rationalization | Ruling |
+   | --- | --- |
+   | "I don't remember doing this one" | Read the ledger — if it's `verified`/`merged`, it's done |
+   | "it's probably stale, redo it to be safe" | Redoing merged work is the most expensive mistake. Trust the ledger |
+   | "the session reset, start fresh" | The ledger survived the reset. Resume from it, don't restart |
+
 1. **Open a journey.** Mint one id for this demand and record it:
    ```bash
    aipe journey start --workspace <workspace>
@@ -168,33 +187,64 @@ digraph operate {
    (a monorepo package: stay within `<package-path>`); run spec-driven — first
    check `aipe skill match --task-type <t> --size <s>` and, if an SDD kit matches,
    derive a short package spec + plan and **commit it alongside the code**; then
-   TDD, push `<branch>`, open a PR, and return the structured result."* Dispatch
-   all entries in a wave in parallel (one subagent each).
+   TDD; before claiming done run `/verify-before-done` and gather evidence; push
+   `<branch>`, open a PR, and return the structured result."* Dispatch all entries
+   in a wave in parallel (one subagent each).
+
+   **Verify the brief before you dispatch (MUST).** A dispatched subagent gets no
+   second question from the PE — the brief is its whole world, so a thin brief is a
+   drifting specialist. Before sending, confirm the brief carries: the unit's
+   **scope + acceptance** (from the approved spec), the **relevant files** you
+   already know, the **relations** touching this unit, and an explicit **definition
+   of done**. If you cannot fill these, you have not decomposed enough — do that
+   first, don't dispatch a guess.
 
    d. **Collect results.** Each subagent returns one of:
-   - `{ "status": "delivered", "pr": "<url>", "summary": "…" }` — record it:
-     `aipe journey record … --pr <url> --status delivered`.
+   - `{ "status": "delivered", "pr": "<url>", "summary": "…", "evidence": { "commands": ["…"], "summary": "…" } }`
+     — a delivery WITH proof. Record it (the ledger **REJECTs** `delivered` without
+     evidence — that is the point):
+     ```bash
+     aipe journey record … --pr <url> --status delivered \
+       --evidence-cmd "<cmd the dev ran>" --evidence-summary "<what the output showed>"
+     ```
+     If a subagent returns `delivered` with **no** evidence, it is **not** delivered —
+     send it back to run `/verify-before-done` and return proof.
+   - `{ "status": "needs-clarification", "need": "…" }` — the brief was insufficient.
+     Answer it (or get the PE's answer), amend the brief, and re-dispatch. A specialist
+     that asks is cheaper than one that guesses; never punish the question by pushing it
+     to deliver anyway.
    - `{ "status": "escalate", "targetRepo": "<repo>", "need": "…", "reason": "…" }`
      — a cross-repo need it must not touch. Record `--status escalated` and hold
      it for step 5.
 
-   e. **QA gate (MUST) — before any dev delivery counts as done.** For every dev
-   delivery in this wave you **MUST** dispatch that same repo/package's **QA**
-   persona (from `personas.yaml`) as a gate before reporting anything "done" to
-   the PE. The QA runs in its own worktree on the dev's branch/PR, exercises the
-   change (tests + real behavior), and returns a verdict. This is not optional and
-   not a self-report by the dev — a delivery is only **cleared** once its QA
-   passes. Provision + record the QA exactly like a dev dispatch:
+   e. **QA gate (MUST) — an independent skeptic against the diff.** For every dev
+   delivery you **MUST** dispatch that same repo/package's **QA** persona
+   (from `personas.yaml`) as a gate before reporting anything "done" to the PE. The
+   QA runs `/review-delivery` in its own worktree on the dev's branch: it verifies
+   **against the diff and the acceptance criteria, not the dev's report**, exercises
+   the change itself (tests + real behavior), and returns a severity-calibrated
+   verdict. This is not optional and not a self-report by the dev — a delivery is only
+   **cleared** once an *independent* persona passes it. Provision + record the QA
+   exactly like a dev dispatch:
    ```bash
    aipe worktree create --repo <repo> [--package <package>] --specialist <qa-persona> --journey <id> --workspace <workspace>
    aipe journey record --journey <id> --repo <repo> [--package <package>] --specialist <qa-persona> \
      --branch <branch> --worktree <path> --status dispatched --workspace <workspace>
    ```
-   The QA subagent returns `{ "status": "passed" | "failed", "summary": "…", "findings": [...] }`.
-   - `passed` → record `--status verified`; the unit is now cleared for the PE.
+   The QA subagent returns
+   `{ "status": "passed" | "failed", "summary": "…", "findings": [{severity, file, line, issue}], "evidence": {commands, summary} }`.
+   - `passed` → record `--status verified` **with the QA's own evidence** (the ledger
+     REJECTs `verified` without it):
+     ```bash
+     aipe journey record … --specialist <qa> --status verified \
+       --evidence-by qa --evidence-cmd "<cmd QA ran>" --evidence-summary "<what QA observed>"
+     ```
+     The unit is now cleared for the PE.
    - `failed` → the change is **not** done: form a fix task back to the same dev
-     (next wave, carrying the QA findings), re-dispatch, then re-gate with QA. Loop
-     until QA passes. Never present a `failed` (or un-gated) unit as done.
+     (next wave, carrying the QA findings), record the dev's re-dispatch with
+     `--reason "<the QA finding>"`, then re-gate with QA. Loop until QA passes. Never
+     present a `failed` (or un-gated) unit as done. Any **Critical/Important** finding
+     blocks; **Minor** does not (note it).
 
    **Table of non-exceptions (forbidden rationalizations for skipping QA).** Each
    thought below means **STOP — you are rationalizing:**
@@ -206,6 +256,15 @@ digraph operate {
    | "I read the diff and it's fine" | Coordinator review ≠ the QA gate. MUST still dispatch QA |
    | "the PE is waiting, ship it" | MUST still QA-gate; report only what is `verified` |
    | "QA passed on an earlier wave" | A new change is a new gate. MUST re-QA the fix |
+
+   f. **Cross-repo landing check (MUST) before a dependent wave.** When a later
+   wave depends on a contract an earlier wave produced (A `consumes` what B
+   `exposes`, per `graph.yaml`), do **not** open the dependent wave until B's unit is
+   actually **`verified`/`merged`** in the ledger — ordering the waves is not the same
+   as the contract having landed. Confirm with `aipe journey show`; if the producing
+   unit isn't cleared yet, hold the consumer. A single session never needs this; a
+   multi-repo coordination does, and skipping it ships a consumer against a contract
+   that doesn't exist yet.
 
 5. **Escalate cross-repo matters to the PE.** Cross-repo scope is the PE's call.
    Present every `escalate` clearly: what was found, which repo it needs, why. On
@@ -240,16 +299,23 @@ Hand the subagent this exact shape, filled from the data above:
   "branch": "aipe/<id>/<package>--<slug> (or aipe/<id>/<slug> when flat)",
   "orientationSlice": "This unit's Scope + Acceptance, copied from the approved orientation.md.",
   "task": "One scoped paragraph: what to build/fix in THIS unit only.",
-  "workingMethod": "Run `aipe skill match`; if an SDD kit matches, write a short package spec + plan and commit it before implementing (it travels in the PR). Then TDD.",
+  "workingMethod": "Run `aipe skill match`; if an SDD kit matches, write a short package spec + plan and commit it before implementing (it travels in the PR). Then TDD. Before claiming done, run `/verify-before-done`: run the checks AND drive the feature, and return evidence (commands + what the output showed) — a delivery with no evidence is REJECTed by the ledger.",
   "relevantFiles": ["<paths you already know are involved>"],
   "relations": [ <the graph.yaml edges touching this unit> ],
   "deliveryContract": {
-    "definitionOfDone": "A PR from <branch> with the change, its committed spec/plan (when SDD applied), and green tests.",
-    "opensPr": true
+    "definitionOfDone": "A PR from <branch> with the change, its committed spec/plan (when SDD applied), green tests, AND evidence: the command(s) run + what the output showed.",
+    "opensPr": true,
+    "returns": "{status:'delivered', pr, summary, evidence:{commands:[…], summary:'…'}}"
   },
+  "ifBriefInsufficient": "If this brief doesn't tell you enough to proceed, STOP and return {status:'needs-clarification', need:'…'} — do NOT guess. Asking is cheaper than a wrong delivery.",
   "escalation": "If this needs a change in another package/repo, STOP and return {status:escalate,…}; never edit another unit."
 }
 ```
+
+For a **QA** dispatch, `role` is `qa`, `workingMethod` is `/review-delivery` (verify
+against the diff + acceptance, not the dev's report; exercise it yourself; calibrate
+severity), and `returns` is
+`{status:'passed'|'failed', summary, findings:[{severity,file,line,issue}], evidence:{commands,summary}}`.
 
 ## Rules
 
@@ -258,10 +324,18 @@ Hand the subagent this exact shape, filled from the data above:
   explicit PE instruction. Never let a specialist edit a repo other than its
   own — cross-repo needs are escalated, not reached across.
 - The **QA gate is a MUST**: no dev delivery is reported "done" to the PE until
-  that repo/package's QA has been dispatched and returned `passed`.
-- Process-skills (systematic-debugging, TDD, brainstorming) are never run by you
-  the coordinator — they live inside the dispatched specialist. AIPe routing
-  overrides, but it does not switch those skills off.
+  that repo/package's QA has run `/review-delivery` (against the diff, not the
+  report) and returned `passed`.
+- **Evidence is a MUST** (Pilar 1): a `delivered`/`verified` record carries the
+  command(s) run + what the output showed. This is not a courtesy — the ledger
+  physically REJECTs a done-claim without it. Never launder a no-evidence delivery
+  into "done".
+- **Read the ledger first** (Pilar 3): on resuming a journey, `aipe journey show`
+  before dispatching; `verified`/`merged` units are done and never re-dispatched.
+  The CLI enforces it (rejects a merged re-record; needs `--reason` to reopen).
+- Process-skills (systematic-debugging, TDD, brainstorming, verify-before-done) are
+  never run by you the coordinator — they live inside the dispatched specialist.
+  AIPe routing overrides, but it does not switch those skills off.
 - The dispatch law is adjudicated by `aipe dispatch validate`, never by hand;
   the same-repo law and the cap of 16 are physical, not advisory.
 - Provision worktrees only through `aipe worktree`; never `git worktree` by hand.
@@ -286,10 +360,16 @@ Hand the subagent this exact shape, filled from the data above:
 
 ## Self-review gate (before reporting anything "done" to the PE)
 
+- [ ] On resume, I ran `aipe journey show` first and re-dispatched nothing
+      `verified`/`merged`.
 - [ ] A journey was opened; every dispatch/result is recorded in its ledger.
 - [ ] The Orientation Spec is `approved=true` and no dispatch preceded that.
+- [ ] Every brief I dispatched carried scope + acceptance + relevant files + relations.
 - [ ] Every repo edit went through a dispatched specialist in its own worktree —
       zero inline edits (unless the PE explicitly instructed inline).
-- [ ] Every dev delivery has a QA `passed` recorded as `--status verified`.
+- [ ] Every dev delivery carries **evidence** in the ledger (no `!NO-EVIDENCE`).
+- [ ] Every dev delivery has an independent QA `passed` recorded as `--status verified`
+      (with the QA's own evidence).
+- [ ] No dependent wave opened before its producing unit was `verified`/`merged`.
 - [ ] Cross-repo needs were escalated to the PE, not reached across.
 - [ ] The set of PRs reported matches the ledger; merged worktrees are torn down.
