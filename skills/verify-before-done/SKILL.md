@@ -59,8 +59,12 @@ Each thought below means **STOP — you are about to claim done without proof:**
 
 ## What counts as evidence (by claim)
 
-- **Dev `delivered`:** the test/build command(s) run **after your last edit**, plus
-  the feature driven if it has a runtime surface — with the observed result.
+- **Dev `delivered`:** for a testable change, the **RED→GREEN trace** is the
+  preferred proof — a test that failed before your change and passes after (drive it
+  with `/tdd`). Attach the test command + the before/after (e.g. "was 1 fail, now 12
+  pass"). Add the feature driven in the real app when it has a runtime surface. For a
+  non-testable change (visual/copy/config), the evidence is the feature exercised in
+  the real app — still evidence, never a bare claim.
 - **QA `verified`:** you (independently) exercised the change on the dev's branch —
   ran the tests AND drove the behavior — and are attaching **your own** commands +
   what you saw. A QA verdict repeating the dev's self-report is not a gate; it is an

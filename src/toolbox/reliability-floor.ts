@@ -5,6 +5,7 @@
 // are refreshed from THIS binary on `aipe rehydrate`, never left stale.
 import verifyBeforeDoneSkill from "../../skills/verify-before-done/SKILL.md" with { type: "text" };
 import reviewDeliverySkill from "../../skills/review-delivery/SKILL.md" with { type: "text" };
+import tddSkill from "../../skills/tdd/SKILL.md" with { type: "text" };
 
 export interface FloorSkill {
   name: string;
@@ -28,6 +29,13 @@ export const RELIABILITY_FLOOR: FloorSkill[] = [
     objective: "Verify a delivery against the diff + acceptance, never the dev's report.",
     whenToUse: "When QA gates a dev delivery before it counts as done.",
     content: reviewDeliverySkill,
+  },
+  {
+    name: "tdd",
+    description: "Rigid RED→GREEN: write the failing test first, then make it pass (dev).",
+    objective: "Prove behavior by a test that failed then passed — the preferred delivery evidence.",
+    whenToUse: "For any testable change inside a dispatched dev specialist.",
+    content: tddSkill,
   },
 ];
 

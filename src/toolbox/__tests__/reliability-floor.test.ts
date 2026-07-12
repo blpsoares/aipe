@@ -23,7 +23,7 @@ test("skill preset installs the reliability floor (verify-before-done + review-d
     const code = await runSkill(["preset", "--workspace", dir]);
     expect(code).toBe(0);
 
-    for (const name of ["verify-before-done", "review-delivery"]) {
+    for (const name of ["verify-before-done", "review-delivery", "tdd"]) {
       // published source of truth
       const src = await readFile(join(dir, ".aipe", "skills", name, "SKILL.md"), "utf8");
       expect(src).toContain(`name: ${name}`);

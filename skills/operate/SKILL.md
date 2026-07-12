@@ -307,7 +307,7 @@ Hand the subagent this exact shape, filled from the data above:
   "branch": "aipe/<id>/<package>--<slug> (or aipe/<id>/<slug> when flat)",
   "orientationSlice": "This unit's Scope + Acceptance, copied from the approved orientation.md.",
   "task": "One scoped paragraph: what to build/fix in THIS unit only.",
-  "workingMethod": "Run `aipe skill match`; if an SDD kit matches, write a short package spec + plan and commit it before implementing (it travels in the PR). Then TDD. Before claiming done, run `/verify-before-done`: run the checks AND drive the feature, and return evidence (commands + what the output showed) — a delivery with no evidence is REJECTed by the ledger.",
+  "workingMethod": "Run `aipe skill match`; if an SDD kit matches, write a short package spec + plan and commit it before implementing (it travels in the PR). Then drive the change with `/tdd` (RED→GREEN — failing test first) when it is testable. Before claiming done, run `/verify-before-done`: attach the RED→GREEN trace AND drive the feature, returning evidence (commands + what the output showed) — a delivery with no evidence is REJECTed by the ledger.",
   "relevantFiles": ["<paths you already know are involved>"],
   "relations": [ <the graph.yaml edges touching this unit> ],
   "deliveryContract": {

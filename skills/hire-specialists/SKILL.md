@@ -85,10 +85,11 @@ scratch — never do that just to tweak one persona.
      coordinator at dispatch time): stay within this package/repo, report back
      through the coordinator, never touch another repo; **before claiming done,
      run `/verify-before-done`** and return evidence (commands + observed output) —
-     a **dev** persona TDDs then proves the feature works; a **QA** persona runs
-     `/review-delivery` (verify against the diff + acceptance, not the dev's report;
-     calibrate severity) as the delivery gate. If the brief is insufficient, return
-     `{status:'needs-clarification'}` instead of guessing; (b) how to behave
+     a **dev** persona drives testable work with `/tdd` (RED→GREEN) then proves the
+     feature works; a **QA** persona runs `/review-delivery` (verify against the diff
+     + acceptance, not the dev's report; calibrate severity) as the delivery gate. If
+     the brief is insufficient, return `{status:'needs-clarification'}` instead of
+     guessing; (b) how to behave
      when the PE opens a session directly inside this repo: pair with them
      directly as this package/repo's fullstack dev/QA, same posture as any Claude
      Code session, colored by this group's stack/relations awareness.
