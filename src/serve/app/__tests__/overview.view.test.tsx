@@ -26,6 +26,35 @@ test("route contract: path/order/icon preserved", () => {
   expect(route.nav).toEqual({ label: "nav_overview", icon: "◎", order: 0 });
 });
 
+test("AttentionStrip: hidden on a clean board", () => {
+  loadFixture();
+  const { container } = render(<OverviewView />);
+  expect(container.querySelector('[data-testid="attention"]')).toBeNull();
+});
+
+test("AttentionStrip: renders each attention item, critical first, and navigates to /pipeline", () => {
+  loadFixture();
+  snapshot.value = {
+    ...snapshot.value,
+    attention: [
+      { kind: "qa-failed", severity: "critical", unit: "embark/api", specialist: "Ana", journey: "j1", detail: "QA failed — sent back to the dev" },
+      { kind: "escalated", severity: "warning", unit: "embark", specialist: "Caio", journey: "j1", detail: "cross-repo escalation waiting on the PE" },
+    ],
+  };
+  const { container } = render(<OverviewView />);
+  const strip = container.querySelector('[data-testid="attention"]')!;
+  expect(strip).not.toBeNull();
+  const rows = [...strip.querySelectorAll(".att-row")];
+  expect(rows.length).toBe(2);
+  // critical first, with a CRITICAL chip and the unit
+  expect(rows[0]!.querySelector(".chip")!.textContent).toBe("CRITICAL");
+  expect(rows[0]!.textContent).toContain("embark/api");
+  expect(rows[1]!.querySelector(".chip")!.textContent).toBe("REVIEW");
+  // clicking a row opens the pipeline
+  (rows[0] as HTMLButtonElement).click();
+  expect(currentPath.value).toBe("/pipeline");
+});
+
 test("hero warn: counts.escalated>0 with a matching escalated worker", () => {
   loadFixture();
   const { container } = render(<OverviewView />);

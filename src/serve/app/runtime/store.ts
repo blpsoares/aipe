@@ -75,7 +75,18 @@ export interface RawSnapshot {
   journeys?: { id: string; dispatches?: Dispatch[] }[];
   personaCVs?: unknown[];
   counts?: { hired?: number; active?: number; delivered?: number; escalated?: number; available?: number };
+  attention?: AttentionItem[];
   [key: string]: unknown;
+}
+
+// Things the PE should look at, computed server-side (see dashboard/snapshot.ts).
+export interface AttentionItem {
+  kind: "qa-failed" | "escalated" | "no-evidence";
+  severity: "critical" | "warning";
+  unit: string;
+  specialist: string;
+  journey: string;
+  detail: string;
 }
 
 export interface Snapshot {
@@ -89,6 +100,7 @@ export interface Snapshot {
   worktrees: unknown[];
   journeys: RawSnapshot["journeys"];
   cvs: unknown[];
+  attention: AttentionItem[];
 }
 
 type Translator = (k: string) => string;
@@ -212,6 +224,7 @@ const EMPTY_SNAPSHOT: Snapshot = {
   worktrees: [],
   journeys: [],
   cvs: [],
+  attention: [],
 };
 
 export const snapshot: Signal<Snapshot> = signal(EMPTY_SNAPSHOT);
@@ -247,6 +260,7 @@ export function applySnapshot(raw: RawSnapshot, now: number, t: Translator = (k)
     worktrees: raw.worktreeRows || [],
     journeys: raw.journeys || [],
     cvs: raw.personaCVs || [],
+    attention: raw.attention || [],
   };
   snapshot.value = next;
 

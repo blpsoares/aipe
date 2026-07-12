@@ -88,6 +88,39 @@ export interface PersonaCV {
 }
 export type JourneyView = JourneyLedger & { updatedAt?: string };
 
+// Something the PE should look at, computed deterministically from the ledgers so
+// the console can SURFACE it instead of leaving it buried in a green dashboard
+// (Pilar 4). Ranked by severity so the loudest thing shows first.
+export type AttentionKind = "qa-failed" | "escalated" | "no-evidence";
+export interface AttentionItem {
+  kind: AttentionKind;
+  severity: "critical" | "warning";
+  unit: string; // repo or repo/package
+  specialist: string;
+  journey: string;
+  detail: string;
+}
+
+function computeAttention(journeys: JourneyLedger[]): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  for (const j of journeys) {
+    for (const d of j.dispatches) {
+      const unit = `${d.repo}${d.package ? `/${d.package}` : ""}`;
+      if (d.status === "failed") {
+        items.push({ kind: "qa-failed", severity: "critical", unit, specialist: d.specialist, journey: j.id, detail: "QA failed — sent back to the dev" });
+      } else if (d.status === "escalated") {
+        items.push({ kind: "escalated", severity: "warning", unit, specialist: d.specialist, journey: j.id, detail: "cross-repo escalation waiting on the PE" });
+      } else if ((d.status === "delivered" || d.status === "verified") && !d.evidence) {
+        // A done-claim with no attached proof — should not happen through the
+        // guarded CLI, but a hand-edited/legacy ledger can carry one; surface it.
+        items.push({ kind: "no-evidence", severity: "warning", unit, specialist: d.specialist, journey: j.id, detail: `"${d.status}" with no evidence attached` });
+      }
+    }
+  }
+  const rank: Record<AttentionItem["severity"], number> = { critical: 0, warning: 1 };
+  return items.sort((a, b) => rank[a.severity] - rank[b.severity]);
+}
+
 export interface Snapshot {
   ok: boolean;
   error?: string;
@@ -106,6 +139,7 @@ export interface Snapshot {
   worktreeRows: WorktreeView[];
   packages: ModuleView[];
   personaCVs: PersonaCV[];
+  attention: AttentionItem[];
   generatedAt: string;
 }
 
@@ -121,10 +155,10 @@ function deriveStatus(
     for (const d of j.dispatches) {
       if (d.repo !== repo || d.specialist.toLowerCase() !== name.toLowerCase()) continue;
       const status: WorkerStatus =
-        d.status === "dispatched" ? "active"
+        d.status === "dispatched" || d.status === "failed" ? "active" // failed → dev is back on it
         : d.status === "escalated" ? "escalated"
         : d.status === "delivered" ? "delivered"
-        : "available"; // merged/removed → free again
+        : "available"; // verified/merged/removed → free again
       if (rank[status]! >= best.rank) best = { rank: rank[status]!, status, journey: j.id, pr: d.pr };
     }
   }
@@ -159,6 +193,7 @@ function emptySnapshot(generatedAt: string): Snapshot {
     worktreeRows: [],
     packages: [],
     personaCVs: [],
+    attention: [],
     generatedAt,
   };
 }
@@ -310,6 +345,7 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     worktreeRows: worktrees.map((w) => ({ repo: w.repo, slug: w.slug, journey: w.journey, branch: w.branch, path: w.path })),
     packages: moduleViews,
     personaCVs,
+    attention: computeAttention(journeys),
     generatedAt,
   };
 }

@@ -28,6 +28,49 @@ function HeroStatus() {
   );
 }
 
+// Attention strip — surfaces what the PE must look at (Pilar 4). Renders nothing
+// on a clean board; when something needs eyes it is loud, ranked critical-first.
+function AttentionStrip() {
+  const items = snapshot.value.attention || [];
+  if (items.length === 0) return null;
+  return (
+    <div class="card pad" data-testid="attention">
+      <div class="between" style={{ marginBottom: "10px" }}>
+        <div class="eyebrow">{t("needs_attention")}</div>
+        <span class="num" style={{ fontWeight: 700 }}>{items.length}</span>
+      </div>
+      <div class="grid" style={{ gap: "8px" }}>
+        {items.map((a) => (
+          <button
+            class="between att-row"
+            style={{ width: "100%", textAlign: "left", cursor: "pointer", gap: "10px" }}
+            onClick={() => navigate("/pipeline")}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+              <span
+                class="chip"
+                style={{
+                  background: a.severity === "critical" ? "var(--amber)" : "var(--slate)",
+                  color: "#000",
+                  fontWeight: 700,
+                  flex: "none",
+                }}
+              >
+                {a.severity === "critical" ? t("att_critical") : t("att_warning")}
+              </span>
+              <b style={{ flex: "none" }}>{a.unit}</b>
+              <span class="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {a.detail}
+              </span>
+            </span>
+            <span class="sub" style={{ flex: "none" }}>{a.specialist} · {a.journey}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // app.html:837-838
 function Kpi({ n, label, cls }: { n: number; label: string; cls: string }) {
   return (
@@ -87,6 +130,8 @@ function OverviewView() {
   return (
     <div class="view-in grid" style={{ gap: "20px" }}>
       <HeroStatus />
+
+      <AttentionStrip />
 
       <KpiRow />
 
