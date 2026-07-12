@@ -72,7 +72,7 @@ const HELP = [
   "  hire-specialists   Generate the per-repo persona skills + personas.yaml",
   "  worktree           Provision/list/remove per-specialist git worktrees",
   "  dispatch           Adjudicate the parallel-dispatch law for a batch",
-  "  journey            Track a work session's dispatches (durable ledger)",
+  "  journey            Track dispatches + verify the ledger's reliability invariants",
   "  dashboard          Live terminal view of workers, pipeline & worktrees",
   "  serve              Responsive web console (org chart, pipeline, terminal)",
   "  validate-personas  Preflight persona load-order readiness + live-check steps",

@@ -217,6 +217,15 @@ Validar contra os testes de `src/make-workspace` (e o design em `docs/superpower
 >   meta-skill `authoring-rules` (fonte das tabelas inline).
 > - **Sync do floor (E2):** `aipe rehydrate` refresca verify-before-done/review-
 >   delivery/tdd do binário (fecha o staleness do #13 para elas).
+> - **`aipe journey verify` (lint de confiabilidade) FEITO:** audita o ledger inteiro
+>   (`src/journey/verify.ts`) — no-evidence, failed-open, delivered-not-verified,
+>   merged-skipped-qa, dependency-not-landed, escalated-open; `clean=false` +
+>   `critical>0` bloqueia o report ao PE. Amarrado no close-out + self-review do
+>   `operate`.
+> - **UI boost do console FEITO:** stage-guide legível ("O que cada etapa significa"),
+>   ícones SVG por status, chips com tooltip/aria, `verified`/`failed` estilizados
+>   (antes sem cor). `src/serve/app/{components/StatusIcon,StatusLegend,Chip},
+>   runtime/statusMeta`.
 > - **Falta:** brief-completeness/clarification segue como regra rígida no `operate`
 >   (não gate de CLI); o **#11** (PR-após-QA / in-testing / merged surfando GitHub no
 >   pipeline via `journey reconcile` + snapshot) segue pendente.

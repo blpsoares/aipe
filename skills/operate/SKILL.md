@@ -289,7 +289,20 @@ digraph operate {
    ```bash
    aipe worktree prune --journey <id> --workspace <workspace>
    ```
-   Record `--status merged` (or `removed`). Report the final set of PRs to the PE.
+   Record `--status merged` (or `removed`).
+
+   **Reliability lint before you report (MUST).** Before telling the PE the demand
+   is done, run the deterministic ledger audit and only report once it is clean:
+   ```bash
+   aipe journey verify --journey <id> --workspace <workspace>
+   ```
+   It prints `FINDING <severity> <code> <unit> — <detail>` for every broken
+   invariant (a delivered/verified unit with no evidence, a `failed` unit never
+   re-dispatched, a consumer shipped before its producer landed, a merge that
+   skipped QA, an open escalation) and `STATE … clean=true|false … critical=<n>`.
+   **Do not report "done" while `critical>0`.** Fix each critical finding (re-gate,
+   attach evidence, land the producer) and re-run until clean; surface any remaining
+   warnings to the PE explicitly. Then report the final set of PRs.
 
 ## The hiring brief (assemble per dispatch, never write to disk)
 
@@ -380,4 +393,6 @@ severity), and `returns` is
       (with the QA's own evidence).
 - [ ] No dependent wave opened before its producing unit was `verified`/`merged`.
 - [ ] Cross-repo needs were escalated to the PE, not reached across.
+- [ ] `aipe journey verify` reports `clean=true` (zero critical findings) — or every
+      remaining warning was surfaced to the PE explicitly.
 - [ ] The set of PRs reported matches the ledger; merged worktrees are torn down.
