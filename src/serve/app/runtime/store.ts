@@ -240,6 +240,15 @@ export const openWorkerName: Signal<string | null> = signal(null);
 
 export const brandCtx: ReadonlySignal<string> = computed(() => snapshot.value.context.name || "—");
 
+// Attention derivations (Pilar 4 surfacing) — drive the nav badge + the overview
+// strip from one place so "how many things need me, and is any critical?" has a
+// single answer.
+export const attentionItems: ReadonlySignal<AttentionItem[]> = computed(() => snapshot.value.attention || []);
+export const attentionCount: ReadonlySignal<number> = computed(() => attentionItems.value.length);
+export const attentionHasCritical: ReadonlySignal<boolean> = computed(() =>
+  attentionItems.value.some((a) => a.severity === "critical"),
+);
+
 // Module-level previous-dispatch map, equivalent to the monolith's `PREV`.
 let prevMap: Map<string, Dispatch> | null = null;
 

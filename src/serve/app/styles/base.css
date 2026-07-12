@@ -40,6 +40,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .nav-i.on .ic { color: var(--accent); }
 .nav-i.on::before { content: ""; position: absolute; left: 2px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--accent); }
 .nav-i .badge { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--amber); background: var(--amber-w); padding: 0 7px; border-radius: 999px; }
+.nav-i .badge.crit { color: #fff; background: var(--rose); animation: pulse 2s infinite; }
 .app.collapsed .nav-i { justify-content: center; padding: 9px; }
 .app.collapsed .nav-i .badge { display: none; }
 .sb-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; }
@@ -206,7 +207,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .ev .tx b { font-weight: 650; }
 .ev .tx .m { color: var(--ink-2); font-size: 13px; }
 .ev .ts { color: var(--ink-3); font-size: 11.5px; font-family: var(--mono); white-space: nowrap; }
-.d-active { background: var(--sky); } .d-delivered, .d-merged { background: var(--accent); } .d-escalated { background: var(--amber); } .d-idle { background: var(--slate); }
+.d-active { background: var(--sky); } .d-delivered, .d-merged { background: var(--accent); } .d-escalated { background: var(--amber); } .d-failed { background: var(--rose); } .d-idle { background: var(--slate); }
 
 /* Kanban */
 .board { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
@@ -409,5 +410,6 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
   .tabbar button.on .ic { color: var(--accent); }
   .tabbar button.on::before { content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 3px; background: var(--accent); }
   .tabbar .tbadge { position: absolute; top: 2px; right: calc(50% - 20px); width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+  .tabbar .tbadge.crit { background: var(--rose); animation: pulse 2s infinite; }
 }
 @media (min-width: 861px) { #hamb { display: none; } }

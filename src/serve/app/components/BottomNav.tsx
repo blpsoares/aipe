@@ -1,7 +1,7 @@
 import { routes } from "../routes.generated";
 import type { Route } from "../route-types";
 import { t } from "../runtime/i18n";
-import { counts } from "../runtime/store";
+import { attentionCount, attentionHasCritical } from "../runtime/store";
 import { currentPath, navigate } from "../runtime/router";
 
 // Mobile tabbar (app.html:492-499) — only these 5, in this order (terminal
@@ -12,7 +12,8 @@ const items = (routes as Route[]).filter((r) => BOTTOM_PATHS.includes(r.path));
 
 export function BottomNav() {
   const path = currentPath.value;
-  const escalated = counts.value.escalated;
+  const attention = attentionCount.value;
+  const crit = attentionHasCritical.value;
 
   return (
     <nav class="tabbar" id="tabbar">
@@ -20,7 +21,7 @@ export function BottomNav() {
         <button type="button" key={r.path} class={path === r.path ? "on" : ""} onClick={() => navigate(r.path)}>
           <span class="ic">{r.nav.icon}</span>
           <span>{t(r.nav.label)}</span>
-          {r.nav.badge === "escalation" && escalated > 0 && <span class="tbadge" />}
+          {r.nav.badge === "escalation" && attention > 0 && <span class={`tbadge${crit ? " crit" : ""}`} />}
         </button>
       ))}
     </nav>
