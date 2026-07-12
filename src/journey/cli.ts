@@ -4,11 +4,13 @@
 // (repo, specialist, branch, worktree, PR, status); it is NOT the hiring brief.
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { readGraph } from "../relationship/read-graph";
 import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from "./ledger";
 import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { DISPATCH_STATUSES } from "./types";
 import type { DispatchEvidence, DispatchStatus } from "./types";
+import { verifyJourney } from "./verify";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -226,6 +228,36 @@ async function reconcileCommand(args: string[]): Promise<number> {
   return 0;
 }
 
+// `aipe journey verify --journey <id>` — a deterministic reliability lint of the
+// ledger, run by the coordinator before reporting to the PE. It audits the
+// durable record for broken invariants (a done-claim without proof, a QA
+// rejection left open, a delivery that never cleared its gate, a merge that
+// skipped QA, a consumer shipped against a producer that never landed, an
+// escalation still open) and fails (exit 1) on any critical finding.
+async function verifyCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const id = getFlag(args, "--journey");
+  if (!id) {
+    console.log("ERROR args: --journey <id> is required");
+    return 1;
+  }
+  const ledger = await readLedger(workspace, id);
+  if (!ledger) {
+    console.log(`ERROR journey: no ledger for ${id}`);
+    return 1;
+  }
+  const graph = await readGraph(workspace);
+  const contextUnits = new Set(graph.nodes.map((n) => n.fqid));
+  const edges = graph.edges.map((e) => ({ from: e.from, to: e.to, type: e.type }));
+  const findings = verifyJourney(ledger, edges, contextUnits);
+  for (const f of findings) {
+    console.log(`FINDING ${f.severity.toUpperCase()} ${f.code} ${f.unit} — ${f.detail}`);
+  }
+  const critical = findings.filter((f) => f.severity === "critical").length;
+  console.log(`STATE journey=${id} clean=${critical === 0} findings=${findings.length} critical=${critical}`);
+  return critical > 0 ? 1 : 0;
+}
+
 export async function run(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -239,9 +271,11 @@ export async function run(args: string[]): Promise<number> {
       return specCommand(rest);
     case "reconcile":
       return reconcileCommand(rest);
+    case "verify":
+      return verifyCommand(rest);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
-      console.log("Usage: aipe journey <start|record|show|spec|reconcile> [options]");
+      console.log("Usage: aipe journey <start|record|show|spec|reconcile|verify> [options]");
       return 1;
   }
 }
