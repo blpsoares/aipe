@@ -189,6 +189,30 @@ Validar contra os testes de `src/make-workspace` (e o design em `docs/superpower
 > **Regra de ouro dos pilares:** nenhuma etapa pode ser marcada "done" com base em
 > **auto-relato**. Todo "done" exige **evidência verificável por um terceiro**.
 
+> **STATUS (branch `claude/item12-rule-keywords`): Pilares 1, 2, 3 + surfacing de
+> atenção FEITOS de forma determinística.**
+> - **Pilar 1 (evidência):** o ledger recusa fisicamente `delivered`/`verified` sem
+>   evidência (`recordDispatchGuarded` em `src/journey/ledger.ts`); skill
+>   `skills/verify-before-done/SKILL.md` instalada em todo repo pelo `aipe skill
+>   preset` (RELIABILITY_FLOOR). `operate` manda anexar evidência no record.
+> - **Pilar 2 (revisão adversarial):** `skills/review-delivery/SKILL.md` ("verifique
+>   contra o diff, não o relato"; severidade Crítico/Importante/Menor); o QA gate do
+>   `operate` roda ela e registra `verified` com evidência própria; o par dev+QA de
+>   `hire-specialists` garante revisor **independente** do autor.
+> - **Pilar 3 (ledger durável + sem re-execução):** unidade `merged` é imutável e
+>   reabrir `delivered`/`verified` exige `--reason` (guard na CLI); `operate` tem o
+>   hard gate "read the ledger first" + tabela anti-racionalização; `journey show`
+>   marca `[MERGED]`/`[VERIFIED]`/`!NO-EVIDENCE`.
+> - **Surfacing (latência de correção):** `snapshot.attention` computa qa-failed
+>   (critical), escalated e delivered-sem-evidência; o console mostra a faixa
+>   "Needs your attention" no overview. Estados `verified`/`failed` agora existem no
+>   `DispatchStatus` (eram usados e caíam no default).
+> - **Falta:** brief-completeness/clarification e cross-repo-landing estão como regra
+>   rígida no `operate` (não como gate de CLR determinístico); **Pilar 4 (TDD como
+>   skill rígida instalada)** e **Pilar 5 (tabela anti-racionalização específica do
+>   AIPe além das já embutidas)** seguem pendentes; e o **#11** (PR-após-QA/in-testing/
+>   merged no pipeline) segue pendente.
+
 ### Pilar 1 — Verificação-antes-de-concluir (gate universal de evidência)
 - **Princípio (superpowers `verification-before-completion`):** "evidência antes de afirmar. Rode o comando, mostre a saída, ANTES de dizer que está pronto." Nunca "acho que funciona".
 - **Estado no AIPe:** invertido — o dev afirma "done" e o QA chancela depois (é o **#11**). O worker afirma conclusão; a verificação vem depois (ou não vem).
