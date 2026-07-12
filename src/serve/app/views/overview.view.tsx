@@ -1,13 +1,35 @@
 import { t, interpolate } from "../runtime/i18n";
 import { fqid } from "../runtime/dom";
 import { navigate } from "../runtime/router";
-import { snapshot, counts, dispatches, activity } from "../runtime/store";
+import { snapshot, counts, dispatches, activity, attentionItems } from "../runtime/store";
 import { ActivityFeed } from "../components/ActivityFeed";
 import { STAGES } from "../runtime/stages";
 import type { Route } from "../route-types";
 
-// app.html:713-724
+// app.html:713-724 — extended with a CRITICAL tier so the top banner never reads
+// "nominal" while a critical reliability finding (QA failed, a consumer shipped
+// before its producer landed, a delivery with no evidence) is open. Escalation
+// and ok tiers are unchanged.
 function HeroStatus() {
+  const att = attentionItems.value;
+  const crit = att.filter((a) => a.severity === "critical");
+  if (crit.length > 0) {
+    const top = crit[0]!;
+    return (
+      <div class="hero crit">
+        <div class="orb">⚠</div>
+        <div>
+          <h2>{interpolate(t("crit_h"), { n: att.length })}</h2>
+          <p>{`${top.unit} — ${top.detail}${att.length > 1 ? ` (+${att.length - 1})` : ""}`}</p>
+        </div>
+        <div class="cta">
+          <button class="btn btn-primary" onClick={() => navigate("/pipeline")}>
+            {t("crit_review")}
+          </button>
+        </div>
+      </div>
+    );
+  }
   const c = counts.value;
   const warn = c.escalated > 0;
   const escW = snapshot.value.workers.find((w) => w.status === "escalated");

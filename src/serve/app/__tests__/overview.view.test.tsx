@@ -55,6 +55,26 @@ test("AttentionStrip: renders each attention item, critical first, and navigates
   expect(currentPath.value).toBe("/pipeline");
 });
 
+test("hero CRIT: a critical attention item makes the banner critical (never 'nominal')", () => {
+  loadFixture();
+  // even with zero escalations, a critical finding must dominate the hero
+  counts.value = { ...counts.value, escalated: 0 };
+  snapshot.value = {
+    ...snapshot.value,
+    attention: [
+      { kind: "failed-open", severity: "critical", unit: "prontuario/api", specialist: "Ana", journey: "j1", detail: "QA failed and the unit was not re-dispatched" },
+      { kind: "escalated-open", severity: "warning", unit: "embark", specialist: "Léo", journey: "j1", detail: "escalated — waiting on the PE" },
+    ],
+  };
+  const { container } = render(<OverviewView />);
+  const hero = container.querySelector(".hero")!;
+  expect(hero.classList.contains("crit")).toBe(true);
+  expect(hero.classList.contains("ok")).toBe(false);
+  expect(hero.querySelector("h2")!.textContent).toBe("2 need your attention");
+  expect(hero.querySelector("p")!.textContent).toContain("prontuario/api");
+  expect(hero.querySelector(".cta button")!.textContent).toBe("Review now →");
+});
+
 test("hero warn: counts.escalated>0 with a matching escalated worker", () => {
   loadFixture();
   const { container } = render(<OverviewView />);

@@ -145,9 +145,11 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .hero { display: flex; align-items: center; gap: 18px; padding: 22px; border-radius: var(--radius-lg); border: 1px solid var(--line); border-left-width: 3px; box-shadow: var(--shadow-2); position: relative; overflow: hidden; background: var(--panel); }
 .hero.ok { border-left-color: var(--accent); }
 .hero.warn { border-left-color: var(--amber); }
+.hero.crit { border-left-color: var(--rose); border-left-width: 4px; background: color-mix(in srgb, var(--rose) 5%, var(--panel)); }
 .hero .orb { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 24px; flex: 0 0 auto; }
 .hero.ok .orb { background: var(--accent-wash); color: var(--accent); }
 .hero.warn .orb { background: var(--amber-w); color: var(--amber); }
+.hero.crit .orb { background: color-mix(in srgb, var(--rose) 15%, transparent); color: var(--rose); }
 .hero h2 { margin: 0; font-size: 19px; font-weight: 750; letter-spacing: -.02em; }
 .hero p { margin: 2px 0 0; color: var(--ink-2); font-size: 13.5px; }
 .hero .cta { margin-left: auto; }
