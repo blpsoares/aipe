@@ -207,11 +207,19 @@ Validar contra os testes de `src/make-workspace` (e o design em `docs/superpower
 >   (critical), escalated e delivered-sem-evidência; o console mostra a faixa
 >   "Needs your attention" no overview. Estados `verified`/`failed` agora existem no
 >   `DispatchStatus` (eram usados e caíam no default).
-> - **Falta:** brief-completeness/clarification e cross-repo-landing estão como regra
->   rígida no `operate` (não como gate de CLR determinístico); **Pilar 4 (TDD como
->   skill rígida instalada)** e **Pilar 5 (tabela anti-racionalização específica do
->   AIPe além das já embutidas)** seguem pendentes; e o **#11** (PR-após-QA/in-testing/
->   merged no pipeline) segue pendente.
+> - **Cross-repo landing (agora determinístico):** `aipe dispatch validate --journey`
+>   recusa `dependency-not-landed <consumer> needs <producer>` (grafo + ledger);
+>   `checkDependenciesLanded` em `src/dispatch/law.ts`. O `operate` passa `--journey`.
+> - **Pilar 4 (TDD rígido) FEITO:** `skills/tdd/SKILL.md` (RED→GREEN) no
+>   RELIABILITY_FLOOR (instalada + sincronizada por repo); `verify-before-done` exige
+>   o trace RED→GREEN como prova preferida.
+> - **Pilar 5 FEITO:** tabela-mestra de red-flags dos modos de falha do AIPe na
+>   meta-skill `authoring-rules` (fonte das tabelas inline).
+> - **Sync do floor (E2):** `aipe rehydrate` refresca verify-before-done/review-
+>   delivery/tdd do binário (fecha o staleness do #13 para elas).
+> - **Falta:** brief-completeness/clarification segue como regra rígida no `operate`
+>   (não gate de CLI); o **#11** (PR-após-QA / in-testing / merged surfando GitHub no
+>   pipeline via `journey reconcile` + snapshot) segue pendente.
 
 ### Pilar 1 — Verificação-antes-de-concluir (gate universal de evidência)
 - **Princípio (superpowers `verification-before-completion`):** "evidência antes de afirmar. Rode o comando, mostre a saída, ANTES de dizer que está pronto." Nunca "acho que funciona".
