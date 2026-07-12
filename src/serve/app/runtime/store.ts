@@ -79,9 +79,10 @@ export interface RawSnapshot {
   [key: string]: unknown;
 }
 
-// Things the PE should look at, computed server-side (see dashboard/snapshot.ts).
+// Things the PE should look at, computed server-side (see dashboard/snapshot.ts):
+// a `journey verify` finding code (critical, or an open escalation) with context.
 export interface AttentionItem {
-  kind: "qa-failed" | "escalated" | "no-evidence";
+  kind: string;
   severity: "critical" | "warning";
   unit: string;
   specialist: string;

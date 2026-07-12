@@ -9,9 +9,10 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { inferKind } from "../context-brain/kind";
-import { resolvePackages } from "../context-brain/packages";
+import { packageFqid, resolvePackages } from "../context-brain/packages";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { listJourneys } from "../journey/ledger";
+import { verifyJourney } from "../journey/verify";
 import { readBrain } from "../make-workspace/read";
 import { readGraph } from "../relationship/read-graph";
 import { readToolbox } from "../toolbox/catalog";
@@ -90,8 +91,12 @@ export type JourneyView = JourneyLedger & { updatedAt?: string };
 
 // Something the PE should look at, computed deterministically from the ledgers so
 // the console can SURFACE it instead of leaving it buried in a green dashboard
-// (Pilar 4). Ranked by severity so the loudest thing shows first.
-export type AttentionKind = "qa-failed" | "escalated" | "no-evidence";
+// (Pilar 4). It is the SAME engine as `aipe journey verify` (one definition of a
+// reliability problem), filtered to what needs the PE NOW — every critical
+// finding plus open escalations — so the console never diverges from the CLI lint
+// and never nags about transient in-flight states (a just-delivered unit awaiting
+// QA). `kind` is a verify finding code. Ranked so the loudest thing shows first.
+export type AttentionKind = string;
 export interface AttentionItem {
   kind: AttentionKind;
   severity: "critical" | "warning";
@@ -101,20 +106,25 @@ export interface AttentionItem {
   detail: string;
 }
 
-function computeAttention(journeys: JourneyLedger[]): AttentionItem[] {
+function computeAttention(
+  journeys: JourneyLedger[],
+  edges: { from: string; to: string; type: string }[],
+  contextUnits: Set<string>,
+): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const j of journeys) {
-    for (const d of j.dispatches) {
-      const unit = `${d.repo}${d.package ? `/${d.package}` : ""}`;
-      if (d.status === "failed") {
-        items.push({ kind: "qa-failed", severity: "critical", unit, specialist: d.specialist, journey: j.id, detail: "QA failed — sent back to the dev" });
-      } else if (d.status === "escalated") {
-        items.push({ kind: "escalated", severity: "warning", unit, specialist: d.specialist, journey: j.id, detail: "cross-repo escalation waiting on the PE" });
-      } else if ((d.status === "delivered" || d.status === "verified") && !d.evidence) {
-        // A done-claim with no attached proof — should not happen through the
-        // guarded CLI, but a hand-edited/legacy ledger can carry one; surface it.
-        items.push({ kind: "no-evidence", severity: "warning", unit, specialist: d.specialist, journey: j.id, detail: `"${d.status}" with no evidence attached` });
-      }
+    for (const f of verifyJourney(j, edges, contextUnits)) {
+      // surface only what is actionable for the PE right now
+      if (f.severity !== "critical" && f.code !== "escalated-open") continue;
+      const owner = j.dispatches.find((d) => packageFqid(d.repo, d.package) === f.unit);
+      items.push({
+        kind: f.code,
+        severity: f.severity,
+        unit: f.unit,
+        specialist: owner?.specialist ?? "—",
+        journey: j.id,
+        detail: f.detail,
+      });
     }
   }
   const rank: Record<AttentionItem["severity"], number> = { critical: 0, warning: 1 };
@@ -345,7 +355,11 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     worktreeRows: worktrees.map((w) => ({ repo: w.repo, slug: w.slug, journey: w.journey, branch: w.branch, path: w.path })),
     packages: moduleViews,
     personaCVs,
-    attention: computeAttention(journeys),
+    attention: computeAttention(
+      journeys,
+      graph.edges.map((e) => ({ from: e.from, to: e.to, type: e.type })),
+      new Set(graph.nodes.map((n) => n.fqid)),
+    ),
     generatedAt,
   };
 }
