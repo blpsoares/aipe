@@ -5,7 +5,10 @@
 // validates. Deterministic; no LLM.
 import { readFile } from "node:fs/promises";
 import { readBrain } from "../make-workspace/read";
-import { validateBatch } from "./law";
+import { readGraph } from "../relationship/read-graph";
+import { readLedger } from "../journey/ledger";
+import { packageFqid } from "../context-brain/packages";
+import { checkDependenciesLanded, validateBatch } from "./law";
 import { claimLock, releaseLock } from "./lock";
 import { readPersonas } from "./personas";
 import type { Batch, DispatchEntry } from "./types";
@@ -25,7 +28,7 @@ function parseBatch(value: unknown): Batch | null {
     if (typeof e !== "object" || e === null) return null;
     const r = e as Record<string, unknown>;
     if (typeof r.repo !== "string" || typeof r.specialist !== "string") return null;
-    batch.push({ repo: r.repo, specialist: r.specialist });
+    batch.push({ repo: r.repo, specialist: r.specialist, ...(typeof r.package === "string" ? { package: r.package } : {}) });
   }
   return batch;
 }
@@ -62,11 +65,29 @@ async function validateCommand(args: string[]): Promise<number> {
     brainResult.brain.repos.map((r) => r.name),
     roster,
   );
-  if (verdict.ok) {
+  const rejects = verdict.ok ? [] : [...verdict.rejects];
+
+  // Cross-repo landing gate (opt-in via --journey, since it needs the ledger to
+  // know what has landed). Skipped for a legacy/graph-less workspace.
+  const journey = getFlag(args, "--journey");
+  if (journey) {
+    const [graph, ledger] = await Promise.all([readGraph(workspace), readLedger(workspace, journey)]);
+    if (graph.edges.length > 0) {
+      const landed = new Set(
+        (ledger?.dispatches ?? [])
+          .filter((d) => d.status === "verified" || d.status === "merged")
+          .map((d) => packageFqid(d.repo, d.package)),
+      );
+      const contextUnits = new Set(graph.nodes.map((n) => n.fqid));
+      rejects.push(...checkDependenciesLanded(batch, { edges: graph.edges, landed, contextUnits }));
+    }
+  }
+
+  if (rejects.length === 0) {
     console.log(`OK batch=${batch.length}`);
     return 0;
   }
-  for (const reject of verdict.rejects) console.log(`REJECT ${reject}`);
+  for (const reject of rejects) console.log(`REJECT ${reject}`);
   return 1;
 }
 

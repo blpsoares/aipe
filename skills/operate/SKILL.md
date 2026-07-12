@@ -156,9 +156,10 @@ digraph operate {
    a. **Assemble the batch** — the `{repo, specialist, package?}` entries for this
    wave (the specialist is the persona for that package from `personas.yaml`; add
    `package` for a monorepo unit, omit it for a flat repo). Write it to a temp JSON
-   file and adjudicate the law:
+   file and adjudicate the law — **always pass `--journey`** so the cross-repo
+   landing gate runs too:
    ```bash
-   aipe dispatch validate --input <batch.json> --workspace <workspace>
+   aipe dispatch validate --input <batch.json> --journey <id> --workspace <workspace>
    ```
    `OK batch=<n>` → proceed. Any `REJECT …` → fix and re-validate:
    - `same-package <fqid>` / `same-repo <repo>` — two tasks hit one unit in one
@@ -167,6 +168,11 @@ digraph operate {
    - `cap-exceeded <n>` — more than 16 at once; split the wave.
    - `unknown-repo` / `unknown-specialist` — you named something not in
      `brain.yaml` / `personas.yaml`.
+   - `dependency-not-landed <consumer> needs <producer>` — this consumer depends on
+     a contract (`consumes`/`imports` in `graph.yaml`) whose producing unit isn't
+     `verified`/`merged` yet. Move the producer to an earlier wave and land it
+     first; the gate is deterministic, so you cannot dispatch a consumer against a
+     contract that doesn't exist yet (see step f).
 
    b. **Provision a worktree per entry** (pass `--package` for a monorepo unit so
    two packages of one repo get distinct worktrees on the same clone):
@@ -257,14 +263,16 @@ digraph operate {
    | "the PE is waiting, ship it" | MUST still QA-gate; report only what is `verified` |
    | "QA passed on an earlier wave" | A new change is a new gate. MUST re-QA the fix |
 
-   f. **Cross-repo landing check (MUST) before a dependent wave.** When a later
-   wave depends on a contract an earlier wave produced (A `consumes` what B
-   `exposes`, per `graph.yaml`), do **not** open the dependent wave until B's unit is
-   actually **`verified`/`merged`** in the ledger — ordering the waves is not the same
-   as the contract having landed. Confirm with `aipe journey show`; if the producing
-   unit isn't cleared yet, hold the consumer. A single session never needs this; a
-   multi-repo coordination does, and skipping it ships a consumer against a contract
-   that doesn't exist yet.
+   f. **Cross-repo landing gate (enforced) before a dependent wave.** When a later
+   wave depends on a contract an earlier wave produced (A `consumes`/`imports` what
+   B produces, per `graph.yaml`), the consumer must not be dispatched until B's unit
+   is actually **`verified`/`merged`** in the ledger — ordering the waves is not the
+   same as the contract having landed. You don't have to police this by hand: the
+   `aipe dispatch validate --journey <id>` in step 4a **REJECTs**
+   `dependency-not-landed <consumer> needs <producer>` deterministically. When you
+   see it, move the producer to an earlier wave and land it first. A single session
+   never needs this; a multi-repo coordination does, and skipping it ships a consumer
+   against a contract that doesn't exist yet.
 
 5. **Escalate cross-repo matters to the PE.** Cross-repo scope is the PE's call.
    Present every `escalate` clearly: what was found, which repo it needs, why. On
