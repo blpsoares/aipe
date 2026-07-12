@@ -184,6 +184,35 @@ skill's `## Rules`, worded consistently so the model sees the same law everywher
 - **Evidence before "done".** Prefer proof to assertion: run the command, show the
   output, before claiming a step complete.
 
+## The AIPe failure-mode red flags (master table — Pilar 5)
+
+The device in §6 works only if the excuses are the *real* ones. This is the canonical
+catalog of how the AIPe coordinator and its specialists actually talk themselves out
+of the guarantees — the concrete failure modes to pre-empt when authoring any gate.
+**Every thought in the left column means STOP — you are rationalizing away a rule.**
+Embed the rows relevant to a skill directly in it (most already live in `operate`,
+`context-brain`, `hire-specialists`, `toolbox`); this table is the source they draw
+from and the checklist for "did I pre-empt this skill's failure mode?"
+
+| Rationalization (the coordinator/specialist thinks…) | Reality (what it actually means) |
+| --- | --- |
+| "this fix is simple/urgent/one line — I'll just edit the repo myself" | You are about to break the dispatch gate. MUST dispatch a specialist; the only inline path is an explicit PE instruction |
+| "I don't remember doing this unit — redo it to be safe" | Read the ledger. If it's `verified`/`merged` it's DONE — re-doing merged work is the most expensive mistake |
+| "the session reset, start the journey fresh" | The ledger survived the reset. Resume from it; never restart delivered work |
+| "the dev says the tests pass, that's good enough" | Self-report ≠ the gate. MUST dispatch an independent QA that verifies against the diff |
+| "it obviously works, I'll mark it delivered" | A claim is not evidence. The ledger REJECTs a done-claim with no attached proof |
+| "the tests pass — no need to run the feature" | Green tests can coexist with a broken feature. Drive it if it has a runtime surface |
+| "I'll write the tests after the code" | Test-after proves nothing about intent. RED first — a failing test, then green |
+| "order the waves and dispatch everything" | Ordering ≠ landing. A consumer is REJECTed until its producer is `verified`/`merged` |
+| "the PE probably meant this GitHub URL" | Inference ≠ fact. Use the local path or ask — never fabricate a URL |
+| "I'll hand-edit the YAML to save a step" | Only the CLI validates. Hand-editing a state file corrupts what later phases trust |
+| "the brief is thin but I'll infer the rest" | A guess ships drift. Return `needs-clarification`; asking is cheaper than a wrong delivery |
+| "it's a small diff, I'll skim the review" | Small diffs ship real bugs. QA reads every hunk against the acceptance criteria |
+| "the PE is waiting — ship it now" | A fast wrong answer costs more. Report only what is `verified` |
+
+When you author a new gate, add its skill's real excuse here **and** in the skill —
+an un-catalogued failure mode is one nobody pre-empted.
+
 ## Self-review gate for THIS skill (apply before shipping any rule)
 
 Before committing an authored/revised skill, confirm each line — do not claim done
