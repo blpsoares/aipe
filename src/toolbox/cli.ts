@@ -12,28 +12,10 @@ import { installMcp, removeMcp, type InstallMcpInput } from "./mcp";
 import { kitNames, resolveKit } from "./registry";
 import { matchSkills } from "./routing";
 import { wirePdd } from "./pdd";
-// Reliability floor skills (run inside the dispatched specialist), embedded in
-// the binary so the preset installs them into every repo — this is what makes a
-// specialist's `/verify-before-done` and `/review-delivery` actually resolvable.
-import verifyBeforeDoneSkill from "../../skills/verify-before-done/SKILL.md" with { type: "text" };
-import reviewDeliverySkill from "../../skills/review-delivery/SKILL.md" with { type: "text" };
-
-const RELIABILITY_FLOOR: { name: string; description: string; objective: string; whenToUse: string; content: string }[] = [
-  {
-    name: "verify-before-done",
-    description: "Evidence gate: prove a unit is done before claiming it (dev + QA).",
-    objective: "No done-claim without attached evidence (commands + observed output).",
-    whenToUse: "Before returning delivered/passed from a dispatched specialist.",
-    content: verifyBeforeDoneSkill,
-  },
-  {
-    name: "review-delivery",
-    description: "Independent skeptic review of a delivery against the diff (QA gate).",
-    objective: "Verify a delivery against the diff + acceptance, never the dev's report.",
-    whenToUse: "When QA gates a dev delivery before it counts as done.",
-    content: reviewDeliverySkill,
-  },
-];
+// The reliability floor (verify-before-done + review-delivery) — installed into
+// every repo so a dispatched specialist can invoke them. Defined once in
+// reliability-floor.ts (shared with `aipe rehydrate`, which refreshes them).
+import { RELIABILITY_FLOOR } from "./reliability-floor";
 import { installSkill, installSkillContent, removeSkill, type InstallSkillInput } from "./skills";
 import { materializeSpecKit } from "./spec-kit";
 import type { TaskSize } from "./types";
