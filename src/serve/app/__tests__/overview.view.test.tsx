@@ -86,16 +86,16 @@ test("KpiRow: exactly 6 tiles in order hired/active/delivered/escalated/journeys
   expect(nums).toEqual(["4", "1", "1", "1", "3", "2"]);
 });
 
-test("MiniPipeline: 4 stages count dispatches by status", () => {
+test("MiniPipeline: 5 stages count dispatches by status", () => {
   loadFixture();
   const { container } = render(<OverviewView />);
   const cells = [...container.querySelectorAll(".card.pad")[0]!.querySelectorAll(".grid > div")];
-  expect(cells.length).toBe(4);
+  expect(cells.length).toBe(5);
   const labels = cells.map((c) => c.querySelector(".k")!.textContent);
-  expect(labels).toEqual(["Dispatched", "Delivered", "Escalated", "Merged"]);
-  // fixture dispatches: dispatched=1 (Ana), delivered=1 (Bruno), escalated=1 (Carla), merged=1 (Bruno)
+  expect(labels).toEqual(["Dispatched", "Delivered", "Verified", "Escalated", "Merged"]);
+  // fixture dispatches: dispatched=1 (Ana), delivered=1 (Bruno), verified=0, escalated=1 (Carla), merged=1 (Bruno)
   const nums = cells.map((c) => c.querySelector(".num")!.textContent);
-  expect(nums).toEqual(["1", "1", "1", "1"]);
+  expect(nums).toEqual(["1", "1", "0", "1", "1"]);
 });
 
 test("live activity feed limits to 5 events", () => {

@@ -21,7 +21,10 @@ export const orgTransform: Signal<OrgTransform> = signal({ s: 1, x: 0, y: 0 });
 
 // app.html:912
 export function orgColor(status: string | undefined): string {
-  return status === "active" ? "var(--sky)" : status === "delivered" ? "var(--accent)" : status === "escalated" ? "var(--amber)" : "var(--slate)";
+  if (status === "active") return "var(--sky)";
+  if (status === "delivered" || status === "verified") return "var(--accent)";
+  if (status === "escalated" || status === "failed") return "var(--amber)";
+  return "var(--slate)";
 }
 
 // app.html:918. `orgQuery` holds the RAW typed value (so the search input can

@@ -4,6 +4,7 @@
 export const STAGES = [
   { key: "dispatched", label: "Dispatched", cls: "active" },
   { key: "delivered", label: "Delivered", cls: "delivered" },
+  { key: "verified", label: "Verified", cls: "verified" },
   { key: "escalated", label: "Escalated", cls: "escalated" },
   { key: "merged", label: "Merged", cls: "merged" },
 ] as const;

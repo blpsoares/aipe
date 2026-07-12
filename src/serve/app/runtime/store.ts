@@ -147,6 +147,8 @@ export function evMsg(d: Dispatch, t: Translator): string {
   const j = d.journey ? " · " + d.journey : "";
   if (d.status === "dispatched") return `dispatched to ${fqidOf(d)}${j}`;
   if (d.status === "delivered") return `delivered${d.pr ? " · PR" : ""}${j}`;
+  if (d.status === "verified") return `verified by QA${j}`;
+  if (d.status === "failed") return `QA failed — sent back${j}`;
   if (d.status === "escalated") return `escalated${j}`;
   if (d.status === "merged") return `merged${j}`;
   if (d.status === "removed") return `worktree removed${j}`;
