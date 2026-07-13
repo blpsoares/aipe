@@ -28,7 +28,7 @@ import { run as model } from "./model/cli";
 import { checkUpdate, upgrade } from "./update/cli";
 import { maybeOfferUpdate } from "./update/notify";
 
-export const VERSION = "0.2.2";
+export const VERSION = "0.2.3";
 
 type Subcommand = (args: string[]) => Promise<number>;
 
