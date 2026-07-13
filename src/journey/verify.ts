@@ -92,14 +92,22 @@ export function verifyJourney(
       });
     }
 
-    // 4 — merged-skipped-qa: merged without any verified record in its history.
-    if (status === "merged" && !records.some((d) => d.status === "verified")) {
-      findings.push({
-        severity: "warning",
-        code: "merged-skipped-qa",
-        unit,
-        detail: "merged without a verified QA record",
-      });
+    // 4 — merged-skipped-qa: merged without ever clearing QA. The QA signal can
+    // live in two shapes: a surviving `verified` record (multi-specialist units,
+    // where history isn't collapsed) OR — the common case — the QA evidence that
+    // `reconcile` inherits onto the merged record itself, since `recordDispatch`
+    // upserts by (repo, package, specialist) and collapses a single specialist's
+    // dispatched→delivered→verified→merged history into one `merged` record.
+    if (status === "merged") {
+      const qaCleared = records.some((d) => d.status === "verified") || top.evidence?.by === "qa";
+      if (!qaCleared) {
+        findings.push({
+          severity: "warning",
+          code: "merged-skipped-qa",
+          unit,
+          detail: "merged without a verified QA record",
+        });
+      }
     }
 
     // 6 — escalated-open: still waiting on the PE.

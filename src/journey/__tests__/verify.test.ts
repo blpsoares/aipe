@@ -84,6 +84,16 @@ test("merged WITH a verified record is not flagged", () => {
   expect(verifyJourney(ledger, [], new Set())).toEqual([]);
 });
 
+test("a REAL (collapsed) merged unit carrying QA evidence is not flagged merged-skipped-qa", () => {
+  // `recordDispatch` upserts by (repo, package, specialist), so a unit that went
+  // dispatched→delivered→verified→merged with ONE specialist collapses to a single
+  // record: `merged`, carrying the QA evidence that reconcile inherited from the
+  // verified record. There is NO surviving `verified` record — the QA signal lives
+  // in `evidence.by`, which is what the check must key on.
+  const ledger = ledgerOf(d({ status: "merged", evidence: qaEv, pr: "http://pr/1" }));
+  expect(verifyJourney(ledger, [], new Set()).map((f) => f.code)).not.toContain("merged-skipped-qa");
+});
+
 test("dependency-not-landed (critical): shipped consumer, in-context producer never landed", () => {
   const ledger = ledgerOf(
     d({ repo: "embark", package: "worker", status: "verified", evidence: qaEv }),
