@@ -12,6 +12,10 @@ import { installMcp, removeMcp, type InstallMcpInput } from "./mcp";
 import { kitNames, resolveKit } from "./registry";
 import { matchSkills } from "./routing";
 import { wirePdd } from "./pdd";
+// The reliability floor (verify-before-done + review-delivery) — installed into
+// every repo so a dispatched specialist can invoke them. Defined once in
+// reliability-floor.ts (shared with `aipe rehydrate`, which refreshes them).
+import { RELIABILITY_FLOOR } from "./reliability-floor";
 import { installSkill, installSkillContent, removeSkill, type InstallSkillInput } from "./skills";
 import { materializeSpecKit } from "./spec-kit";
 import type { TaskSize } from "./types";
@@ -236,6 +240,26 @@ async function skillPreset(workspace: string): Promise<number> {
   }
   for (const r of result.rows) console.log(`${r.status.toUpperCase()} ${r.repo}`);
   console.log(`OK preset=sdd-lite (floor installed in ${repos.length} repo(s))`);
+
+  // Reliability floor: install verify-before-done + review-delivery into every
+  // repo so a dispatched specialist can actually invoke them (the ledger enforces
+  // the evidence outcome; these give the specialist the discipline to produce it).
+  for (const floor of RELIABILITY_FLOOR) {
+    const r = await installSkillContent(workspace, {
+      name: floor.name,
+      description: floor.description,
+      objective: floor.objective,
+      whenToUse: floor.whenToUse,
+      repos,
+      content: floor.content,
+    });
+    if (!r.ok) {
+      console.log(`ERROR ${r.error}`);
+      return 1;
+    }
+    console.log(`OK floor=${floor.name} (installed in ${repos.length} repo(s))`);
+  }
+
   console.log("SUGGEST enable spec-kit on non-trivial packages and pdd on migration repos:");
   console.log("SUGGEST   aipe skill add spec-kit --repo <r>   |   aipe skill add pdd --repo <r>");
   return 0;

@@ -75,7 +75,19 @@ export interface RawSnapshot {
   journeys?: { id: string; dispatches?: Dispatch[] }[];
   personaCVs?: unknown[];
   counts?: { hired?: number; active?: number; delivered?: number; escalated?: number; available?: number };
+  attention?: AttentionItem[];
   [key: string]: unknown;
+}
+
+// Things the PE should look at, computed server-side (see dashboard/snapshot.ts):
+// a `journey verify` finding code (critical, or an open escalation) with context.
+export interface AttentionItem {
+  kind: string;
+  severity: "critical" | "warning";
+  unit: string;
+  specialist: string;
+  journey: string;
+  detail: string;
 }
 
 export interface Snapshot {
@@ -89,6 +101,7 @@ export interface Snapshot {
   worktrees: unknown[];
   journeys: RawSnapshot["journeys"];
   cvs: unknown[];
+  attention: AttentionItem[];
 }
 
 type Translator = (k: string) => string;
@@ -147,6 +160,8 @@ export function evMsg(d: Dispatch, t: Translator): string {
   const j = d.journey ? " · " + d.journey : "";
   if (d.status === "dispatched") return `dispatched to ${fqidOf(d)}${j}`;
   if (d.status === "delivered") return `delivered${d.pr ? " · PR" : ""}${j}`;
+  if (d.status === "verified") return `verified by QA${j}`;
+  if (d.status === "failed") return `QA failed — sent back${j}`;
   if (d.status === "escalated") return `escalated${j}`;
   if (d.status === "merged") return `merged${j}`;
   if (d.status === "removed") return `worktree removed${j}`;
@@ -210,6 +225,7 @@ const EMPTY_SNAPSHOT: Snapshot = {
   worktrees: [],
   journeys: [],
   cvs: [],
+  attention: [],
 };
 
 export const snapshot: Signal<Snapshot> = signal(EMPTY_SNAPSHOT);
@@ -224,6 +240,15 @@ export const conn: Signal<"wait" | "live" | "down"> = signal("wait");
 export const openWorkerName: Signal<string | null> = signal(null);
 
 export const brandCtx: ReadonlySignal<string> = computed(() => snapshot.value.context.name || "—");
+
+// Attention derivations (Pilar 4 surfacing) — drive the nav badge + the overview
+// strip from one place so "how many things need me, and is any critical?" has a
+// single answer.
+export const attentionItems: ReadonlySignal<AttentionItem[]> = computed(() => snapshot.value.attention || []);
+export const attentionCount: ReadonlySignal<number> = computed(() => attentionItems.value.length);
+export const attentionHasCritical: ReadonlySignal<boolean> = computed(() =>
+  attentionItems.value.some((a) => a.severity === "critical"),
+);
 
 // Module-level previous-dispatch map, equivalent to the monolith's `PREV`.
 let prevMap: Map<string, Dispatch> | null = null;
@@ -245,6 +270,7 @@ export function applySnapshot(raw: RawSnapshot, now: number, t: Translator = (k)
     worktrees: raw.worktreeRows || [],
     journeys: raw.journeys || [],
     cvs: raw.personaCVs || [],
+    attention: raw.attention || [],
   };
   snapshot.value = next;
 

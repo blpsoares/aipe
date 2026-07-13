@@ -64,3 +64,50 @@ test("validate returns 1 for a same-repo collision", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("validate --journey blocks a consumer whose producer hasn't landed", async () => {
+  const dir = await ws();
+  try {
+    // embark consumes prontuario (a producer); no ledger yet → nothing landed.
+    await mkdir(join(dir, ".aipe", "relations"), { recursive: true });
+    await writeFile(
+      join(dir, ".aipe", "relations", "graph.yaml"),
+      stringify({ nodes: [{ fqid: "embark", repo: "embark", package: null, stack: [] }, { fqid: "prontuario", repo: "prontuario", package: null, stack: [] }], edges: [{ from: "embark", to: "prontuario", type: "consumes", perspectives: [{ detail: "d", evidence: "e" }] }] }),
+      "utf8",
+    );
+    await mkdir(join(dir, ".aipe", "journeys"), { recursive: true });
+    await writeFile(join(dir, ".aipe", "journeys", "j1.yaml"), stringify({ id: "j1", dispatches: [] }), "utf8");
+
+    const batch = await writeBatch(dir, [{ repo: "embark", specialist: "Joaquim" }]);
+    const blocked = await run(["validate", "--input", batch, "--journey", "j1", "--workspace", dir]);
+    expect(blocked).toBe(1);
+
+    // once prontuario is verified in the ledger, the consumer is free.
+    await writeFile(
+      join(dir, ".aipe", "journeys", "j1.yaml"),
+      stringify({ id: "j1", dispatches: [{ repo: "prontuario", specialist: "Pedro", branch: "b", worktree: "w", status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "ok" } }] }),
+      "utf8",
+    );
+    const freed = await run(["validate", "--input", batch, "--journey", "j1", "--workspace", dir]);
+    expect(freed).toBe(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("validate WITHOUT --journey skips the landing gate (backward compatible)", async () => {
+  const dir = await ws();
+  try {
+    await mkdir(join(dir, ".aipe", "relations"), { recursive: true });
+    await writeFile(
+      join(dir, ".aipe", "relations", "graph.yaml"),
+      stringify({ nodes: [{ fqid: "embark", repo: "embark", package: null, stack: [] }, { fqid: "prontuario", repo: "prontuario", package: null, stack: [] }], edges: [{ from: "embark", to: "prontuario", type: "consumes", perspectives: [{ detail: "d", evidence: "e" }] }] }),
+      "utf8",
+    );
+    const batch = await writeBatch(dir, [{ repo: "embark", specialist: "Joaquim" }]);
+    const code = await run(["validate", "--input", batch, "--workspace", dir]);
+    expect(code).toBe(0); // no --journey → landing gate not applied
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

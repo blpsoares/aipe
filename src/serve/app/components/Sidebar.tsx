@@ -1,7 +1,7 @@
 import { routes } from "../routes.generated";
 import type { Route } from "../route-types";
 import { t } from "../runtime/i18n";
-import { counts, brandCtx } from "../runtime/store";
+import { attentionCount, attentionHasCritical, brandCtx } from "../runtime/store";
 import { currentPath, navigate } from "../runtime/router";
 import { toggleCollapsed } from "../runtime/ui";
 
@@ -12,7 +12,8 @@ const mainRoutes = appRoutes.filter((r) => r.path !== "/settings");
 
 export function Sidebar() {
   const path = currentPath.value;
-  const escalated = counts.value.escalated;
+  const attention = attentionCount.value;
+  const crit = attentionHasCritical.value;
 
   return (
     <aside class="sidebar" id="sidebar">
@@ -26,9 +27,9 @@ export function Sidebar() {
         <button type="button" key={r.path} class={`nav-i${path === r.path ? " on" : ""}`} onClick={() => navigate(r.path)}>
           <span class="ic">{r.nav.icon}</span>
           <span>{t(r.nav.label)}</span>
-          {r.nav.badge === "escalation" && escalated > 0 && (
-            <span class="badge" id="navBadge">
-              {escalated}
+          {r.nav.badge === "escalation" && attention > 0 && (
+            <span class={`badge${crit ? " crit" : ""}`} id="navBadge" title={t("needs_attention")}>
+              {attention}
             </span>
           )}
         </button>

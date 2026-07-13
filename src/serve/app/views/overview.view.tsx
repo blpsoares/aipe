@@ -1,13 +1,35 @@
 import { t, interpolate } from "../runtime/i18n";
 import { fqid } from "../runtime/dom";
 import { navigate } from "../runtime/router";
-import { snapshot, counts, dispatches, activity } from "../runtime/store";
+import { snapshot, counts, dispatches, activity, attentionItems } from "../runtime/store";
 import { ActivityFeed } from "../components/ActivityFeed";
 import { STAGES } from "../runtime/stages";
 import type { Route } from "../route-types";
 
-// app.html:713-724
+// app.html:713-724 — extended with a CRITICAL tier so the top banner never reads
+// "nominal" while a critical reliability finding (QA failed, a consumer shipped
+// before its producer landed, a delivery with no evidence) is open. Escalation
+// and ok tiers are unchanged.
 function HeroStatus() {
+  const att = attentionItems.value;
+  const crit = att.filter((a) => a.severity === "critical");
+  if (crit.length > 0) {
+    const top = crit[0]!;
+    return (
+      <div class="hero crit">
+        <div class="orb">⚠</div>
+        <div>
+          <h2>{interpolate(t("crit_h"), { n: att.length })}</h2>
+          <p>{`${top.unit} — ${top.detail}${att.length > 1 ? ` (+${att.length - 1})` : ""}`}</p>
+        </div>
+        <div class="cta">
+          <button class="btn btn-primary" onClick={() => navigate("/pipeline")}>
+            {t("crit_review")}
+          </button>
+        </div>
+      </div>
+    );
+  }
   const c = counts.value;
   const warn = c.escalated > 0;
   const escW = snapshot.value.workers.find((w) => w.status === "escalated");
@@ -23,6 +45,49 @@ function HeroStatus() {
         <button class="btn btn-primary" onClick={() => navigate("/activity")}>
           {warn ? t("review") : t("viewact")}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Attention strip — surfaces what the PE must look at (Pilar 4). Renders nothing
+// on a clean board; when something needs eyes it is loud, ranked critical-first.
+function AttentionStrip() {
+  const items = snapshot.value.attention || [];
+  if (items.length === 0) return null;
+  return (
+    <div class="card pad" data-testid="attention">
+      <div class="between" style={{ marginBottom: "10px" }}>
+        <div class="eyebrow">{t("needs_attention")}</div>
+        <span class="num" style={{ fontWeight: 700 }}>{items.length}</span>
+      </div>
+      <div class="grid" style={{ gap: "8px" }}>
+        {items.map((a) => (
+          <button
+            class="between att-row"
+            style={{ width: "100%", textAlign: "left", cursor: "pointer", gap: "10px" }}
+            onClick={() => navigate("/pipeline")}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+              <span
+                class="chip"
+                style={{
+                  background: a.severity === "critical" ? "var(--amber)" : "var(--slate)",
+                  color: "#000",
+                  fontWeight: 700,
+                  flex: "none",
+                }}
+              >
+                {a.severity === "critical" ? t("att_critical") : t("att_warning")}
+              </span>
+              <b style={{ flex: "none" }}>{a.unit}</b>
+              <span class="sub" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {a.detail}
+              </span>
+            </span>
+            <span class="sub" style={{ flex: "none" }}>{a.specialist} · {a.journey}</span>
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -87,6 +152,8 @@ function OverviewView() {
   return (
     <div class="view-in grid" style={{ gap: "20px" }}>
       <HeroStatus />
+
+      <AttentionStrip />
 
       <KpiRow />
 

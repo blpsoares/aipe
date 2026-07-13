@@ -6,7 +6,8 @@
 import { join } from "node:path";
 import { readToolbox } from "../toolbox/catalog";
 import { installMcp } from "../toolbox/mcp";
-import { installSkill } from "../toolbox/skills";
+import { installSkill, installSkillContent } from "../toolbox/skills";
+import { RELIABILITY_FLOOR } from "../toolbox/reliability-floor";
 
 export interface ToolboxRehydrateRow {
   kind: "skill" | "mcp";
@@ -19,14 +20,28 @@ export async function rehydrateToolbox(workspaceDir: string): Promise<ToolboxReh
   const rows: ToolboxRehydrateRow[] = [];
 
   for (const skill of tb.skills) {
-    const result = await installSkill(workspaceDir, {
-      name: skill.name,
-      description: skill.description,
-      objective: skill.objective,
-      whenToUse: skill.whenToUse,
-      repos: skill.repos,
-      source: join(workspaceDir, ".aipe", "skills", skill.name),
-    });
+    // Reliability-floor skills track the binary (like the coordinator flow-skills,
+    // #13): refresh their content from the embedded version so an upgraded binary
+    // never leaves a stale verify-before-done/review-delivery behind. Every other
+    // skill is restored from its published .aipe/skills/ source, as before.
+    const floor = RELIABILITY_FLOOR.find((f) => f.name === skill.name);
+    const result = floor
+      ? await installSkillContent(workspaceDir, {
+          name: floor.name,
+          description: floor.description,
+          objective: floor.objective,
+          whenToUse: floor.whenToUse,
+          repos: skill.repos,
+          content: floor.content,
+        })
+      : await installSkill(workspaceDir, {
+          name: skill.name,
+          description: skill.description,
+          objective: skill.objective,
+          whenToUse: skill.whenToUse,
+          repos: skill.repos,
+          source: join(workspaceDir, ".aipe", "skills", skill.name),
+        });
     rows.push({ kind: "skill", name: skill.name, status: result.ok ? "restored" : "error" });
   }
 

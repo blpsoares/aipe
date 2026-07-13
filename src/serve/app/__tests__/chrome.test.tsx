@@ -10,7 +10,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { routes } from "../routes.generated";
 import type { Route } from "../route-types";
 import { lang, setLang, t } from "../runtime/i18n";
-import { counts } from "../runtime/store";
+import { counts, snapshot } from "../runtime/store";
 import { navigate, currentPath } from "../runtime/router";
 
 const appRoutes = routes as Route[];
@@ -58,17 +58,25 @@ test("Sidebar marks the active route with .on", () => {
   expect(on!.textContent).toContain(t("nav_pipeline"));
 });
 
-test("Sidebar shows the escalation badge on Activity only when counts.escalated > 0", () => {
-  counts.value = { ...counts.value, escalated: 0 };
+test("Sidebar shows the attention badge on Activity only when there is attention; crit when any critical", () => {
+  snapshot.value = { ...snapshot.value, attention: [] };
   const { container, unmount } = render(<Sidebar />);
   expect(container.querySelector("#navBadge")).toBeNull();
   unmount();
 
-  counts.value = { ...counts.value, escalated: 3 };
+  snapshot.value = {
+    ...snapshot.value,
+    attention: [
+      { kind: "qa-failed", severity: "critical", unit: "a", specialist: "x", journey: "j", detail: "d" },
+      { kind: "escalated", severity: "warning", unit: "b", specialist: "y", journey: "j", detail: "d" },
+      { kind: "no-evidence", severity: "warning", unit: "c", specialist: "z", journey: "j", detail: "d" },
+    ],
+  };
   const { container: c2 } = render(<Sidebar />);
   const badge = c2.querySelector("#navBadge");
   expect(badge).toBeTruthy();
   expect(badge!.textContent).toBe("3");
+  expect(badge!.classList.contains("crit")).toBe(true);
 });
 
 test("BottomNav lists only overview/pipeline/team/activity/monitor, in that order", () => {
@@ -81,8 +89,11 @@ test("BottomNav lists only overview/pipeline/team/activity/monitor, in that orde
   expect(labels).toEqual(expected);
 });
 
-test("BottomNav shows the escalation dot on Activity only when counts.escalated > 0", () => {
-  counts.value = { ...counts.value, escalated: 2 };
+test("BottomNav shows the attention dot on Activity only when there is attention", () => {
+  snapshot.value = {
+    ...snapshot.value,
+    attention: [{ kind: "escalated", severity: "warning", unit: "b", specialist: "y", journey: "j", detail: "d" }],
+  };
   const { container } = render(<BottomNav />);
   expect(container.querySelector("#tabbar .tbadge")).toBeTruthy();
 });

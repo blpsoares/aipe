@@ -26,6 +26,55 @@ test("route contract: path/order/icon preserved", () => {
   expect(route.nav).toEqual({ label: "nav_overview", icon: "◎", order: 0 });
 });
 
+test("AttentionStrip: hidden on a clean board", () => {
+  loadFixture();
+  const { container } = render(<OverviewView />);
+  expect(container.querySelector('[data-testid="attention"]')).toBeNull();
+});
+
+test("AttentionStrip: renders each attention item, critical first, and navigates to /pipeline", () => {
+  loadFixture();
+  snapshot.value = {
+    ...snapshot.value,
+    attention: [
+      { kind: "qa-failed", severity: "critical", unit: "embark/api", specialist: "Ana", journey: "j1", detail: "QA failed — sent back to the dev" },
+      { kind: "escalated", severity: "warning", unit: "embark", specialist: "Caio", journey: "j1", detail: "cross-repo escalation waiting on the PE" },
+    ],
+  };
+  const { container } = render(<OverviewView />);
+  const strip = container.querySelector('[data-testid="attention"]')!;
+  expect(strip).not.toBeNull();
+  const rows = [...strip.querySelectorAll(".att-row")];
+  expect(rows.length).toBe(2);
+  // critical first, with a CRITICAL chip and the unit
+  expect(rows[0]!.querySelector(".chip")!.textContent).toBe("CRITICAL");
+  expect(rows[0]!.textContent).toContain("embark/api");
+  expect(rows[1]!.querySelector(".chip")!.textContent).toBe("REVIEW");
+  // clicking a row opens the pipeline
+  (rows[0] as HTMLButtonElement).click();
+  expect(currentPath.value).toBe("/pipeline");
+});
+
+test("hero CRIT: a critical attention item makes the banner critical (never 'nominal')", () => {
+  loadFixture();
+  // even with zero escalations, a critical finding must dominate the hero
+  counts.value = { ...counts.value, escalated: 0 };
+  snapshot.value = {
+    ...snapshot.value,
+    attention: [
+      { kind: "failed-open", severity: "critical", unit: "prontuario/api", specialist: "Ana", journey: "j1", detail: "QA failed and the unit was not re-dispatched" },
+      { kind: "escalated-open", severity: "warning", unit: "embark", specialist: "Léo", journey: "j1", detail: "escalated — waiting on the PE" },
+    ],
+  };
+  const { container } = render(<OverviewView />);
+  const hero = container.querySelector(".hero")!;
+  expect(hero.classList.contains("crit")).toBe(true);
+  expect(hero.classList.contains("ok")).toBe(false);
+  expect(hero.querySelector("h2")!.textContent).toBe("2 need your attention");
+  expect(hero.querySelector("p")!.textContent).toContain("prontuario/api");
+  expect(hero.querySelector(".cta button")!.textContent).toBe("Review now →");
+});
+
 test("hero warn: counts.escalated>0 with a matching escalated worker", () => {
   loadFixture();
   const { container } = render(<OverviewView />);
@@ -86,16 +135,16 @@ test("KpiRow: exactly 6 tiles in order hired/active/delivered/escalated/journeys
   expect(nums).toEqual(["4", "1", "1", "1", "3", "2"]);
 });
 
-test("MiniPipeline: 4 stages count dispatches by status", () => {
+test("MiniPipeline: 5 stages count dispatches by status", () => {
   loadFixture();
   const { container } = render(<OverviewView />);
   const cells = [...container.querySelectorAll(".card.pad")[0]!.querySelectorAll(".grid > div")];
-  expect(cells.length).toBe(4);
+  expect(cells.length).toBe(5);
   const labels = cells.map((c) => c.querySelector(".k")!.textContent);
-  expect(labels).toEqual(["Dispatched", "Delivered", "Escalated", "Merged"]);
-  // fixture dispatches: dispatched=1 (Ana), delivered=1 (Bruno), escalated=1 (Carla), merged=1 (Bruno)
+  expect(labels).toEqual(["Dispatched", "Delivered", "Verified", "Escalated", "Merged"]);
+  // fixture dispatches: dispatched=1 (Ana), delivered=1 (Bruno), verified=0, escalated=1 (Carla), merged=1 (Bruno)
   const nums = cells.map((c) => c.querySelector(".num")!.textContent);
-  expect(nums).toEqual(["1", "1", "1", "1"]);
+  expect(nums).toEqual(["1", "1", "0", "1", "1"]);
 });
 
 test("live activity feed limits to 5 events", () => {

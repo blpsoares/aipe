@@ -24,24 +24,24 @@ test("route contract: path/order/icon preserved", () => {
   expect(route.nav).toEqual({ label: "nav_pipeline", icon: "▦", order: 2 });
 });
 
-test("4 lanes in order dispatched/delivered/escalated/merged with correct counts", () => {
+test("5 lanes in order dispatched/delivered/verified/escalated/merged with correct counts", () => {
   loadFixture();
   const { container } = render(<PipelineView />);
   const lanes = [...container.querySelectorAll(".board .lane")];
-  expect(lanes.length).toBe(4);
+  expect(lanes.length).toBe(5);
   const labels = lanes.map((l) => l.querySelector("h4")!.textContent!.replace(/\d+$/, ""));
-  expect(labels).toEqual(["Dispatched", "Delivered", "Escalated", "Merged"]);
-  // fixture dispatches: dispatched=1 (Ana), delivered=1 (Bruno), escalated=1 (Carla), merged=1 (Bruno)
+  expect(labels).toEqual(["Dispatched", "Delivered", "Verified", "Escalated", "Merged"]);
+  // fixture dispatches: dispatched=1 (Ana), delivered=1 (Bruno), verified=0, escalated=1 (Carla), merged=1 (Bruno)
   const counts_ = lanes.map((l) => l.querySelector("h4 .c")!.textContent);
-  expect(counts_).toEqual(["1", "1", "1", "1"]);
+  expect(counts_).toEqual(["1", "1", "0", "1", "1"]);
 });
 
-test("lane dot colors: dispatched=sky, escalated=amber, delivered/merged=accent", () => {
+test("lane dot colors: dispatched=sky, escalated=amber, delivered/verified/merged=accent", () => {
   loadFixture();
   const { container } = render(<PipelineView />);
   const lanes = [...container.querySelectorAll(".board .lane")];
   const dots = lanes.map((l) => (l.querySelector("h4 .d") as HTMLElement).style.background);
-  expect(dots).toEqual(["var(--sky)", "var(--accent)", "var(--amber)", "var(--accent)"]);
+  expect(dots).toEqual(["var(--sky)", "var(--accent)", "var(--accent)", "var(--amber)", "var(--accent)"]);
 });
 
 test("empty lane shows a placeholder dash", () => {

@@ -139,7 +139,7 @@ Escopo fora do serve (skills, session-hook, dashboard). Sugiro branch `feat/rule
   - (b) Adicionar estado **"in testing"** no Pipeline/snapshot (QA em andamento).
   - (c) Pipeline refletir **merged:** fiar o `journey reconcile` (já existe, `src/journey/reconcile.ts`) + surfar `WorkerStatus "merged"` em `src/dashboard/snapshot.ts` (hoje é ledger-driven, não sincroniza GitHub, não há status "merged"). **Nota:** o client já tem o STAGE "merged" no Pipeline; o gap é o **server/snapshot** produzir esse status.
 
-- **#12 — Adotar a metodologia de autoria de regras do superpowers como CORE do AIPe, em TODAS as skills** (`skills/*/SKILL.md`).
+- **#12 — Adotar a metodologia de autoria de regras do superpowers como CORE do AIPe, em TODAS as skills** (`skills/*/SKILL.md`). **STATUS (branch `claude/item12-rule-keywords`): partes 1 e 2 FEITAS.** Criada a meta-skill fonte-da-verdade `skills/authoring-rules/SKILL.md` (o arsenal inteiro — gates, tabela de racionalização `Pensamento→Regra`, fluxogramas, modais-com-porquê, checklists-todo, precedência/severidade, self-review — + a tabela "quais devices cada skill DEVE ter" calibrada por superfície de risco + os invariantes AIPe que toda skill herda). As 7 skills foram reforçadas ao mesmo piso (Announce, When-to-use/NOT, modais-com-porquê, self-review) com devices de hard-boundary onde cabe (tabelas de não-exceção em `operate`/`context-brain`/`hire-specialists`/`toolbox`, flowchart em `operate`). **Parte 3 FEITA via #13:** `aipe rehydrate` agora propaga essas versões reforçadas às skills instaladas nos workspaces (a meta-skill segue como guia de autoria do repo, não entra no `FLOW_SKILLS` de runtime de propósito).
   - **A ideia NÃO é só `MUST`/`THEN`.** É extrair o **arsenal inteiro** que o superpowers usa para fazer o LLM seguir instrução **à risca** e transformar isso numa **convenção/meta-skill do AIPe** — porque essa "DNA de regras" define **qualidade de entrega e aderência do LLM à instrução** (é core do produto, não cosmético). Hoje o rigor está desigual entre as skills (ex.: `operate` ~17 MUST vs `context-brain`/`aipe-add-repo` 1); o objetivo é **todas** as skills escritas com o mesmo padrão rígido.
   - **O arsenal a extrair do superpowers e padronizar (não apenas os keywords — o método inteiro):**
     - **Gates rígidos** que travam a ação até a condição ser satisfeita: `<EXTREMELY-IMPORTANT>`, `<HARD-GATE>`, `<SUBAGENT-STOP>` e similares.
@@ -156,7 +156,7 @@ Escopo fora do serve (skills, session-hook, dashboard). Sugiro branch `feat/rule
     3. **Validar** (`bun test` das skills/session-hook onde houver; ao mexer em `operate`/awareness, rodar os testes de `src/session-hook`), e garantir que o **#13 (sync de skills instaladas)** propague essas versões reforçadas para os workspaces.
   - **Precedência-envelope:** o AIPe governa roteamento; process-skills (TDD/debugging/brainstorming) rodam no dev. Ao reforçar `operate`/`awareness` você mexe no cérebro do framework — cuidado e teste `src/session-hook`.
 
-- **#13 — Mecanismo de sync de skills instaladas.** Skills instaladas num workspace ficam stale vs o repo (ex.: `operate` instalado tinha 5 MUST vs 20 no repo). Implementar um comando/fluxo (ex.: dentro de `aipe update`/rehydrate — ver `src/update/`, `src/rehydrate/`) que **re-sincroniza as skills instaladas** a partir do repo, pro coordenador nunca rodar com skill velha.
+- **#13 — Mecanismo de sync de skills instaladas. FEITO (branch `claude/item12-rule-keywords`).** As flow-skills do coordenador instaladas no workspace agora re-sincronizam a partir das versões embutidas no binário via `aipe rehydrate`: novo `src/rehydrate/flow-skills.ts` (`rehydrateFlowSkills`) faz diff+refresh por skill (`installed`/`updated`/`unchanged`, idempotente), plugado no `rehydrate/cli.ts` (imprime `… flow-skill <name>` + `flow-skills-synced=<n>` no STATE). O caminho de instalação virou fonte única via novo método `flowSkillTarget(name)` no `HarnessAdapter` (claude-code → `.claude/skills/<name>/SKILL.md`; generic → `.aipe/flows/<name>.md`), e `installIntegration` dos dois adapters passou a usá-lo. `aipe upgrade` agora sugere rodar `aipe rehydrate` em cada workspace após o self-update. Testes: `src/rehydrate/__tests__/flow-skills.test.ts`. Assim o coordenador nunca roda com skill velha depois de um upgrade — e a parte 3 do **#12** (propagar as versões reforçadas) fica resolvida.
 
 - **#10-sdd-lite — REMOVER (decisão já tomada nesta sessão).** `sdd-lite` ainda existe em `src/toolbox/registry.ts` como piso default. Agora que SDD-completo é a norma, **remover** do registry/toolbox/docs e ajustar os testes que assertam `sdd-lite`. (O registry tem 3 kits: `sdd-lite`, `spec-kit`, `pdd` — remover só o `sdd-lite`.)
 
@@ -188,6 +188,47 @@ Validar contra os testes de `src/make-workspace` (e o design em `docs/superpower
 >
 > **Regra de ouro dos pilares:** nenhuma etapa pode ser marcada "done" com base em
 > **auto-relato**. Todo "done" exige **evidência verificável por um terceiro**.
+
+> **STATUS (branch `claude/item12-rule-keywords`): Pilares 1, 2, 3 + surfacing de
+> atenção FEITOS de forma determinística.**
+> - **Pilar 1 (evidência):** o ledger recusa fisicamente `delivered`/`verified` sem
+>   evidência (`recordDispatchGuarded` em `src/journey/ledger.ts`); skill
+>   `skills/verify-before-done/SKILL.md` instalada em todo repo pelo `aipe skill
+>   preset` (RELIABILITY_FLOOR). `operate` manda anexar evidência no record.
+> - **Pilar 2 (revisão adversarial):** `skills/review-delivery/SKILL.md` ("verifique
+>   contra o diff, não o relato"; severidade Crítico/Importante/Menor); o QA gate do
+>   `operate` roda ela e registra `verified` com evidência própria; o par dev+QA de
+>   `hire-specialists` garante revisor **independente** do autor.
+> - **Pilar 3 (ledger durável + sem re-execução):** unidade `merged` é imutável e
+>   reabrir `delivered`/`verified` exige `--reason` (guard na CLI); `operate` tem o
+>   hard gate "read the ledger first" + tabela anti-racionalização; `journey show`
+>   marca `[MERGED]`/`[VERIFIED]`/`!NO-EVIDENCE`.
+> - **Surfacing (latência de correção):** `snapshot.attention` computa qa-failed
+>   (critical), escalated e delivered-sem-evidência; o console mostra a faixa
+>   "Needs your attention" no overview. Estados `verified`/`failed` agora existem no
+>   `DispatchStatus` (eram usados e caíam no default).
+> - **Cross-repo landing (agora determinístico):** `aipe dispatch validate --journey`
+>   recusa `dependency-not-landed <consumer> needs <producer>` (grafo + ledger);
+>   `checkDependenciesLanded` em `src/dispatch/law.ts`. O `operate` passa `--journey`.
+> - **Pilar 4 (TDD rígido) FEITO:** `skills/tdd/SKILL.md` (RED→GREEN) no
+>   RELIABILITY_FLOOR (instalada + sincronizada por repo); `verify-before-done` exige
+>   o trace RED→GREEN como prova preferida.
+> - **Pilar 5 FEITO:** tabela-mestra de red-flags dos modos de falha do AIPe na
+>   meta-skill `authoring-rules` (fonte das tabelas inline).
+> - **Sync do floor (E2):** `aipe rehydrate` refresca verify-before-done/review-
+>   delivery/tdd do binário (fecha o staleness do #13 para elas).
+> - **`aipe journey verify` (lint de confiabilidade) FEITO:** audita o ledger inteiro
+>   (`src/journey/verify.ts`) — no-evidence, failed-open, delivered-not-verified,
+>   merged-skipped-qa, dependency-not-landed, escalated-open; `clean=false` +
+>   `critical>0` bloqueia o report ao PE. Amarrado no close-out + self-review do
+>   `operate`.
+> - **UI boost do console FEITO:** stage-guide legível ("O que cada etapa significa"),
+>   ícones SVG por status, chips com tooltip/aria, `verified`/`failed` estilizados
+>   (antes sem cor). `src/serve/app/{components/StatusIcon,StatusLegend,Chip},
+>   runtime/statusMeta`.
+> - **Falta:** brief-completeness/clarification segue como regra rígida no `operate`
+>   (não gate de CLI); o **#11** (PR-após-QA / in-testing / merged surfando GitHub no
+>   pipeline via `journey reconcile` + snapshot) segue pendente.
 
 ### Pilar 1 — Verificação-antes-de-concluir (gate universal de evidência)
 - **Princípio (superpowers `verification-before-completion`):** "evidência antes de afirmar. Rode o comando, mostre a saída, ANTES de dizer que está pronto." Nunca "acho que funciona".

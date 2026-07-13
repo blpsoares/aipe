@@ -13,6 +13,7 @@ export async function runInstall(): Promise<number> {
   const code = await proc.exited;
   if (code === 0) {
     console.log("Updated — the new version takes effect on your next `aipe` command.");
+    console.log("In each existing workspace, run `aipe rehydrate` to sync its coordinator skills to this version.");
   } else {
     console.log(`Update failed (exit ${code}). Run it manually: ${INSTALL_CMD}`);
   }

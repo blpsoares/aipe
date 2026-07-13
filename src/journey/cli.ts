@@ -4,11 +4,13 @@
 // (repo, specialist, branch, worktree, PR, status); it is NOT the hiring brief.
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { readLedger, recordDispatch, setJourneySpec, startJourney } from "./ledger";
+import { readGraph } from "../relationship/read-graph";
+import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from "./ledger";
 import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { DISPATCH_STATUSES } from "./types";
-import type { DispatchStatus } from "./types";
+import type { DispatchEvidence, DispatchStatus } from "./types";
+import { verifyJourney } from "./verify";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -16,6 +18,18 @@ function getFlag(args: string[], name: string): string | undefined {
   const value = args[i + 1];
   if (value === undefined || value.startsWith("--")) return undefined;
   return value;
+}
+
+// Every occurrence of a repeatable flag (e.g. --evidence-cmd "a" --evidence-cmd "b").
+function getAllFlags(args: string[], name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === name) {
+      const v = args[i + 1];
+      if (v !== undefined && !v.startsWith("--")) out.push(v);
+    }
+  }
+  return out;
 }
 
 // The one place a timestamp is read; overridable with --id for reproducibility.
@@ -49,21 +63,50 @@ async function recordCommand(args: string[]): Promise<number> {
   const pkg = getFlag(args, "--package");
   const tier = getFlag(args, "--tier");
   const model = getFlag(args, "--model");
+  const reason = getFlag(args, "--reason");
   const statusFlag = getFlag(args, "--status");
   const status: DispatchStatus = DISPATCH_STATUSES.includes(statusFlag as DispatchStatus)
     ? (statusFlag as DispatchStatus)
     : "dispatched";
-  await recordDispatch(workspace, id, {
-    repo,
-    ...(pkg ? { package: pkg } : {}),
-    specialist,
-    branch,
-    worktree,
-    ...(pr ? { pr } : {}),
-    ...(tier ? { tier } : {}),
-    ...(model ? { model } : {}),
-    status,
-  });
+
+  // Evidence (verify-before-done): --evidence-summary + one-or-more --evidence-cmd,
+  // optional --evidence-by (defaults from the status) and --evidence-artifact.
+  const evSummary = getFlag(args, "--evidence-summary");
+  const evCmds = getAllFlags(args, "--evidence-cmd");
+  const evArtifact = getFlag(args, "--evidence-artifact");
+  const evByFlag = getFlag(args, "--evidence-by");
+  const evidence: DispatchEvidence | undefined =
+    evSummary || evCmds.length > 0
+      ? {
+          by: evByFlag === "qa" || evByFlag === "dev" ? evByFlag : status === "verified" ? "qa" : "dev",
+          commands: evCmds,
+          summary: evSummary ?? "",
+          ...(evArtifact ? { artifact: evArtifact } : {}),
+        }
+      : undefined;
+
+  const result = await recordDispatchGuarded(
+    workspace,
+    id,
+    {
+      repo,
+      ...(pkg ? { package: pkg } : {}),
+      specialist,
+      branch,
+      worktree,
+      ...(pr ? { pr } : {}),
+      ...(tier ? { tier } : {}),
+      ...(model ? { model } : {}),
+      ...(evidence ? { evidence } : {}),
+      status,
+    },
+    { ...(reason ? { reason } : {}) },
+  );
+
+  if (!result.ok) {
+    console.log(`REJECT ${result.code} ${repo}${pkg ? `/${pkg}` : ""} — ${result.message}`);
+    return 1;
+  }
   console.log(`OK ${repo}${pkg ? `/${pkg}` : ""} ${specialist} ${status}`);
   return 0;
 }
@@ -80,10 +123,17 @@ async function showCommand(args: string[]): Promise<number> {
     console.log(`ERROR journey: no ledger for ${id}`);
     return 1;
   }
+  // "Read the ledger first" (Pilar 3): each unit is tagged so the coordinator
+  // sees at a glance what is finished (never re-dispatch) vs. still open.
   for (const d of ledger.dispatches) {
-    console.log(`DISPATCH ${d.repo}${d.package ? `/${d.package}` : ""} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}`);
+    const unit = `${d.repo}${d.package ? `/${d.package}` : ""}`;
+    const done = d.status === "merged" ? "[MERGED — immutable]" : d.status === "verified" ? "[VERIFIED — cleared]" : "";
+    const ev = d.evidence ? " +evidence" : d.status === "delivered" || d.status === "verified" ? " !NO-EVIDENCE" : "";
+    console.log(`DISPATCH ${unit} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}${ev}${done ? " " + done : ""}`);
   }
-  console.log(`STATE journey=${id} dispatches=${ledger.dispatches.length}`);
+  const open = ledger.dispatches.filter((d) => d.status === "dispatched" || d.status === "failed" || d.status === "escalated").length;
+  const done = ledger.dispatches.filter((d) => d.status === "merged" || d.status === "verified").length;
+  console.log(`STATE journey=${id} dispatches=${ledger.dispatches.length} open=${open} done=${done}`);
   return 0;
 }
 
@@ -178,6 +228,36 @@ async function reconcileCommand(args: string[]): Promise<number> {
   return 0;
 }
 
+// `aipe journey verify --journey <id>` — a deterministic reliability lint of the
+// ledger, run by the coordinator before reporting to the PE. It audits the
+// durable record for broken invariants (a done-claim without proof, a QA
+// rejection left open, a delivery that never cleared its gate, a merge that
+// skipped QA, a consumer shipped against a producer that never landed, an
+// escalation still open) and fails (exit 1) on any critical finding.
+async function verifyCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const id = getFlag(args, "--journey");
+  if (!id) {
+    console.log("ERROR args: --journey <id> is required");
+    return 1;
+  }
+  const ledger = await readLedger(workspace, id);
+  if (!ledger) {
+    console.log(`ERROR journey: no ledger for ${id}`);
+    return 1;
+  }
+  const graph = await readGraph(workspace);
+  const contextUnits = new Set(graph.nodes.map((n) => n.fqid));
+  const edges = graph.edges.map((e) => ({ from: e.from, to: e.to, type: e.type }));
+  const findings = verifyJourney(ledger, edges, contextUnits);
+  for (const f of findings) {
+    console.log(`FINDING ${f.severity.toUpperCase()} ${f.code} ${f.unit} — ${f.detail}`);
+  }
+  const critical = findings.filter((f) => f.severity === "critical").length;
+  console.log(`STATE journey=${id} clean=${critical === 0} findings=${findings.length} critical=${critical}`);
+  return critical > 0 ? 1 : 0;
+}
+
 export async function run(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -191,9 +271,11 @@ export async function run(args: string[]): Promise<number> {
       return specCommand(rest);
     case "reconcile":
       return reconcileCommand(rest);
+    case "verify":
+      return verifyCommand(rest);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
-      console.log("Usage: aipe journey <start|record|show|spec|reconcile> [options]");
+      console.log("Usage: aipe journey <start|record|show|spec|reconcile|verify> [options]");
       return 1;
   }
 }

@@ -9,9 +9,10 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { inferKind } from "../context-brain/kind";
-import { resolvePackages } from "../context-brain/packages";
+import { packageFqid, resolvePackages } from "../context-brain/packages";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { listJourneys } from "../journey/ledger";
+import { verifyJourney } from "../journey/verify";
 import { readBrain } from "../make-workspace/read";
 import { readGraph } from "../relationship/read-graph";
 import { readToolbox } from "../toolbox/catalog";
@@ -88,6 +89,48 @@ export interface PersonaCV {
 }
 export type JourneyView = JourneyLedger & { updatedAt?: string };
 
+// Something the PE should look at, computed deterministically from the ledgers so
+// the console can SURFACE it instead of leaving it buried in a green dashboard
+// (Pilar 4). It is the SAME engine as `aipe journey verify` (one definition of a
+// reliability problem), filtered to what needs the PE NOW — every critical
+// finding plus open escalations — so the console never diverges from the CLI lint
+// and never nags about transient in-flight states (a just-delivered unit awaiting
+// QA). `kind` is a verify finding code. Ranked so the loudest thing shows first.
+export type AttentionKind = string;
+export interface AttentionItem {
+  kind: AttentionKind;
+  severity: "critical" | "warning";
+  unit: string; // repo or repo/package
+  specialist: string;
+  journey: string;
+  detail: string;
+}
+
+function computeAttention(
+  journeys: JourneyLedger[],
+  edges: { from: string; to: string; type: string }[],
+  contextUnits: Set<string>,
+): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  for (const j of journeys) {
+    for (const f of verifyJourney(j, edges, contextUnits)) {
+      // surface only what is actionable for the PE right now
+      if (f.severity !== "critical" && f.code !== "escalated-open") continue;
+      const owner = j.dispatches.find((d) => packageFqid(d.repo, d.package) === f.unit);
+      items.push({
+        kind: f.code,
+        severity: f.severity,
+        unit: f.unit,
+        specialist: owner?.specialist ?? "—",
+        journey: j.id,
+        detail: f.detail,
+      });
+    }
+  }
+  const rank: Record<AttentionItem["severity"], number> = { critical: 0, warning: 1 };
+  return items.sort((a, b) => rank[a.severity] - rank[b.severity]);
+}
+
 export interface Snapshot {
   ok: boolean;
   error?: string;
@@ -106,6 +149,7 @@ export interface Snapshot {
   worktreeRows: WorktreeView[];
   packages: ModuleView[];
   personaCVs: PersonaCV[];
+  attention: AttentionItem[];
   generatedAt: string;
 }
 
@@ -121,10 +165,10 @@ function deriveStatus(
     for (const d of j.dispatches) {
       if (d.repo !== repo || d.specialist.toLowerCase() !== name.toLowerCase()) continue;
       const status: WorkerStatus =
-        d.status === "dispatched" ? "active"
+        d.status === "dispatched" || d.status === "failed" ? "active" // failed → dev is back on it
         : d.status === "escalated" ? "escalated"
         : d.status === "delivered" ? "delivered"
-        : "available"; // merged/removed → free again
+        : "available"; // verified/merged/removed → free again
       if (rank[status]! >= best.rank) best = { rank: rank[status]!, status, journey: j.id, pr: d.pr };
     }
   }
@@ -159,6 +203,7 @@ function emptySnapshot(generatedAt: string): Snapshot {
     worktreeRows: [],
     packages: [],
     personaCVs: [],
+    attention: [],
     generatedAt,
   };
 }
@@ -310,6 +355,11 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     worktreeRows: worktrees.map((w) => ({ repo: w.repo, slug: w.slug, journey: w.journey, branch: w.branch, path: w.path })),
     packages: moduleViews,
     personaCVs,
+    attention: computeAttention(
+      journeys,
+      graph.edges.map((e) => ({ from: e.from, to: e.to, type: e.type })),
+      new Set(graph.nodes.map((n) => n.fqid)),
+    ),
     generatedAt,
   };
 }

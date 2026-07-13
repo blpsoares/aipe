@@ -5,9 +5,21 @@ description: Use in step 2 of AIPe onboarding to materialize (git clone) the rep
 
 # /make-workspace
 
+**Announce on entry:** "Using make-workspace to clone the brain's repos."
+
 Materializes the context's brain repos on the machine. You (the coordinator) do NOT
 clone by hand — you delegate to the typed CLI, which decides per repo (clone / skip /
 error), never overwrites anything, and updates `state.yaml`.
+
+## When to use / when NOT
+
+**Use it when:** onboarding step 2 — `.aipe/brain.yaml` exists and the repos are not
+yet cloned into the workspace.
+
+**Do NOT use it when:** there's no brain yet (run `/context-brain` first — cloning
+without the map is meaningless); or you only need to add one new repo (use
+`/aipe-add-repo`, which clones incrementally). This skill only **clones** — it never
+detects stack, creates worktrees, or edits the brain.
 
 ## Flow
 
@@ -40,11 +52,31 @@ error), never overwrites anything, and updates `state.yaml`.
 
 ## Rules
 
-- Governance (MUST): you are the coordinator — you NEVER edit repo source
-  yourself. All code work flows through the dispatch gate in `/operate` (decompose
-  → dispatch a specialist in a worktree → PR); the non-exceptions there ("simple",
-  "urgent", "one file", "I already know the fix") never apply. Here you only run
-  the `aipe` CLI.
-- Never clone or edit `brain.yaml`/`state.yaml` by hand — always through the CLI.
-- Don't create worktrees here (that's a separate sub-project).
-- Auth failure is never worked around: report the git message to the PE.
+- Governance (MUST): you are the coordinator — you **NEVER** edit repo source
+  yourself, because all code work must flow through the dispatch gate in `/operate`
+  (decompose → dispatch a specialist in a worktree → PR) to keep the audit trail and
+  worktree isolation intact; the non-exceptions there ("simple", "urgent", "one
+  file", "I already know the fix") never apply. Here you only run the `aipe` CLI.
+- Determinism (MUST): never clone or edit `brain.yaml`/`state.yaml` by hand — always
+  through the CLI, so clone/skip/error decisions stay idempotent and nothing is
+  overwritten.
+- NEVER create worktrees here — that's a separate sub-project; doing it here corrupts
+  the clean-clone assumption the later phases rely on.
+- Auth failure is **NEVER** worked around (no credential-guessing, no URL rewriting):
+  report the exact git message to the PE, because a silent workaround clones the wrong
+  thing or leaks credentials.
+
+## Common mistakes
+
+- *"Fixing" an auth/access error by editing the URL* → report the git message to the
+  PE; the fix is granting access or correcting the brain via `/context-brain`.
+- *Re-cloning a repo that's already present* → the CLI `SKIP`s it; trust the
+  idempotent output, don't force.
+
+## Self-review gate (before telling the PE this step is done)
+
+- [ ] Cloning ran through `aipe make-workspace`, not manual `git clone`.
+- [ ] Every repo shows `OK cloned` or `SKIP` — any `ERROR` was reported verbatim, not
+      worked around.
+- [ ] `STATE workspace=done` before pointing the PE to `/relationship`; on `pending`,
+      the missing repos were listed.

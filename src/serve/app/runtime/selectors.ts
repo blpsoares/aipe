@@ -57,8 +57,8 @@ export interface CvWork {
 export function cvWork(name: string | undefined | null): CvWork {
   const ds = dispatchesOf(name);
   return {
-    delivered: ds.filter((d) => d.status === "delivered" || d.status === "merged"),
-    inprog: ds.filter((d) => d.status === "dispatched" || d.status === "escalated"),
+    delivered: ds.filter((d) => d.status === "delivered" || d.status === "verified" || d.status === "merged"),
+    inprog: ds.filter((d) => d.status === "dispatched" || d.status === "escalated" || d.status === "failed"),
   };
 }
 

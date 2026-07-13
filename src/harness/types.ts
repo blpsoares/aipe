@@ -43,6 +43,13 @@ export interface HarnessAdapter {
   personaTarget(slug: string): { relDir: string; filename: string };
   wrapPersona(body: string, meta: PersonaMeta): string;
 
+  // D — where a coordinator flow-skill (operate, context-brain, …) lives in the
+  //     workspace for THIS harness. `installIntegration` writes it there; `aipe
+  //     rehydrate` re-reads/refreshes it from the binary's embedded FLOW_SKILLS,
+  //     so an installed workspace never runs a stale skill after an upgrade.
+  //     Relative to the workspace root.
+  flowSkillTarget(name: string): { relDir: string; filename: string };
+
   // E — where MCP servers are registered for this harness.
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string;
 
