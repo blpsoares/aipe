@@ -40,11 +40,14 @@ test("subtitle interpolates hired/active/idle from counts", () => {
   expect(sub).toBe(`${counts.value.hired} hired · ${counts.value.active} active · ${counts.value.idle} available`);
 });
 
-test("All and +Dispatch buttons render without handlers wired (parity: non-functional)", () => {
+// #4 — the dead "All"/"+Dispatch" buttons were replaced by a real group-by
+// control (the serve console is read-only by design; dispatching is CLI-only).
+test("header has a group-by control, not the old All/+Dispatch buttons", () => {
   loadFixture();
   const { container } = render(<TeamView />);
-  const btns = [...container.querySelectorAll(".row button")];
-  expect(btns.map((b) => b.textContent)).toEqual(["All", "+ Dispatch"]);
+  const btns = [...container.querySelectorAll(".row button")].map((b) => b.textContent);
+  expect(btns).toEqual(["Project", "Activity", "Specialty"]);
+  expect(btns).not.toContain("+ Dispatch");
 });
 
 test("cvname/cvtitle: falls back to role when persona CV has no title", () => {

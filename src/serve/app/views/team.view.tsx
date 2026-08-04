@@ -1,4 +1,5 @@
-import { t } from "../runtime/i18n";
+import { useState } from "preact/hooks";
+import { t, stt } from "../runtime/i18n";
 import { snapshot, counts, openWorkerName, type Worker } from "../runtime/store";
 import { cvOf, cvWork } from "../runtime/selectors";
 import { Avatar } from "../components/Avatar";
@@ -41,10 +42,51 @@ function WorkerCard({ w }: { w: Worker }) {
   );
 }
 
-// app.html:766-772 (workers view).
+// #4 — group workers by project / activity (status) / specialty (role).
+type GroupBy = "project" | "activity" | "specialty";
+const GROUP_OPTIONS: GroupBy[] = ["project", "activity", "specialty"];
+
+function groupKey(w: Worker, by: GroupBy): string {
+  if (by === "project") return w.package ? `${w.repo}/${w.package}` : w.repo || "—";
+  if (by === "activity") return w.status || "—";
+  return w.role || "—"; // specialty
+}
+
+// Section label: raw for project (repo/pkg) and specialty (role); translated
+// status label for activity.
+function groupLabel(key: string, by: GroupBy): string {
+  return by === "activity" ? stt(key) : key;
+}
+
+// Stable, intentional section order per dimension.
+const STATUS_RANK: Record<string, number> = { escalated: 0, active: 1, delivered: 2, available: 3 };
+const ROLE_RANK: Record<string, number> = { "dev-fullstack": 0, dev: 0, qa: 1 };
+function sortGroups(entries: [string, Worker[]][], by: GroupBy): [string, Worker[]][] {
+  const rank = by === "activity" ? STATUS_RANK : by === "specialty" ? ROLE_RANK : null;
+  return entries.slice().sort((a, b) => {
+    if (rank) return (rank[a[0]] ?? 99) - (rank[b[0]] ?? 99) || a[0].localeCompare(b[0]);
+    return a[0].localeCompare(b[0]); // project: alphabetical
+  });
+}
+
+function groupWorkers(workers: Worker[], by: GroupBy): [string, Worker[]][] {
+  const g = new Map<string, Worker[]>();
+  for (const w of workers) {
+    const k = groupKey(w, by);
+    if (!g.has(k)) g.set(k, []);
+    g.get(k)!.push(w);
+  }
+  return sortGroups([...g.entries()], by);
+}
+
+// app.html:766-772 (workers view) — the dead "All"/"+Dispatch" buttons are
+// removed (the serve console is a read-only observation surface by design;
+// dispatching happens in the CLI/coordinator flow, not the web).
 function TeamView() {
   const c = counts.value;
+  const [by, setBy] = useState<GroupBy>("project");
   const sub = t("work_sub").replace("{h}", String(c.hired)).replace("{a}", String(c.active)).replace("{i}", String(c.idle));
+  const groups = groupWorkers(snapshot.value.workers, by);
   return (
     <div class="view-in grid" style={{ gap: "16px" }}>
       <div class="between">
@@ -52,16 +94,30 @@ function TeamView() {
           <h1 class="view-h">{t("nav_workers")}</h1>
           <div class="sub">{sub}</div>
         </div>
-        <div class="row">
-          <button class="btn btn-ghost">{t("all")}</button>
-          <button class="btn btn-primary">{t("dispatch")}</button>
+        <div class="row" style={{ alignItems: "center", gap: "8px" }}>
+          <span class="sub">{t("team_group")}</span>
+          <div class="langseg team-groupby">
+            {GROUP_OPTIONS.map((g) => (
+              <button key={g} class={by === g ? "on" : ""} onClick={() => setBy(g)}>
+                {t(`team_by_${g}`)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
-      <div class="cvgrid">
-        {snapshot.value.workers.map((w) => (
-          <WorkerCard key={w.name} w={w} />
-        ))}
-      </div>
+      {groups.map(([key, ws]) => (
+        <div key={key} class="team-group grid" style={{ gap: "10px" }}>
+          <div class="between">
+            <span class="eyebrow">{groupLabel(key, by)}</span>
+            <span class="sub">{ws.length}</span>
+          </div>
+          <div class="cvgrid">
+            {ws.map((w) => (
+              <WorkerCard key={w.name} w={w} />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
