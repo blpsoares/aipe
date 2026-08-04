@@ -42,6 +42,17 @@ export function OrgTree() {
                 <span class="ot-rname">{r.name}</span>
                 <span class="ot-kind">{kindLbl}</span>
               </div>
+              {mono ? (
+                // #6 — list ALL packages of the monorepo (chips), so packages
+                // without a worker hired yet are still visible on mobile.
+                <div class="ot-pkgs" style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "2px 13px 6px" }}>
+                  {r.packages.map((p) => (
+                    <span key={p.name} class="tag">
+                      {p.name}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               <div class="ot-people">
                 {people.length ? (
                   people.map((w) => (

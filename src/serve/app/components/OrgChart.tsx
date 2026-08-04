@@ -20,6 +20,7 @@ const yR = 152;
 const yS0 = 262;
 const sH = 64;
 const pkgH = 28;
+const nospecH = 22; // #6 — height of the "no specialist" placeholder under an empty package
 const grpGap = 14;
 const colW = 212;
 const gap = 34;
@@ -30,7 +31,10 @@ interface Relation {
   type: string;
 }
 
-type Row = { type: "pkg"; label: string; y: number } | { type: "spec"; w: Worker; y: number };
+type Row =
+  | { type: "pkg"; label: string; y: number }
+  | { type: "spec"; w: Worker; y: number }
+  | { type: "nospec"; y: number };
 
 interface Col {
   r: string;
@@ -214,12 +218,24 @@ export function OrgChart() {
       if (!g.has(k)) g.set(k, []);
       g.get(k)!.push(w);
     });
+    // #6 — a monorepo must list ALL of its packages, even the ones with no
+    // worker hired yet (the monolith only ever grouped by the workers' own
+    // packages, so empty packages were invisible).
+    if (mono) {
+      for (const p of info.packages) {
+        if (!g.has(p.name)) g.set(p.name, []);
+      }
+    }
     const rows: Row[] = [];
     let y = yS0;
     for (const [pkg, ws] of g) {
       if (pkg) {
         rows.push({ type: "pkg", label: pkg, y });
         y += pkgH;
+      }
+      if (pkg && ws.length === 0) {
+        rows.push({ type: "nospec", y }); // #6 — package listed but no specialist yet
+        y += nospecH;
       }
       ws.forEach((w) => {
         rows.push({ type: "spec", w, y });
@@ -311,6 +327,10 @@ export function OrgChart() {
               {c.rows.map((row, i) =>
                 row.type === "pkg" ? (
                   <PkgCluster key={`pkg-${c.r}-${i}`} cx={c.cx} y={row.y} label={row.label} />
+                ) : row.type === "nospec" ? (
+                  <text key={`nospec-${c.r}-${i}`} x={c.cx} y={row.y + 12} text-anchor="middle" class="oedge-l">
+                    {t("nospec")}
+                  </text>
                 ) : (
                   <OrgNode
                     key={`spec-${c.r}-${i}`}
