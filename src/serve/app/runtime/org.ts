@@ -55,11 +55,25 @@ export function orgRepoVisible(workers: Worker[], name: string): boolean {
   return workers.some((w) => w.repo === name && orgWorkerMatch(w));
 }
 
-// app.html:920
+// #5 — intentional org ordering. The monolith rendered specialists in the raw
+// snapshot order (looked arbitrary). We order by role — dev-fullstack before QA —
+// with a stable name tiebreaker. Roles today are "dev-fullstack" | "qa"
+// (coordinator is filtered out of `workers` upstream); any unknown role sorts last.
+const ROLE_RANK: Record<string, number> = { "dev-fullstack": 0, qa: 1 };
+function roleRank(role: string | undefined): number {
+  return ROLE_RANK[role ?? ""] ?? 2;
+}
+
+export function orgSortByRole(ws: Worker[]): Worker[] {
+  return ws.slice().sort((a, b) => roleRank(a.role) - roleRank(b.role) || a.name.localeCompare(b.name));
+}
+
+// app.html:920 (+ #5 role ordering). Single point used by both OrgChart and
+// OrgTree, so the intentional order propagates to both surfaces.
 export function orgWorkersFor(workers: Worker[], name: string): Worker[] {
   const ws = workers.filter((w) => w.repo === name);
-  if (!orgNeedle() || orgHas(name)) return ws; // no filter, or repo name itself matches -> show all
-  return ws.filter(orgWorkerMatch);
+  const scoped = !orgNeedle() || orgHas(name) ? ws : ws.filter(orgWorkerMatch); // no filter / repo-name match -> show all
+  return orgSortByRole(scoped);
 }
 
 interface Size {
