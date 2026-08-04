@@ -19,6 +19,10 @@ export function EventRow({ event: e }: { event: ActivityEvent & { t?: string } }
   const ts = e.at ? reltime(e.at, t) : e.t || "";
   // the status description as a tooltip, so the feed is self-explanatory too
   const desc = t(statusMeta(e.status).descKey);
+  // #9 — WHERE line: repo[/pkg] + branch (+ worktree) + PR, shown for every
+  // status (not only "dispatched"), so the feed answers who / what / WHERE.
+  const fqid = e.repo ? (e.pkg ? `${e.repo}/${e.pkg}` : e.repo) : "";
+  const hasWhere = !!(fqid || e.branch || e.worktree || e.pr);
   return (
     <div class="ev" title={desc}>
       <div class="tl">
@@ -26,6 +30,18 @@ export function EventRow({ event: e }: { event: ActivityEvent & { t?: string } }
       </div>
       <div class="tx">
         <b>{e.w}</b> <span class="m">{e.m}</span>
+        {hasWhere ? (
+          <div class="ev-where">
+            {fqid ? <span class="tag">{fqid}</span> : null}
+            {e.branch ? <span class="ev-branch mono">⎇ {e.branch}</span> : null}
+            {e.worktree && e.worktree !== e.branch ? <span class="ev-wt mono">{e.worktree}</span> : null}
+            {e.pr ? (
+              <a class="link" href={String(e.pr)} target="_blank" rel="noreferrer" onClick={(ev) => ev.stopPropagation()}>
+                PR ↗
+              </a>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       <div class="ts">{ts}</div>
     </div>

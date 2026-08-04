@@ -209,6 +209,10 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .ev .tx b { font-weight: 650; }
 .ev .tx .m { color: var(--ink-2); font-size: 13px; }
 .ev .ts { color: var(--ink-3); font-size: 11.5px; font-family: var(--mono); white-space: nowrap; }
+/* #9 — activity WHERE line: repo/pkg + branch + worktree + PR */
+.ev-where { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 3px; }
+.ev-where .ev-branch, .ev-where .ev-wt { font-size: 11px; color: var(--ink-3); }
+.ev-where .ev-wt { opacity: .8; }
 .d-active { background: var(--sky); } .d-delivered, .d-merged { background: var(--accent); } .d-escalated { background: var(--amber); } .d-failed { background: var(--rose); } .d-idle { background: var(--slate); }
 
 /* Kanban */

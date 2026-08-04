@@ -13,6 +13,11 @@ export interface Dispatch {
   status: string;
   pr?: unknown;
   journey?: string;
+  // #9 — WHERE fields. They already travel in the raw snapshot payload
+  // (JourneyDispatch carries branch/worktree; the snapshot spreads the full
+  // dispatch) but were previously untyped and unused by the client.
+  branch?: string;
+  worktree?: string;
   [key: string]: unknown;
 }
 
@@ -56,6 +61,14 @@ export interface ActivityEvent {
   status: string;
   m: string;
   at: number;
+  // #9 — structured WHERE, so the feed shows who did what WHERE (repo/pkg,
+  // branch, worktree) + journey/PR, not just a flat "dispatched to X" string.
+  repo?: string | null;
+  pkg?: string | null;
+  branch?: string;
+  worktree?: string;
+  journey?: string;
+  pr?: unknown;
 }
 
 // Loose shape for the raw snapshot payload (GET /api/snapshot + SSE deltas).
@@ -173,6 +186,17 @@ export interface DiffActivityResult {
   changed: Dispatch[];
 }
 
+// #9 — the structured WHERE for an activity event, extracted from a dispatch.
+// worktree is shown as its last path segment (matching worktreeOf's display).
+function whereOf(d: Dispatch): Pick<ActivityEvent, "repo" | "pkg" | "branch" | "worktree" | "journey" | "pr"> {
+  const worktree = typeof d.worktree === "string" && d.worktree ? d.worktree.split("/").pop() || undefined : undefined;
+  return { repo: d.repo, pkg: d.package, branch: d.branch, worktree, journey: d.journey, pr: d.pr };
+}
+
+function activityEvent(d: Dispatch, at: number, t: Translator): ActivityEvent {
+  return { w: d.specialist, status: d.status, m: evMsg(d, t), at, ...whereOf(d) };
+}
+
 /**
  * Pure extraction of diffActivity (app.html:648-665).
  * - prevMap === null: first snapshot, populates `activity` from dispatches
@@ -195,7 +219,7 @@ export function diffActivity(
     const activity = curDispatches
       .slice()
       .reverse()
-      .map((d) => ({ w: d.specialist, status: d.status, m: evMsg(d, t), at: now }));
+      .map((d) => activityEvent(d, now, t));
     return { activity, changed: [] };
   }
 
@@ -204,7 +228,7 @@ export function diffActivity(
   cur.forEach((d, k) => {
     const p = prevMap.get(k);
     if (!p || p.status !== d.status || p.pr !== d.pr) {
-      activity.unshift({ w: d.specialist, status: d.status, m: evMsg(d, t), at: now });
+      activity.unshift(activityEvent(d, now, t));
       changed.push(d);
     }
   });
