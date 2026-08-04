@@ -68,13 +68,20 @@ export function MonLane({ id }: { id: string }) {
           <span class="ld" />
           {m.active ? t("mon_active") : t("mon_idle")}
         </span>
+        {/* #7a — when idle, show the last thing this agent did instead of nothing */}
+        {!m.active && m.lastActivity ? (
+          <span class="mon-last mono" title={m.lastActivity}>
+            {m.lastActivity}
+          </span>
+        ) : null}
       </div>
       <div class="mon-grid">
         <div class="mon-pane">
           <div class="eyebrow">{t("mon_stream")}</div>
           <div class="mon-stream" data-stream={id} ref={streamRef} onScroll={onStreamScroll}>
             {stream.length === 0 ? (
-              <div class="sub">—</div>
+              // #7a — show the last known activity instead of a bare "—"
+              <div class="sub">{m.lastActivity || "—"}</div>
             ) : (
               stream.map((e, i) => <StreamLine e={e} key={i} />)
             )}

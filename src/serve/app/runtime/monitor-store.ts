@@ -32,6 +32,17 @@ export interface MonAgentMeta {
   persona: string;
   agentType: string;
   active: boolean;
+  // #7a — last content activity, so an idle/quiet lane can show what the agent
+  // was last doing instead of a bare "—".
+  lastActivity?: string;
+}
+
+// #7a — a one-line summary of a content event, reused by the lane's stream/file
+// rendering shape.
+export function summarizeEvent(ev: MonStreamEvent): string {
+  if (ev.kind === "file") return `${ev.tool || "edit"} ${ev.file || ""}`.trim();
+  if (ev.kind === "tool") return ev.cmd ? `$ ${ev.cmd}` : `${ev.tool || ""}${ev.text ? ` · ${ev.text}` : ""}`.trim();
+  return (ev.text || "").trim();
 }
 
 export interface MonLaneState {
@@ -121,6 +132,8 @@ export function monPush(ev: MonStreamEvent): void {
       l.stream.push(ev);
       if (l.stream.length > MON_MAX) l.stream.shift();
     }
+    const summary = summarizeEvent(ev); // #7a
+    if (summary) m.lastActivity = summary;
   }
   monVersion.value++;
 }

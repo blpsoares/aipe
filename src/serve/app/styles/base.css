@@ -283,6 +283,9 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .mon-live .ld { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .mon-live.off { color: var(--ink-3); }
 .mon-live.off .ld { background: var(--line-2); }
+/* #7a — last-activity hint on an idle lane (wraps to its own line under the head) */
+.mon-lane-head { flex-wrap: wrap; }
+.mon-last { flex-basis: 100%; font-size: 11px; color: var(--ink-3); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mon-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; align-items: start; padding: 14px 15px; }
 .mon-pane { display: flex; flex-direction: column; min-width: 0; }
 .mon-pane > .eyebrow { margin-bottom: 10px; }
