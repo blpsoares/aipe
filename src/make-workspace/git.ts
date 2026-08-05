@@ -11,6 +11,8 @@ async function run(cmd: string[], cwd?: string): Promise<{ code: number; stdout:
   return { code, stdout: stdout.trim(), stderr: stderr.trim() };
 }
 
+export const realRun = run;
+
 export const realInspect: Inspector = async (absPath: string): Promise<RepoInspection> => {
   try {
     await stat(absPath);

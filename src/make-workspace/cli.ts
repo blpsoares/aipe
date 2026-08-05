@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { makeWorkspace } from "./run";
-import { realClone, realInspect } from "./git";
+import { realClone, realInspect, realRun } from "./git";
+import { publishWorkspace, realHasOrigin } from "./publish";
+import { readBrain } from "./read";
 import type { RepoResult, WorkspacePhase } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -36,6 +38,28 @@ export async function run(args: string[]): Promise<number> {
   for (const line of renderReport(result.results, result.phase)) {
     console.log(line);
   }
+
+  if (args.includes("--publish")) {
+    const brainResult = await readBrain(workspace);
+    if (!brainResult.ok) {
+      console.log(`ERROR brain: ${brainResult.error}`);
+      return 1;
+    }
+    const publishResult = await publishWorkspace(
+      workspace,
+      { name: brainResult.brain.context.name },
+      { run: realRun, hasOrigin: realHasOrigin },
+    );
+    if (publishResult.status === "skipped") {
+      console.log(`SKIP publish (${publishResult.message})`);
+    } else if (publishResult.status === "published") {
+      console.log("OK published workspace");
+    } else {
+      console.log(`ERROR publish: ${publishResult.message}`);
+      return 1;
+    }
+  }
+
   return result.phase === "done" ? 0 : 1;
 }
 
