@@ -5,7 +5,7 @@ export type Lang = "en" | "pt";
 export const STR: Record<Lang, Record<string, string>> = {
   en: {
     nav_overview:"Overview", nav_org:"Org chart", nav_pipeline:"Pipeline", nav_workers:"Team", nav_toolbox:"Toolbox", nav_activity:"Activity", collapse:"Collapse",
-    nav_monitor:"Monitor", mon_sub:"What each active specialist is doing, live — one lane per specialist", mon_empty:"No specialist is active right now. A lane appears here the moment a subagent is dispatched.", mon_stream:"Working", mon_files:"Files changing", mon_nofiles:"No file changes yet", mon_active_only:"Active only", mon_all:"All", mon_hidden:"{n} finished — show all", mon_reason:"reasoning", mon_cmd:"command", mon_active:"active", mon_idle:"idle",
+    nav_monitor:"Monitor", mon_sub:"What each active specialist is doing, live — one lane per specialist", mon_empty:"No specialist is active right now. A lane appears here the moment a subagent is dispatched.", mon_stream:"Working", mon_files:"Files changing", mon_nofiles:"No file changes yet", mon_active_only:"Active only", mon_all:"All", mon_hidden:"{n} finished — show all", mon_reason:"reasoning", mon_cmd:"command", mon_active:"active", mon_idle:"idle", mon_truncated:"truncated — showing the first part",
     search:"Search or run a command", live:"live",
     ok_h:"All systems nominal", ok_p:"Every dispatch is progressing. Nothing is blocked.",
     warn_h:"{n} escalation needs you", warn_p:"{who} escalated a change on {repo} — review and approve the next wave.", warn_p0:"A specialist raised an escalation — review it and approve the next wave.",
@@ -55,7 +55,7 @@ export const STR: Record<Lang, Record<string, string>> = {
   },
   pt: {
     nav_overview:"Visão geral", nav_org:"Organograma", nav_pipeline:"Pipeline", nav_workers:"Especialistas", nav_toolbox:"Ferramentas", nav_activity:"Atividade", collapse:"Recolher",
-    nav_monitor:"Monitor", mon_sub:"O que cada especialista ativo está fazendo, ao vivo — uma lane por especialista", mon_empty:"Nenhum especialista ativo agora. Uma lane aparece aqui assim que um subagente é despachado.", mon_stream:"Trabalhando", mon_files:"Arquivos mudando", mon_nofiles:"Nenhuma alteração de arquivo ainda", mon_active_only:"Só ativos", mon_all:"Todos", mon_hidden:"{n} concluídos — mostrar todos", mon_reason:"raciocínio", mon_cmd:"comando", mon_active:"ativo", mon_idle:"ocioso",
+    nav_monitor:"Monitor", mon_sub:"O que cada especialista ativo está fazendo, ao vivo — uma lane por especialista", mon_empty:"Nenhum especialista ativo agora. Uma lane aparece aqui assim que um subagente é despachado.", mon_stream:"Trabalhando", mon_files:"Arquivos mudando", mon_nofiles:"Nenhuma alteração de arquivo ainda", mon_active_only:"Só ativos", mon_all:"Todos", mon_hidden:"{n} concluídos — mostrar todos", mon_reason:"raciocínio", mon_cmd:"comando", mon_active:"ativo", mon_idle:"ocioso", mon_truncated:"truncado — mostrando o início",
     search:"Buscar ou rodar um comando", live:"ao vivo",
     ok_h:"Tudo sob controle", ok_p:"Todo dispatch progredindo. Nada bloqueado.",
     warn_h:"{n} escalação precisa de você", warn_p:"{who} escalou uma mudança em {repo} — revise e aprove a próxima wave.", warn_p0:"Um especialista abriu uma escalação — revise e aprove a próxima wave.",

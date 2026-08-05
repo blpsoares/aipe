@@ -25,6 +25,10 @@ export interface MonStreamEvent {
   tool?: string;
   text?: string;
   file?: string;
+  // #7b — code written/changed, surfaced once the harness persists the
+  // Write/Edit/MultiEdit tool_use (never char-by-char; see monitor.ts).
+  content?: string;
+  truncated?: boolean;
   [key: string]: unknown;
 }
 

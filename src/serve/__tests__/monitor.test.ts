@@ -21,6 +21,72 @@ test("parseTranscriptLine maps Edit/Write tool_use to a 'file' event", () => {
   expect(evs).toEqual([{ agent: "a", persona: "P", at: 2, kind: "file", tool: "Edit", file: "/x/app.html" }]);
 });
 
+test("parseTranscriptLine maps Write tool_use to a 'file' event carrying the written content", () => {
+  const line = JSON.stringify({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "/x/new.ts", content: "export const x = 1;\n" } }] },
+  });
+  const evs = parseTranscriptLine(line, { agent: "a", persona: "P", at: 4 });
+  expect(evs).toEqual([{ agent: "a", persona: "P", at: 4, kind: "file", tool: "Write", file: "/x/new.ts", content: "export const x = 1;\n" }]);
+});
+
+test("parseTranscriptLine truncates a huge Write content and marks truncated:true", () => {
+  const huge = "x".repeat(5000);
+  const line = JSON.stringify({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "/x/big.ts", content: huge } }] },
+  });
+  const evs = parseTranscriptLine(line, { agent: "a", persona: "P", at: 5 });
+  expect(evs.length).toBe(1);
+  const ev = evs[0]!;
+  expect(ev.kind).toBe("file");
+  expect(ev.content?.length).toBe(4000);
+  expect(ev.truncated).toBe(true);
+});
+
+test("parseTranscriptLine maps Edit tool_use to a 'file' event with a diff-style content preview", () => {
+  const line = JSON.stringify({
+    type: "assistant",
+    message: { content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/app.html", old_string: "foo", new_string: "bar" } }] },
+  });
+  const evs = parseTranscriptLine(line, { agent: "a", persona: "P", at: 6 });
+  expect(evs).toEqual([{ agent: "a", persona: "P", at: 6, kind: "file", tool: "Edit", file: "/x/app.html", content: "- foo\n+ bar" }]);
+});
+
+test("parseTranscriptLine maps MultiEdit tool_use to a 'file' event summarizing the edits", () => {
+  const line = JSON.stringify({
+    type: "assistant",
+    message: {
+      content: [
+        {
+          type: "tool_use",
+          name: "MultiEdit",
+          input: {
+            file_path: "/x/multi.ts",
+            edits: [
+              { old_string: "a", new_string: "b" },
+              { old_string: "c", new_string: "d" },
+            ],
+          },
+        },
+      ],
+    },
+  });
+  const evs = parseTranscriptLine(line, { agent: "a", persona: "P", at: 7 });
+  expect(evs.length).toBe(1);
+  const ev = evs[0]!;
+  expect(ev.kind).toBe("file");
+  expect(ev.content).toContain("- a\n+ b");
+  expect(ev.content).toContain("+1 more edit");
+});
+
+test("parseTranscriptLine leaves content undefined when the tool_use carries none (backward compat)", () => {
+  const line = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Edit", input: { file_path: "/x/app.html" } }] } });
+  const evs = parseTranscriptLine(line, { agent: "a", persona: "P", at: 2 });
+  expect(evs).toEqual([{ agent: "a", persona: "P", at: 2, kind: "file", tool: "Edit", file: "/x/app.html" }]);
+  expect(evs[0]!.content).toBeUndefined();
+});
+
 test("parseTranscriptLine maps Bash tool_use to a 'tool' event with the command", () => {
   const line = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "bun test" } }] } });
   const evs = parseTranscriptLine(line, { agent: "a", persona: "P", at: 3 });

@@ -95,6 +95,29 @@ test("files render reversed (most recent first)", () => {
   expect(files[1]!.querySelector(".fp2")!.textContent).toBe("a.ts");
 });
 
+test("file event with content renders a .mon-code block; without content renders none", () => {
+  monPush({ kind: "agent", agent: "s1", persona: "Ana", agentType: "Backend", active: true });
+  monPush({ kind: "file", agent: "s1", tool: "Write", file: "a.ts" });
+  monPush({ kind: "file", agent: "s1", tool: "Write", file: "b.ts", content: "export const x = 1;" });
+  const { container } = render(<MonitorView />);
+  const files = container.querySelectorAll(".mon-file");
+  expect(files.length).toBe(2);
+  // most-recent-first: b.ts (with content) then a.ts (without)
+  expect(files[0]!.querySelector(".fp2")!.textContent).toBe("b.ts");
+  expect(files[0]!.querySelector(".mon-code")).not.toBeNull();
+  expect(files[0]!.querySelector(".mon-code")!.textContent).toContain("export const x = 1;");
+  expect(files[1]!.querySelector(".fp2")!.textContent).toBe("a.ts");
+  expect(files[1]!.querySelector(".mon-code")).toBeNull();
+});
+
+test("truncated file content shows a truncated marker", () => {
+  monPush({ kind: "agent", agent: "s1", persona: "Ana", agentType: "Backend", active: true });
+  monPush({ kind: "file", agent: "s1", tool: "Write", file: "big.ts", content: "x".repeat(100), truncated: true });
+  const { container } = render(<MonitorView />);
+  const code = container.querySelector(".mon-code")!;
+  expect(code.querySelector(".mon-code-trunc")).not.toBeNull();
+});
+
 test("hidden link appears when specialists are inactive and showAll is off, navigating toggles it", () => {
   monPush({ kind: "agent", agent: "s1", persona: "Ana", agentType: "Backend", active: false });
   const { container } = render(<MonitorView />);

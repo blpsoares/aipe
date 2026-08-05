@@ -21,12 +21,23 @@ function StreamLine({ e }: { e: MonStreamEvent }) {
   );
 }
 
-// app.html:1113-1117
+// app.html:1113-1117, extended by #7b: when the tool_use carried code
+// (Write full content, Edit/MultiEdit a diff-style preview) it renders below
+// the file row in a capped-height, scrollable block — read-only, and it
+// appears whole once the harness persists the tool call (never char-by-char).
 function FileRow({ e }: { e: MonStreamEvent }) {
   return (
     <div class="mon-file">
-      <span class="ft">{e.tool || "edit"}</span>
-      <span class="fp2">{e.file || ""}</span>
+      <div class="mon-file-head">
+        <span class="ft">{e.tool || "edit"}</span>
+        <span class="fp2">{e.file || ""}</span>
+      </div>
+      {e.content ? (
+        <pre class="mon-code">
+          {e.content}
+          {e.truncated ? <span class="mon-code-trunc">{t("mon_truncated")}</span> : null}
+        </pre>
+      ) : null}
     </div>
   );
 }

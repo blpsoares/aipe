@@ -35,6 +35,9 @@ export interface MonitorEvent {
   file?: string; // file path for kind file
   cmd?: string; // command line for a Bash tool
   text?: string; // text for kind say / a short tool summary
+  content?: string; // kind file only — the code written/changed, once the tool_use is persisted
+                     // (READ-ONLY, appears whole when the JSONL records the call — never char-by-char)
+  truncated?: boolean; // kind file only — true when `content` was cut to CONTENT_CAP
   at: number; // ms epoch when observed
 }
 
@@ -54,6 +57,38 @@ export function projectSlug(workspaceAbs: string): string {
 
 export function projectsRoot(home: string = homedir()): string {
   return join(home, ".claude", "projects");
+}
+
+// SSE cap for the code shown per file event — the transcript records a
+// tool_use whole, once, when the call completes (no char-by-char stream), so
+// we truncate rather than risk a huge Write blowing up the long-lived
+// /api/monitor payload.
+const CONTENT_CAP = 4000;
+
+// Best-effort code preview for a file-touching tool_use. Write gets its full
+// `input.content`; Edit/MultiEdit get a small diff-style preview built from
+// old_string/new_string (there is no unified diff in the transcript, so this
+// is a readable approximation, not a real diff). Returns {} when the tool
+// carries nothing we can show (older JSONLs, unknown tools) — callers must
+// keep the `content`/`truncated` fields optional so those events stay
+// unchanged from before this feature existed.
+function buildFileContent(tool: string, input: Record<string, unknown>): { content?: string; truncated?: boolean } {
+  let raw: string | undefined;
+  if (/^Write$/i.test(tool) && typeof input.content === "string") {
+    raw = input.content;
+  } else if (/^Edit$/i.test(tool) && typeof input.old_string === "string" && typeof input.new_string === "string") {
+    raw = `- ${input.old_string}\n+ ${input.new_string}`;
+  } else if (/^MultiEdit$/i.test(tool) && Array.isArray(input.edits) && input.edits.length > 0) {
+    const edits = input.edits as Array<Record<string, unknown>>;
+    const first = edits[0]!;
+    const firstPreview =
+      typeof first.old_string === "string" && typeof first.new_string === "string" ? `- ${first.old_string}\n+ ${first.new_string}` : "";
+    const more = edits.length - 1;
+    raw = more > 0 ? `${firstPreview}\n… (+${more} more edit${more === 1 ? "" : "s"})` : firstPreview;
+  }
+  if (raw === undefined) return {};
+  if (raw.length > CONTENT_CAP) return { content: raw.slice(0, CONTENT_CAP), truncated: true };
+  return { content: raw };
 }
 
 // Turn one JSONL transcript line into zero or more UI events. Pure + tested.
@@ -89,7 +124,15 @@ export function parseTranscriptLine(line: string, ctx: { agent: string; persona:
       const input = (p.input as Record<string, unknown>) || {};
       const file = (input.file_path || input.path || input.notebook_path) as string | undefined;
       if (file && /^(Edit|Write|MultiEdit|NotebookEdit|Update|Create)$/i.test(tool)) {
-        out.push({ ...base, kind: "file", tool, file });
+        const { content, truncated } = buildFileContent(tool, input);
+        out.push({
+          ...base,
+          kind: "file",
+          tool,
+          file,
+          ...(content !== undefined ? { content } : {}),
+          ...(truncated ? { truncated } : {}),
+        });
       } else if (/^Bash$/i.test(tool) && typeof input.command === "string") {
         out.push({ ...base, kind: "tool", tool, cmd: input.command });
       } else {
