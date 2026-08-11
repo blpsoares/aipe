@@ -73,6 +73,32 @@ test("runHandoffRender: every repo reported → phase done, .aipe-handoff cleane
   }
 });
 
+test("runHandoffRender: re-running after done → phase no-manifest, CLAUDE.md preserved", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-handoff-run-"));
+  try {
+    const inspect: Inspector = async () => ({ exists: false, isGitRepo: false });
+    const clone: Cloner = async () => ({ ok: true });
+    await runHandoffClone([{ name: "repo-a", url: "git@github.com:org/repo-a.git" }], dir, { inspect, clone });
+    await mkdir(join(dir, ".aipe-handoff", ".reports"), { recursive: true });
+    await writeFile(
+      join(dir, ".aipe-handoff", ".reports", "repo-a.json"),
+      JSON.stringify({ repo: "repo-a", purpose: "Payments API", stack: ["go"], relations: [] }),
+    );
+
+    const outFile = join(dir, "CLAUDE.md");
+    const first = await runHandoffRender(dir, outFile, "cliente-x");
+    expect(first.phase).toBe("done");
+    const before = await readFile(outFile, "utf8");
+
+    const second = await runHandoffRender(dir, outFile, "cliente-x");
+    expect(second.phase).toBe("no-manifest");
+    const after = await readFile(outFile, "utf8");
+    expect(after).toBe(before);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("runHandoffRender: a repo with no report → phase pending, .aipe-handoff kept for retry", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-handoff-run-"));
   try {

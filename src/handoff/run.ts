@@ -1,5 +1,5 @@
-import { rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Cloner, Inspector } from "../make-workspace/clone";
 import { buildNodes, mergeEdges } from "../relationship/merge";
 import { materializeHandoffRepo, readManifest, writeManifest } from "./clone";
@@ -27,7 +27,7 @@ export async function runHandoffClone(
 export interface HandoffRenderResult {
   manifest: ManifestEntry[];
   missing: string[];
-  phase: "done" | "pending";
+  phase: "done" | "pending" | "no-manifest";
   outFile: string;
 }
 
@@ -37,6 +37,11 @@ export async function runHandoffRender(
   contextName: string,
 ): Promise<HandoffRenderResult> {
   const manifest = await readManifest(outDir);
+  // No manifest on disk (never cloned, or already consumed by a "done" render):
+  // never write an empty shell over an existing, correct CLAUDE.md.
+  if (manifest.length === 0) {
+    return { manifest, missing: [], phase: "no-manifest", outFile };
+  }
   const reportsDir = join(outDir, ".aipe-handoff", ".reports");
   const reports = await readHandoffReports(reportsDir);
   const reportedNames = new Set(reports.map((r) => r.repo));
@@ -50,6 +55,7 @@ export async function runHandoffRender(
   const generatedAt = new Date().toISOString().slice(0, 10);
 
   const markdown = renderClaudeMd({ contextName, generatedAt, manifest, reports, nodes, edges });
+  await mkdir(dirname(outFile), { recursive: true });
   await writeFile(outFile, markdown, "utf8");
 
   if (phase === "done") {
