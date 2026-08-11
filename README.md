@@ -217,6 +217,8 @@ portable core is a single CLI (`aipe`):
 
 - Onboarding: `start · context-brain · make-workspace · relationship ·
   hire-specialists · read-state · session-context`
+- Handoff (standalone, no workspace): `handoff` — one-shot `CLAUDE.md`
+  export for a collaborator who won't install AIPe.
 - Operation & growth: `worktree · dispatch · journey · dashboard · serve ·
   rehydrate · skill · mcp · add-repo`
 
@@ -242,7 +244,7 @@ Developers of AIPe itself still use Bun (see Development below).
 src/cli.ts                    # unified `aipe` entry point: dispatches every subcommand
 src/<name>/                   # deterministic TS per capability (types, logic, cli.ts run(), __tests__/)
   context-brain, make-workspace, relationship, hire-specialists, start, session-hook   # onboarding
-  worktree, dispatch, journey, rehydrate, toolbox, add-repo, dashboard, serve           # operation & growth
+  worktree, dispatch, journey, rehydrate, toolbox, add-repo, dashboard, serve, handoff  # operation & growth
 bin/aipe, bin/aipe.cmd        # launchers: pick the standalone binary for the host (or Bun dev fallback)
 scripts/build.ts              # cross-platform `bun build --compile` into dist/ (gitignored)
 skills/<name>/SKILL.md        # coordinator-facing flows (Claude Code adapter):
