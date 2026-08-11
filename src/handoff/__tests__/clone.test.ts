@@ -50,6 +50,38 @@ test("url-only, path already present → skips clone, still ok", async () => {
   expect(cloneCalled).toBe(false);
 });
 
+test("url-only, path present with a matching remote → skips clone, ok", async () => {
+  const repo: RepoInput = { name: "embark", url: "git@github.com:opvibes/embark.git" };
+  const inspect: Inspector = async () => ({ exists: true, isGitRepo: true, remote: "https://github.com/opvibes/embark.git" });
+  let cloneCalled = false;
+  const clone: Cloner = async () => { cloneCalled = true; return { ok: true }; };
+  const entry = await materializeHandoffRepo(repo, "/tmp/out", inspect, clone);
+  expect(entry.status).toBe("ok");
+  expect(cloneCalled).toBe(false);
+});
+
+test("url-only, path occupied by non-git content → error, no clone attempted", async () => {
+  const repo: RepoInput = { name: "embark", url: "git@github.com:opvibes/embark.git" };
+  const inspect: Inspector = async () => ({ exists: true, isGitRepo: false });
+  let cloneCalled = false;
+  const clone: Cloner = async () => { cloneCalled = true; return { ok: true }; };
+  const entry = await materializeHandoffRepo(repo, "/tmp/out", inspect, clone);
+  expect(entry.status).toBe("error");
+  expect(entry.message).toContain("occupied");
+  expect(cloneCalled).toBe(false);
+});
+
+test("url-only, path occupied by a repo with a divergent remote → error", async () => {
+  const repo: RepoInput = { name: "embark", url: "git@github.com:opvibes/embark.git" };
+  const inspect: Inspector = async () => ({ exists: true, isGitRepo: true, remote: "git@github.com:other/thing.git" });
+  let cloneCalled = false;
+  const clone: Cloner = async () => { cloneCalled = true; return { ok: true }; };
+  const entry = await materializeHandoffRepo(repo, "/tmp/out", inspect, clone);
+  expect(entry.status).toBe("error");
+  expect(entry.message).toContain("occupied");
+  expect(cloneCalled).toBe(false);
+});
+
 test("url-only, clone fails → error with the git message", async () => {
   const repo: RepoInput = { name: "embark", url: "git@github.com:opvibes/embark.git" };
   const inspect: Inspector = async () => ({ exists: false, isGitRepo: false });

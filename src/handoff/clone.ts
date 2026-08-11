@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Cloner, Inspector } from "../make-workspace/clone";
+import { remotesMatch, type Cloner, type Inspector } from "../make-workspace/clone";
 import type { ManifestEntry, ManifestFile, RepoInput } from "./types";
 
 export async function materializeHandoffRepo(
@@ -26,7 +26,14 @@ export async function materializeHandoffRepo(
   const absPath = join(outDir, repo.name);
   const info = await inspect(absPath);
   if (info.exists) {
-    return { name: repo.name, status: "ok", path: absPath, url: repo.url };
+    if (info.isGitRepo && info.remote && remotesMatch(info.remote, repo.url)) {
+      return { name: repo.name, status: "ok", path: absPath, url: repo.url };
+    }
+    return {
+      name: repo.name,
+      status: "error",
+      message: `path occupied by different content (${absPath})`,
+    };
   }
 
   const result = await clone(repo.url, absPath);
