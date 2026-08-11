@@ -10,7 +10,7 @@ const RELATION_TYPES: readonly RelationType[] = [
   "shares-infra",
 ];
 
-function isValidRelation(value: unknown): value is RawRelation {
+export function isValidRelation(value: unknown): value is RawRelation {
   if (typeof value !== "object" || value === null) return false;
   const r = value as Record<string, unknown>;
   return (
@@ -25,7 +25,7 @@ function isValidRelation(value: unknown): value is RawRelation {
   );
 }
 
-function isValidModule(value: unknown): value is ModuleEntry {
+export function isValidModule(value: unknown): value is ModuleEntry {
   if (typeof value !== "object" || value === null) return false;
   const m = value as Record<string, unknown>;
   return (

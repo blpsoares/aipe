@@ -1,40 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { ModuleEntry, RawRelation, RelationType } from "../relationship/types";
+import { isValidModule, isValidRelation } from "../relationship/reports";
 import type { HandoffRepoReport } from "./types";
-
-const RELATION_TYPES: readonly RelationType[] = [
-  "imports",
-  "published-by",
-  "consumes",
-  "exposed-by",
-  "shares-infra",
-];
-
-function isValidRelation(value: unknown): value is RawRelation {
-  if (typeof value !== "object" || value === null) return false;
-  const r = value as Record<string, unknown>;
-  return (
-    (r.from === undefined || (typeof r.from === "string" && r.from.length > 0)) &&
-    typeof r.to === "string" &&
-    r.to.length > 0 &&
-    typeof r.type === "string" &&
-    (RELATION_TYPES as readonly string[]).includes(r.type) &&
-    typeof r.detail === "string" &&
-    typeof r.evidence === "string"
-  );
-}
-
-function isValidModule(value: unknown): value is ModuleEntry {
-  if (typeof value !== "object" || value === null) return false;
-  const m = value as Record<string, unknown>;
-  return (
-    typeof m.id === "string" &&
-    m.id.trim().length > 0 &&
-    (m.stack === undefined || Array.isArray(m.stack)) &&
-    (m.description === undefined || typeof m.description === "string")
-  );
-}
 
 function isValidReport(value: unknown): value is HandoffRepoReport {
   if (typeof value !== "object" || value === null) return false;
