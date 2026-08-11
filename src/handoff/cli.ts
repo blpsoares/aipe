@@ -18,7 +18,7 @@ function getAllFlags(args: string[], name: string): string[] {
   for (let i = 0; i < args.length; i++) {
     if (args[i] !== name) continue;
     const value = args[i + 1];
-    if (value !== undefined) out.push(value);
+    if (value !== undefined && !value.startsWith("--")) out.push(value);
   }
   return out;
 }
@@ -26,7 +26,7 @@ function getAllFlags(args: string[], name: string): string[] {
 export function renderCloneReport(results: ManifestEntry[]): string[] {
   return results.map((r) => {
     if (r.status === "error") return `ERROR ${r.name}: ${r.message ?? "unknown error"}`;
-    return r.url ? `OK ${r.name} (${r.url})` : `OK ${r.name}`;
+    return r.url ? `OK ${r.name} ${r.path} (${r.url})` : `OK ${r.name} ${r.path}`;
   });
 }
 
@@ -48,6 +48,10 @@ async function runRender(args: string[]): Promise<number> {
   const contextName = getFlag(args, "--name") ?? "context";
   const outFile = resolve(getFlag(args, "--file") ?? join(outDir, "CLAUDE.md"));
   const result = await runHandoffRender(outDir, outFile, contextName);
+  if (result.phase === "no-manifest") {
+    console.log(`ERROR: no manifest found at ${outDir} — run "aipe handoff clone" first`);
+    return 1;
+  }
   console.log(`WROTE ${result.outFile}`);
   for (const name of result.missing) console.log(`MISSING ${name}`);
   console.log(`STATE handoff=${result.phase}`);
@@ -58,7 +62,7 @@ export async function run(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   if (sub === "clone") return runClone(rest);
   if (sub === "render") return runRender(rest);
-  console.log('ERROR: usage: aipe handoff <clone|render> [options] (run "aipe handoff clone --help" style flags: --repo, --out, --name, --file)');
+  console.log("ERROR: usage: aipe handoff <clone|render> [--repo <url-or-path>] [--out <dir>] [--name <ctx>] [--file <path>]");
   return 1;
 }
 
