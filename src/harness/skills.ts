@@ -9,6 +9,7 @@ import hireSpecialistsSkill from "../../skills/hire-specialists/SKILL.md" with {
 import operateSkill from "../../skills/operate/SKILL.md" with { type: "text" };
 import toolboxSkill from "../../skills/toolbox/SKILL.md" with { type: "text" };
 import addRepoSkill from "../../skills/aipe-add-repo/SKILL.md" with { type: "text" };
+import handoffSkill from "../../skills/handoff/SKILL.md" with { type: "text" };
 
 export const FLOW_SKILLS: Record<string, string> = {
   "context-brain": contextBrainSkill,
@@ -18,4 +19,5 @@ export const FLOW_SKILLS: Record<string, string> = {
   operate: operateSkill,
   toolbox: toolboxSkill,
   "aipe-add-repo": addRepoSkill,
+  handoff: handoffSkill,
 };
