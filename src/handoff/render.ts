@@ -11,6 +11,11 @@ export interface RenderInput {
   edges: MergedEdge[];
 }
 
+// Markdown table cells can't contain a raw `|` or a line break.
+function cell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+
 export function renderClaudeMd(input: RenderInput): string {
   const { contextName, generatedAt, manifest, reports, nodes, edges } = input;
   const reportByName = new Map(reports.map((r) => [r.repo, r]));
@@ -42,8 +47,8 @@ export function renderClaudeMd(input: RenderInput): string {
   lines.push("## Repositories", "", "| Repo | Local path | Purpose | Stack |", "|------|-----------|---------|-------|");
   for (const m of withReport) {
     const report = reportByName.get(m.name);
-    const purpose = report?.purpose ?? "";
-    const stack = report?.stack.join(", ") ?? "";
+    const purpose = cell(report?.purpose ?? "");
+    const stack = report?.stack.map((s) => cell(String(s))).join(", ") ?? "";
     lines.push(`| ${m.name} | ./${m.name} | ${purpose} | ${stack} |`);
   }
   lines.push("");

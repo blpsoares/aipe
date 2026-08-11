@@ -30,7 +30,7 @@ personas; it's a one-shot export, not a workspace.
    ```bash
    aipe handoff clone --repo <url-or-path> [--repo <url-or-path> ...] --out <dir>
    ```
-   Prints `OK <repo> (<url>)` per repo that's ready (cloned, already present,
+   Prints `OK <repo> <local-path> (<url>)` per repo that's ready (cloned, already present,
    or a valid local git repo — its remote is auto-detected via `git remote
    get-url origin` when only a local path was given), or `ERROR <repo>: <msg>`
    for one that failed. A failed repo is recorded and still shows up in the

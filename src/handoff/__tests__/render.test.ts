@@ -78,6 +78,20 @@ test("failed clones and missing reports show up under ## Pending", () => {
   expect(md).toContain("`repo-a`: no agent report");
 });
 
+test("a purpose containing | or newlines is escaped so the table row stays well-formed", () => {
+  const md = renderClaudeMd({
+    contextName: "cliente-x",
+    generatedAt: "2026-08-11",
+    manifest: [{ name: "repo-a", status: "ok", path: "/tmp/out/repo-a", url: "git@github.com:org/repo-a.git" }],
+    reports: [{ repo: "repo-a", purpose: "API | gateway\nand router", stack: ["go | 1.22"], relations: [] }],
+    nodes: [{ fqid: "repo-a", repo: "repo-a", package: null, stack: [] }],
+    edges: [],
+  });
+  const row = md.split("\n").find((l) => l.startsWith("| repo-a |"))!;
+  expect(row).toBe("| repo-a | ./repo-a | API \\| gateway and router | go \\| 1.22 |");
+  expect(row.split(/(?<!\\)\|/).length - 1).toBe(5);
+});
+
 test("no relations discovered → explicit empty-state line, no crash", () => {
   const md = renderClaudeMd({
     contextName: "cliente-x",
