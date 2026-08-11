@@ -12,6 +12,7 @@ import { run as contextBrain } from "./context-brain/cli";
 import { run as makeWorkspace } from "./make-workspace/cli";
 import { run as hireSpecialists } from "./hire-specialists/cli";
 import { run as relationship } from "./relationship/cli";
+import { run as handoff } from "./handoff/cli";
 import { run as readState, runSessionContext } from "./session-hook/read-state";
 import { run as start } from "./start/cli";
 import { run as worktree } from "./worktree/cli";
@@ -37,6 +38,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "context-brain": contextBrain,
   "make-workspace": makeWorkspace,
   relationship: relationship,
+  handoff: handoff,
   "hire-specialists": hireSpecialists,
   "read-state": readState,
   "session-context": runSessionContext,
@@ -69,6 +71,7 @@ const HELP = [
   "  add-repo           Add one repo to an existing context (incremental)",
   "  detect-packages     Propose a monorepo's packages from its workspace manifests",
   "  relationship       Discover cross-repo relations + backfill stack",
+  "  handoff            Generate a portable CLAUDE.md handoff for a non-AIPe collaborator",
   "  hire-specialists   Generate the per-repo persona skills + personas.yaml",
   "  worktree           Provision/list/remove per-specialist git worktrees",
   "  dispatch           Adjudicate the parallel-dispatch law for a batch",
