@@ -126,3 +126,88 @@ test("formatFields sanitizes line breaks and serializes KEY=value", async () => 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("cwd at the workspace root → root resolves to itself, repoAtCwd is null", async () => {
+  const dir = await ws(fullBrain, doneState);
+  try {
+    const f = await readState(dir);
+    expect(f.root).toBe(dir);
+    expect(f.repoAtCwd).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cwd inside a declared repo → upward search finds the root, repoAtCwd is set", async () => {
+  const dir = await ws(fullBrain, doneState);
+  try {
+    const repoDir = join(dir, "embark");
+    await mkdir(repoDir, { recursive: true });
+    const f = await readState(repoDir);
+    expect(f.root).toBe(dir);
+    expect(f.repoAtCwd).toEqual({ name: "embark", path: "./embark" });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cwd inside a nested worktree under a repo → still resolves the same repo", async () => {
+  const dir = await ws(fullBrain, doneState);
+  try {
+    const nested = join(dir, "embark", ".worktrees", "j1-alice");
+    await mkdir(nested, { recursive: true });
+    const f = await readState(nested);
+    expect(f.root).toBe(dir);
+    expect(f.repoAtCwd).toEqual({ name: "embark", path: "./embark" });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("cwd in an unrecognized subdirectory of the workspace → repoAtCwd is null", async () => {
+  const dir = await ws(fullBrain, doneState);
+  try {
+    const stray = join(dir, "docs");
+    await mkdir(stray, { recursive: true });
+    const f = await readState(stray);
+    expect(f.root).toBe(dir);
+    expect(f.repoAtCwd).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("no .aipe found within the depth cap → absent, same as today", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-rs-"));
+  try {
+    const deep = join(dir, "a", "b", "c", "d", "e", "f", "g", "h", "i", "j");
+    await mkdir(deep, { recursive: true });
+    const f = await readState(deep);
+    expect(f.brain).toBe("absent");
+    expect(f.root).toBe("");
+    expect(f.repoAtCwd).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("pe field round-trips when present, blank when absent", async () => {
+  const withPe = { context: { name: "opvibes", coordinator: "Nicolas", pe: "Bruno" }, repos: fullBrain.repos };
+  const dir = await ws(withPe, doneState);
+  try {
+    const f = await readState(dir);
+    expect(f.pe).toBe("Bruno");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("pe absent from brain.yaml → empty string, not undefined/crash", async () => {
+  const dir = await ws(fullBrain, doneState);
+  try {
+    const f = await readState(dir);
+    expect(f.pe).toBe("");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

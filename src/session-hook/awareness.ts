@@ -74,7 +74,7 @@ export function buildAwareness(f: Fields): string {
   );
 }
 
-export function renderSessionContext(f: Fields): string {
+export function renderSessionContext(f: Fields, _personaCtx?: unknown): string {
   return JSON.stringify(
     {
       hookSpecificOutput: {

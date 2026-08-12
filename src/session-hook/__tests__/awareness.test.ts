@@ -7,11 +7,14 @@ function fields(over: Partial<Fields>): Fields {
     brain: "present",
     contextName: "opvibes",
     coordinator: "Nicolas",
+    pe: "",
     phaseBrain: "done",
     phaseWorkspace: "pending",
     phaseRelationship: "pending",
     phaseSpecialists: "pending",
     repos: ["embark", "prontuario"],
+    root: "",
+    repoAtCwd: null,
     ...over,
   };
 }

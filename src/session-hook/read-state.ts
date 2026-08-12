@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
 import { parse } from "yaml";
-import type { BrainFile, Phase, StateFile } from "../context-brain/types";
+import type { BrainFile, Phase, RepoEntry, StateFile } from "../context-brain/types";
 import { renderSessionContext } from "./awareness";
+import { readPersonaContext } from "./persona-context";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -21,15 +22,65 @@ function isPhase(v: unknown): v is Phase {
   return v === "pending" || v === "done";
 }
 
+export interface RepoAtCwd {
+  name: string;
+  path: string;
+}
+
 export interface Fields {
   brain: "present" | "absent";
   contextName: string;
   coordinator: string;
+  pe: string;
   phaseBrain: Phase;
   phaseWorkspace: Phase;
   phaseRelationship: Phase;
   phaseSpecialists: Phase;
   repos: string[];
+  root: string;
+  repoAtCwd: RepoAtCwd | null;
+}
+
+const MAX_UPWARD_DEPTH = 8;
+
+// Walks up from `startDir` (inclusive) looking for a directory containing
+// `.aipe/brain.yaml`. Stops at the filesystem root or after MAX_UPWARD_DEPTH
+// hops, whichever comes first. Existence only (not parseability) — a found
+// but malformed brain.yaml still counts as "this is the root", matching the
+// existing absent-on-malformed behavior for THAT directory rather than
+// silently skipping past it to an unrelated ancestor.
+async function findWorkspaceRoot(startDir: string): Promise<string | undefined> {
+  let dir = resolve(startDir);
+  for (let depth = 0; depth <= MAX_UPWARD_DEPTH; depth++) {
+    try {
+      await stat(join(dir, ".aipe", "brain.yaml"));
+      return dir;
+    } catch {
+      // not here — try the parent
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return undefined; // reached the filesystem root
+    dir = parent;
+  }
+  return undefined;
+}
+
+// Which declared repo (if any) the ORIGINAL cwd falls under, relative to the
+// resolved root. Longest-matching path wins (defensive against overlaps —
+// repos are siblings in practice, so this rarely matters).
+function repoAtCwd(root: string, cwd: string, repos: RepoEntry[]): RepoAtCwd | null {
+  const absCwd = resolve(cwd);
+  let best: RepoAtCwd | null = null;
+  let bestLen = -1;
+  for (const repo of repos) {
+    const absRepo = resolve(root, repo.path);
+    const isMatch = absCwd === absRepo || absCwd.startsWith(absRepo + sep);
+    if (isMatch && absRepo.length > bestLen) {
+      best = { name: repo.name, path: repo.path };
+      bestLen = absRepo.length;
+    }
+  }
+  return best;
 }
 
 async function readYaml(path: string): Promise<unknown | undefined> {
@@ -51,16 +102,22 @@ function absentFields(): Fields {
     brain: "absent",
     contextName: "",
     coordinator: "",
+    pe: "",
     phaseBrain: "pending",
     phaseWorkspace: "pending",
     phaseRelationship: "pending",
     phaseSpecialists: "pending",
     repos: [],
+    root: "",
+    repoAtCwd: null,
   };
 }
 
-export async function readState(workspaceDir: string): Promise<Fields> {
-  const aipe = join(workspaceDir, ".aipe");
+export async function readState(cwd: string): Promise<Fields> {
+  const root = await findWorkspaceRoot(cwd);
+  if (!root) return absentFields();
+
+  const aipe = join(root, ".aipe");
   const brainParsed = await readYaml(join(aipe, "brain.yaml"));
   if (!brainParsed || typeof brainParsed !== "object") {
     return absentFields();
@@ -69,11 +126,13 @@ export async function readState(workspaceDir: string): Promise<Fields> {
   const brain = brainParsed as Partial<BrainFile>;
   const contextName = sanitize(String(brain.context?.name ?? ""));
   const coordinator = sanitize(String(brain.context?.coordinator ?? ""));
+  const pe = sanitize(String(brain.context?.pe ?? ""));
   const repos = Array.isArray(brain.repos)
     ? brain.repos
         .map((r) => sanitize(String((r as { name?: unknown } | null)?.name ?? "")))
         .filter((n) => n.length > 0)
     : [];
+  const repoEntries = Array.isArray(brain.repos) ? brain.repos : [];
 
   const stateParsed = await readYaml(join(aipe, "state.yaml"));
   const phase = (stateParsed as Partial<StateFile> | undefined)?.phase;
@@ -83,11 +142,14 @@ export async function readState(workspaceDir: string): Promise<Fields> {
     brain: "present",
     contextName,
     coordinator,
+    pe,
     phaseBrain: readPhase(phase?.brain, "done"),
     phaseWorkspace: readPhase(phase?.workspace, "pending"),
     phaseRelationship: readPhase(phase?.relationship, "pending"),
     phaseSpecialists: readPhase(phase?.specialists, "pending"),
     repos,
+    root,
+    repoAtCwd: repoAtCwd(root, cwd, repoEntries),
   };
 }
 
@@ -116,7 +178,13 @@ export async function runSessionContext(args: string[]): Promise<number> {
     console.log("{}");
     return 0;
   }
-  console.log(renderSessionContext(await readState(workspace)));
+  const fields = await readState(workspace);
+  if (fields.repoAtCwd) {
+    const ctx = await readPersonaContext(fields.root, fields.repoAtCwd.name);
+    console.log(renderSessionContext(fields, ctx));
+  } else {
+    console.log(renderSessionContext(fields));
+  }
   return 0;
 }
 
