@@ -5,6 +5,7 @@
 // handled by JSON.stringify (fields are already control-char-sanitized by
 // read-state).
 import type { Fields } from "./read-state";
+import type { PersonaContext } from "./persona-context";
 
 const OPTOUT =
   "AIPe mode is active by default. If the PE explicitly asks to exit AIPe mode, stop following these instructions for this session.";
@@ -74,12 +75,41 @@ export function buildAwareness(f: Fields): string {
   );
 }
 
-export function renderSessionContext(f: Fields, _personaCtx?: unknown): string {
+function edgeLine(edge: PersonaContext["edges"][number]): string {
+  const detail = edge.perspectives[0]?.detail;
+  const suffix = detail ? ` — ${detail}` : "";
+  return `- ${edge.from} ${edge.type} ${edge.to}${suffix}`;
+}
+
+export function buildPersonaAwareness(
+  f: Fields,
+  repo: { name: string; path: string },
+  ctx: PersonaContext,
+): string {
+  const roster =
+    ctx.personas.length > 0
+      ? ctx.personas.map((p) => `${p.name} (${p.role})`).join(", ")
+      : "no persona has been hired for this repo yet";
+  const peClause = f.pe ? ` You work for ${f.pe}.` : "";
+  const relations =
+    ctx.edges.length > 0 ? ctx.edges.map(edgeLine).join("\n") : "No known relations for this repo.";
+
+  return (
+    `This session opened directly inside the ${repo.name} repo, part of the ${f.contextName} context.${peClause} ` +
+    `Personas hired for this repo: ${roster}. Their skill/agent files live in .claude/skills/ and .claude/agents/ — ` +
+    "Claude picks the right one by matching the task to its description; you don't need to declare which one you are. " +
+    `Known relations for ${repo.name}:\n${relations}`
+  );
+}
+
+export function renderSessionContext(f: Fields, personaCtx?: PersonaContext): string {
+  const additionalContext =
+    f.repoAtCwd && personaCtx ? buildPersonaAwareness(f, f.repoAtCwd, personaCtx) : buildAwareness(f);
   return JSON.stringify(
     {
       hookSpecificOutput: {
         hookEventName: "SessionStart",
-        additionalContext: buildAwareness(f),
+        additionalContext,
       },
     },
     null,

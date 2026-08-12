@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildAwareness, renderSessionContext } from "../awareness";
+import { buildAwareness, buildPersonaAwareness, renderSessionContext } from "../awareness";
 import type { Fields } from "../read-state";
 
 function fields(over: Partial<Fields>): Fields {
@@ -13,7 +13,7 @@ function fields(over: Partial<Fields>): Fields {
     phaseRelationship: "pending",
     phaseSpecialists: "pending",
     repos: ["embark", "prontuario"],
-    root: "",
+    root: "/tmp/aipe-opvibes",
     repoAtCwd: null,
     ...over,
   };
@@ -111,5 +111,74 @@ test("renderSessionContext emits valid SessionStart hook JSON", () => {
   const json = renderSessionContext(fields({ brain: "absent" }));
   const parsed = JSON.parse(json);
   expect(parsed.hookSpecificOutput.hookEventName).toBe("SessionStart");
+  expect(parsed.hookSpecificOutput.additionalContext).toContain("/context-brain");
+});
+
+test("buildPersonaAwareness lists every persona hired for the repo, without guessing a single identity", () => {
+  const body = buildPersonaAwareness(
+    fields({ pe: "Bruno" }),
+    { name: "embark", path: "./embark" },
+    { personas: [{ name: "Alice", role: "dev-fullstack" }, { name: "Bob", role: "qa" }], edges: [] },
+  );
+  expect(body).toContain("Alice");
+  expect(body).toContain("dev-fullstack");
+  expect(body).toContain("Bob");
+  expect(body).toContain("qa");
+  expect(body).not.toContain("DISPATCH GATE");
+});
+
+test("buildPersonaAwareness includes the PE's name when set", () => {
+  const body = buildPersonaAwareness(
+    fields({ pe: "Bruno" }),
+    { name: "embark", path: "./embark" },
+    { personas: [], edges: [] },
+  );
+  expect(body).toContain("Bruno");
+});
+
+test("buildPersonaAwareness degrades gracefully when the PE's name is not set", () => {
+  const body = buildPersonaAwareness(
+    fields({ pe: "" }),
+    { name: "embark", path: "./embark" },
+    { personas: [], edges: [] },
+  );
+  expect(body).toContain("opvibes");
+  expect(body).not.toContain("undefined");
+});
+
+test("buildPersonaAwareness surfaces this repo's relations", () => {
+  const body = buildPersonaAwareness(
+    fields({}),
+    { name: "embark", path: "./embark" },
+    {
+      personas: [],
+      edges: [
+        { from: "embark", to: "prontuario", type: "consumes", perspectives: [{ detail: "calls the payments API", evidence: "x.ts:1" }] },
+      ],
+    },
+  );
+  expect(body).toContain("prontuario");
+  expect(body).toContain("consumes");
+  expect(body).toContain("calls the payments API");
+});
+
+test("buildPersonaAwareness with no relations states so explicitly", () => {
+  const body = buildPersonaAwareness(fields({}), { name: "embark", path: "./embark" }, { personas: [], edges: [] });
+  expect(body.toLowerCase()).toContain("no known relations");
+});
+
+test("renderSessionContext with repoAtCwd + personaCtx emits persona-mode text", () => {
+  const json = renderSessionContext(
+    fields({ repoAtCwd: { name: "embark", path: "./embark" } }),
+    { personas: [{ name: "Alice", role: "dev-fullstack" }], edges: [] },
+  );
+  const parsed = JSON.parse(json);
+  expect(parsed.hookSpecificOutput.additionalContext).toContain("Alice");
+  expect(parsed.hookSpecificOutput.additionalContext).not.toContain("DISPATCH GATE");
+});
+
+test("renderSessionContext with repoAtCwd null still emits coordinator-mode text (unchanged)", () => {
+  const json = renderSessionContext(fields({ brain: "absent" }));
+  const parsed = JSON.parse(json);
   expect(parsed.hookSpecificOutput.additionalContext).toContain("/context-brain");
 });
