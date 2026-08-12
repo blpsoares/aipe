@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claudeCodeAdapter } from "../claude-code";
+import { claudeCodeAdapter, ensureSessionStartHook } from "../claude-code";
 import { genericAdapter } from "../generic";
 import { DEFAULT_HARNESS, getAdapter, readHarness, resolveAdapter, writeHarness } from "../registry";
 import type { PersonaMeta } from "../types";
@@ -94,6 +94,43 @@ test("writeHarness/readHarness round-trip; unknown id → default", async () => 
     await mkdir(join(dir, ".aipe"), { recursive: true });
     await writeFile(join(dir, ".aipe", "harness"), "bogus\n", "utf8");
     expect(await readHarness(dir)).toBe(DEFAULT_HARNESS); // unknown → default
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureSessionStartHook writes the hook into an arbitrary directory (not just a workspace root)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-hook-"));
+  try {
+    await ensureSessionStartHook(dir);
+    const settings = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(settings.hooks.SessionStart)).toContain("aipe session-context");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureSessionStartHook is idempotent — calling it twice does not duplicate the hook", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-hook-"));
+  try {
+    await ensureSessionStartHook(dir);
+    await ensureSessionStartHook(dir);
+    const settings = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf8"));
+    expect(settings.hooks.SessionStart).toHaveLength(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureSessionStartHook preserves an existing unrelated settings.json entry", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-hook-"));
+  try {
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    await writeFile(join(dir, ".claude", "settings.json"), JSON.stringify({ someOtherKey: true }), "utf8");
+    await ensureSessionStartHook(dir);
+    const settings = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf8"));
+    expect(settings.someOtherKey).toBe(true);
+    expect(settings.hooks.SessionStart).toHaveLength(1);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

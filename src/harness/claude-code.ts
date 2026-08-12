@@ -41,6 +41,19 @@ function hasAipeHook(list: unknown[]): boolean {
   return list.some((entry) => JSON.stringify(entry).includes("aipe session-context"));
 }
 
+export async function ensureSessionStartHook(targetDir: string): Promise<void> {
+  const claudeDir = join(targetDir, ".claude");
+  const settingsPath = join(claudeDir, "settings.json");
+  await mkdir(claudeDir, { recursive: true });
+
+  const settings = await readSettings(settingsPath);
+  settings.hooks ??= {};
+  const sessionStart = Array.isArray(settings.hooks.SessionStart) ? settings.hooks.SessionStart : [];
+  if (!hasAipeHook(sessionStart)) sessionStart.push(SESSION_START_HOOK);
+  settings.hooks.SessionStart = sessionStart;
+  await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+}
+
 // The Claude Code adapter: a project-scoped SessionStart hook + skills under
 // .claude/, personas as .claude/skills/<slug>/SKILL.md, MCP in .mcp.json.
 export const claudeCodeAdapter: HarnessAdapter = {
@@ -48,17 +61,8 @@ export const claudeCodeAdapter: HarnessAdapter = {
   label: "Claude Code",
 
   async installIntegration(workspaceDir: string): Promise<InstallReport> {
-    const claudeDir = join(workspaceDir, ".claude");
-    const settingsPath = join(claudeDir, "settings.json");
-    await mkdir(claudeDir, { recursive: true });
-
     // 1. merge the SessionStart hook into settings.json (idempotent)
-    const settings = await readSettings(settingsPath);
-    settings.hooks ??= {};
-    const sessionStart = Array.isArray(settings.hooks.SessionStart) ? settings.hooks.SessionStart : [];
-    if (!hasAipeHook(sessionStart)) sessionStart.push(SESSION_START_HOOK);
-    settings.hooks.SessionStart = sessionStart;
-    await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+    await ensureSessionStartHook(workspaceDir);
 
     // 2. write the onboarding/operation flow skills
     for (const [name, body] of Object.entries(FLOW_SKILLS)) {
