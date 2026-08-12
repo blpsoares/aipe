@@ -33,6 +33,10 @@ analyzing code — this skill records **factual knowledge only**; it never reads
      (it is injected at SessionStart as "You ARE <name>" and is reserved so no
      hired persona reuses it). This is *your* name as the AI, **not** the PE's own
      name: the PE is the human running the session; the coordinator is you.
+   - **PE** name (optional) — the human's own name, if they want to give it. Used
+     later to personalize awareness when a session opens directly inside a
+     specialist's repo ("you work for `<pe>`"). Do not push for it if the PE
+     doesn't offer one — leave `pe` out of the JSON entirely rather than guessing.
    - The **repositories**: for each one, `name`, `url` (git@, https with `.git`
      optional, **or a local filesystem path** for a local-only repo) and a relative `path`
      (starting with `./`). `stack` is optional — only fill it in if the PE knows it;
@@ -45,7 +49,7 @@ analyzing code — this skill records **factual knowledge only**; it never reads
    minus `aipe-`):
    ```json
    {
-     "context": { "name": "<folder-name-without-aipe->", "coordinator": "<name>" },
+     "context": { "name": "<folder-name-without-aipe->", "coordinator": "<name>", "pe": "<optional>" },
      "repos": [ { "name": "...", "url": "...", "path": "./...", "stack": ["..."] } ]
    }
    ```

@@ -21,6 +21,9 @@ export interface RepoEntry {
 export interface ContextMeta {
   name: string;
   coordinator: string;
+  // The PE's own name (optional — a missing value degrades gracefully:
+  // session-hook awareness just omits the "You work for <pe>" clause).
+  pe?: string;
 }
 
 export interface BrainFile {
