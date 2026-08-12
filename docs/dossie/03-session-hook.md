@@ -24,11 +24,22 @@ injects context; it never decides or blocks.
    - **State 3** — all phases `done`: the full coordinator identity + operating rules.
    The coordinator's *name* exists from the start (it comes from the brain), but the
    *full operating behavior* only "wakes up" when onboarding completes.
-2. **Activation at the workspace root only — enforced by the platform.** A folder-scoped
-   plugin's hooks fire *only* where `.claude/settings.json` enables them (the root),
-   never in subdirectories. So opening a session inside a repo does not fire this hook —
-   the boundary with the future persona sub-project is automatic, with no conflict. The
-   hook reads `$CLAUDE_PROJECT_DIR/.aipe/`.
+2. **Activation is per-project — the workspace root *and* each specialist repo.**
+   Hooks fire *only* where a `.claude/settings.json` enables them, never by mere
+   subdirectory containment. Originally that meant the workspace root alone. Since
+   *repo-local session context* (plan `2026-08-12-repo-local-session-context.md`),
+   `hire-specialists`/`rehydrate` also install the integration **inside each specialist
+   repo**, so opening a session directly in a repo fires the hook there too. The hook
+   then walks up from the cwd to find the `.aipe/` root and asks `read-state.ts`'s
+   `repoAtCwd` which declared repo (if any) the cwd falls under:
+   - **cwd == workspace root** → coordinator awareness (the three states below),
+     unchanged.
+   - **cwd inside a declared repo** → *persona-scoped* awareness instead: the repo, the
+     personas hired for it, and its known relations — never the coordinator identity and
+     never the dispatch gate.
+   The boundary with the persona sub-project is therefore explicit (decided by
+   `repoAtCwd`), not merely implied by the platform. The hook reads
+   `$CLAUDE_PROJECT_DIR/.aipe/` at the root it resolves.
 3. **Opt-out is conversational, per session.** The block is always injected and carries
    an instruction to stop following it if the PE explicitly asks to leave AIPe mode. No
    persistent kill-switch file.

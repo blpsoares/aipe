@@ -208,7 +208,11 @@ creates the self-contained, publishable `aipe-<name>/` workspace; the
 **coordinator** (the LLM, inside the harness) runs onboarding and then operates.
 The install is **project-scoped** — `.claude/settings.json` (a `SessionStart`
 hook calling `aipe session-context`) plus the skills live in the folder, so
-nothing is installed globally and no marketplace/plugin step is required.
+nothing is installed globally and no marketplace/plugin step is required. The
+same project-scoped integration is installed **inside each specialist repo** too
+(by `/hire-specialists`, and repaired by `aipe rehydrate`), so opening a session
+directly in a repo gets that repo's persona-scoped context instead of the
+coordinator's.
 
 ## Requirements & distribution
 
