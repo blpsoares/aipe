@@ -1,0 +1,103 @@
+// End-to-end over the composed CLI path: runSessionContext (read-state →
+// persona-context → awareness → JSON on stdout) against a real temp workspace,
+// in both directions — root (coordinator) and repo (persona).
+import { expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { stringify } from "yaml";
+import { runSessionContext } from "../read-state";
+
+async function capture(fn: () => Promise<unknown>): Promise<string> {
+  const original = console.log;
+  const lines: string[] = [];
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  try {
+    await fn();
+  } finally {
+    console.log = original;
+  }
+  return lines.join("\n");
+}
+
+async function makeWorkspace(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-rsc-"));
+  await mkdir(join(dir, ".aipe", "relations"), { recursive: true });
+  await mkdir(join(dir, "embark"), { recursive: true });
+  await mkdir(join(dir, "prontuario"), { recursive: true });
+  await writeFile(
+    join(dir, ".aipe", "brain.yaml"),
+    stringify({
+      context: { name: "opvibes", coordinator: "Nicolas", pe: "Bruno" },
+      repos: [
+        { name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark" },
+        { name: "prontuario", url: "git@github.com:opvibes/prontuario.git", path: "./prontuario" },
+      ],
+    }),
+    "utf8",
+  );
+  await writeFile(
+    join(dir, ".aipe", "state.yaml"),
+    stringify({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } }),
+    "utf8",
+  );
+  await writeFile(
+    join(dir, ".aipe", "personas.yaml"),
+    stringify({
+      personas: [
+        { name: "Nicolas", role: "coordinator", repo: null, path: null },
+        { name: "Alice", role: "dev-fullstack", repo: "embark", path: "./embark/.claude/skills/alice" },
+      ],
+    }),
+    "utf8",
+  );
+  await writeFile(
+    join(dir, ".aipe", "relations", "graph.yaml"),
+    stringify({
+      nodes: [],
+      edges: [
+        {
+          from: "embark",
+          to: "prontuario",
+          type: "consumes",
+          perspectives: [{ detail: "calls the payments API", evidence: "x.ts:1" }],
+        },
+      ],
+    }),
+    "utf8",
+  );
+  return dir;
+}
+
+test("runSessionContext at the workspace root emits coordinator-mode JSON", async () => {
+  const dir = await makeWorkspace();
+  try {
+    const out = await capture(() => runSessionContext(["--workspace", dir]));
+    const ctx = JSON.parse(out).hookSpecificOutput.additionalContext as string;
+    expect(ctx).toContain("You ARE Nicolas");
+    expect(ctx).toContain("DISPATCH GATE");
+    expect(ctx).not.toContain("Alice");
+    expect(ctx).not.toContain("opened directly inside");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("runSessionContext inside a declared repo emits persona-mode JSON", async () => {
+  const dir = await makeWorkspace();
+  try {
+    const out = await capture(() => runSessionContext(["--workspace", join(dir, "embark")]));
+    const parsed = JSON.parse(out);
+    expect(parsed.hookSpecificOutput.hookEventName).toBe("SessionStart");
+    const ctx = parsed.hookSpecificOutput.additionalContext as string;
+    expect(ctx).toContain("opened directly inside the embark repo");
+    expect(ctx).toContain("Alice");
+    expect(ctx).toContain("You work for Bruno");
+    expect(ctx).toContain("calls the payments API");
+    expect(ctx).not.toContain("DISPATCH GATE");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
