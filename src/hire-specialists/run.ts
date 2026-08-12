@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { ensureSessionStartHook } from "../harness/claude-code";
 import { readBrain } from "../make-workspace/read";
 import { renderAgentMd } from "./agent";
 import { dedupeReportsByName, resolveNames } from "./naming";
@@ -37,6 +38,7 @@ async function writePersonaFiles(
     await mkdir(sourceDir, { recursive: true });
     await writeFile(join(sourceDir, "SKILL.md"), content, "utf8");
     await writeFile(join(sourceDir, "agent.md"), agent, "utf8");
+    await ensureSessionStartHook(join(workspaceDir, repo.path));
   }
 }
 

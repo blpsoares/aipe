@@ -104,6 +104,27 @@ test("all (repo, role) pairs reported → phase done, SKILL.md files written, pe
   }
 });
 
+test("runHireSpecialists installs the SessionStart hook into each repo, alongside the persona files", async () => {
+  const dir = await ws();
+  try {
+    await putReport(dir, "embark", "dev-fullstack", { repo: "embark", role: "dev-fullstack", name: "Joaquim", body: "You are Joaquim." });
+    await putReport(dir, "embark", "qa", { repo: "embark", role: "qa", name: "Marina", body: "You are Marina." });
+    await putReport(dir, "prontuario", "dev-fullstack", { repo: "prontuario", role: "dev-fullstack", name: "Pedro", body: "You are Pedro." });
+    await putReport(dir, "prontuario", "qa", { repo: "prontuario", role: "qa", name: "Karen", body: "You are Karen." });
+
+    const result = await runHireSpecialists(dir);
+    expect(result.ok).toBe(true);
+
+    const settings = JSON.parse(await readFile(join(dir, "embark", ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(settings.hooks.SessionStart)).toContain("aipe session-context");
+
+    const settings2 = JSON.parse(await readFile(join(dir, "prontuario", ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(settings2.hooks.SessionStart)).toContain("aipe session-context");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a missing (repo, role) report → phase pending, reports dir kept for retry", async () => {
   const dir = await ws();
   try {
