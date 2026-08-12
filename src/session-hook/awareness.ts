@@ -2,9 +2,11 @@
 // the binary (subcommand `aipe session-context`) so it works both as a Claude
 // Code plugin hook and as a project-scoped `.claude/settings.json` hook, and
 // so any other harness can reuse it. Pure + unit-tested; JSON escaping is
-// handled by JSON.stringify (fields are already control-char-sanitized by
-// read-state).
-import type { Fields } from "./read-state";
+// handled by JSON.stringify. `Fields` arrives already control-char-sanitized
+// from read-state; the free text that does NOT (persona names and relation
+// details, both LLM-generated in personas.yaml/graph.yaml) is sanitized here,
+// at the display boundary, with read-state's own `sanitize`.
+import { sanitize, type Fields } from "./read-state";
 import type { PersonaContext } from "./persona-context";
 
 const OPTOUT =
@@ -76,9 +78,9 @@ export function buildAwareness(f: Fields): string {
 }
 
 function edgeLine(edge: PersonaContext["edges"][number]): string {
-  const detail = edge.perspectives[0]?.detail;
+  const detail = sanitize(String(edge.perspectives[0]?.detail ?? ""));
   const suffix = detail ? ` — ${detail}` : "";
-  return `- ${edge.from} ${edge.type} ${edge.to}${suffix}`;
+  return `- ${sanitize(String(edge.from))} ${sanitize(String(edge.type))} ${sanitize(String(edge.to))}${suffix}`;
 }
 
 export function buildPersonaAwareness(
@@ -88,17 +90,17 @@ export function buildPersonaAwareness(
 ): string {
   const roster =
     ctx.personas.length > 0
-      ? ctx.personas.map((p) => `${p.name} (${p.role})`).join(", ")
+      ? ctx.personas.map((p) => `${sanitize(String(p.name))} (${sanitize(String(p.role))})`).join(", ")
       : "no persona has been hired for this repo yet";
   const peClause = f.pe ? ` You work for ${f.pe}.` : "";
   const relations =
     ctx.edges.length > 0 ? ctx.edges.map(edgeLine).join("\n") : "No known relations for this repo.";
 
   return (
-    `This session opened directly inside the ${repo.name} repo, part of the ${f.contextName} context.${peClause} ` +
+    `This session opened directly inside the ${sanitize(repo.name)} repo, part of the ${f.contextName} context.${peClause} ` +
     `Personas hired for this repo: ${roster}. Their skill/agent files live in .claude/skills/ and .claude/agents/ — ` +
     "Claude picks the right one by matching the task to its description; you don't need to declare which one you are. " +
-    `Known relations for ${repo.name}:\n${relations}`
+    `Known relations for ${sanitize(repo.name)}:\n${relations}`
   );
 }
 

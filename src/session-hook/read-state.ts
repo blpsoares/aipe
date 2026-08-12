@@ -14,7 +14,10 @@ function getFlag(args: string[], name: string): string | undefined {
   return v;
 }
 
-function sanitize(v: string): string {
+// Strips C0 control characters from any free text that ends up interpolated
+// into the awareness block. Exported so the other readers feeding that block
+// (persona-context) enforce the same invariant, instead of duplicating it.
+export function sanitize(v: string): string {
   return v.replace(/[\x00-\x1f]+/g, " ").trim();
 }
 
@@ -92,6 +95,9 @@ function repoAtCwd(root: string, cwd: string, repos: readonly unknown[]): RepoAt
     if (absRepo === absRoot) continue; // the workspace root is never a repo
     const isMatch = absCwd === absRepo || absCwd.startsWith(absRepo + sep);
     if (isMatch && absRepo.length > bestLen) {
+      // NOT sanitized here: `name` is also the key matched against
+      // personas.yaml/graph.yaml, so it must stay byte-identical to the brain.
+      // Sanitizing happens at the display boundary (buildPersonaAwareness).
       best = { name, path };
       bestLen = absRepo.length;
     }

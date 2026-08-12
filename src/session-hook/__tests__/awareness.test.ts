@@ -182,3 +182,25 @@ test("renderSessionContext with repoAtCwd null still emits coordinator-mode text
   const parsed = JSON.parse(json);
   expect(parsed.hookSpecificOutput.additionalContext).toContain("/context-brain");
 });
+
+test("buildPersonaAwareness sanitizes C0 control chars in persona names and relation details", () => {
+  const body = buildPersonaAwareness(
+    fields({}),
+    { name: "emb\x0bark", path: "./embark" },
+    {
+      personas: [{ name: "Al\x0bice", role: "dev-fullstack" }],
+      edges: [
+        {
+          from: "emb\x0bark",
+          to: "prontuario",
+          type: "consumes",
+          perspectives: [{ detail: "calls\x0bthe API", evidence: "x.ts:1" }],
+        },
+      ],
+    },
+  );
+  // biome-ignore lint: needs to explicitly test C0 control characters
+  expect(/[\x00-\x1f]/.test(body.replace(/\n/g, ""))).toBe(false);
+  expect(body).toContain("Al ice");
+  expect(body).toContain("calls the API");
+});
