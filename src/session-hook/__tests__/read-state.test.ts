@@ -211,3 +211,61 @@ test("pe absent from brain.yaml → empty string, not undefined/crash", async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("repo entry missing `path` → no throw, entry skipped, repoAtCwd null", async () => {
+  const dir = await ws({ context: { name: "opvibes", coordinator: "Nicolas" }, repos: [{ name: "x" }] }, doneState);
+  try {
+    const f = await readState(dir);
+    expect(f.brain).toBe("present");
+    expect(f.repoAtCwd).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("repo entry with a non-string `path` → no throw, entry skipped", async () => {
+  const dir = await ws(
+    { context: { name: "opvibes", coordinator: "Nicolas" }, repos: [{ name: "x", path: 42 }] },
+    doneState,
+  );
+  try {
+    const stray = join(dir, "docs");
+    await mkdir(stray, { recursive: true });
+    const f = await readState(stray);
+    expect(f.brain).toBe("present");
+    expect(f.repoAtCwd).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("one malformed entry does not poison a well-formed sibling repo", async () => {
+  const dir = await ws(
+    {
+      context: { name: "opvibes", coordinator: "Nicolas" },
+      repos: [null, { name: "broken" }, { path: "./nameless" }, { name: "embark", path: "./embark" }],
+    },
+    doneState,
+  );
+  try {
+    const repoDir = join(dir, "embark");
+    await mkdir(repoDir, { recursive: true });
+    const f = await readState(repoDir);
+    expect(f.repoAtCwd).toEqual({ name: "embark", path: "./embark" });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a repo declared with path "." never hijacks coordinator mode at the root', async () => {
+  const dir = await ws(
+    { context: { name: "opvibes", coordinator: "Nicolas" }, repos: [{ name: "self", path: "." }] },
+    doneState,
+  );
+  try {
+    const f = await readState(dir);
+    expect(f.repoAtCwd).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

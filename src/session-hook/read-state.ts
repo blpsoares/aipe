@@ -65,18 +65,34 @@ async function findWorkspaceRoot(startDir: string): Promise<string | undefined> 
   return undefined;
 }
 
+function nonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
 // Which declared repo (if any) the ORIGINAL cwd falls under, relative to the
 // resolved root. Longest-matching path wins (defensive against overlaps —
 // repos are siblings in practice, so this rarely matters).
-function repoAtCwd(root: string, cwd: string, repos: RepoEntry[]): RepoAtCwd | null {
+//
+// `brain.yaml` is hand-editable, so entries are validated one by one: a null
+// entry, a missing/non-string `name` or `path` is SKIPPED, never thrown on —
+// a single malformed entry must not break the SessionStart hook (nor poison
+// its well-formed siblings). A repo resolving to the workspace root itself
+// (`path: "."`) is also skipped: the root's coordinator identity always wins.
+function repoAtCwd(root: string, cwd: string, repos: readonly unknown[]): RepoAtCwd | null {
   const absCwd = resolve(cwd);
+  const absRoot = resolve(root);
   let best: RepoAtCwd | null = null;
   let bestLen = -1;
-  for (const repo of repos) {
-    const absRepo = resolve(root, repo.path);
+  for (const entry of repos) {
+    const repo = entry as Partial<RepoEntry> | null;
+    const name = repo?.name;
+    const path = repo?.path;
+    if (!nonEmptyString(name) || !nonEmptyString(path)) continue;
+    const absRepo = resolve(root, path);
+    if (absRepo === absRoot) continue; // the workspace root is never a repo
     const isMatch = absCwd === absRepo || absCwd.startsWith(absRepo + sep);
     if (isMatch && absRepo.length > bestLen) {
-      best = { name: repo.name, path: repo.path };
+      best = { name, path };
       bestLen = absRepo.length;
     }
   }
