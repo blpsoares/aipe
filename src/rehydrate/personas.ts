@@ -8,6 +8,7 @@
 // hired before agent types existed.
 import { access, copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { ensureSessionStartHook } from "../harness/claude-code";
 import { extractBody, frontmatterName, renderAgentMd } from "../hire-specialists/agent";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { personaSlug } from "../hire-specialists/render";
@@ -114,6 +115,7 @@ export async function rehydratePersonas(workspaceDir: string): Promise<Rehydrate
       await copyFile(src, join(destDir, "SKILL.md"));
       await restoreAgent(personasRoot, repoAbs, roster, stackByRepo.get(repoName) ?? [], repoName, slug);
       rows.push({ repo: repoName, slug, status: "restored" });
+      await ensureSessionStartHook(repoAbs);
     }
   }
 

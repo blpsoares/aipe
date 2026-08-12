@@ -73,6 +73,18 @@ test("reports repo-missing when the repo dir isn't cloned yet", async () => {
   }
 });
 
+test("rehydratePersonas installs the SessionStart hook into each repo it restores", async () => {
+  const dir = await ws(true);
+  try {
+    const rows = await rehydratePersonas(dir);
+    expect(rows.some((r) => r.status === "restored")).toBe(true);
+    const settings = JSON.parse(await readFile(join(dir, "embark", ".claude", "settings.json"), "utf8"));
+    expect(JSON.stringify(settings.hooks.SessionStart)).toContain("aipe session-context");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("empty when there are no stored personas", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-reh-"));
   try {
