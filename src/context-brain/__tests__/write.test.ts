@@ -34,3 +34,22 @@ test("writes brain.yaml and state.yaml in .aipe and they are valid YAML", async 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("context fields including pe round-trip correctly through brain.yaml", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-"));
+  try {
+    const brainWithPe: BrainFile = {
+      context: { name: "test-org", coordinator: "Alice", pe: "Eve" },
+      repos: [{ name: "test-repo", url: "git@github.com:test/repo.git", path: "./repo", stack: ["rust"] }],
+    };
+
+    const { brainPath } = await writeBrainFiles(dir, brainWithPe);
+    const brainParsed = parse(await readFile(brainPath, "utf8"));
+
+    expect(brainParsed.context.name).toBe("test-org");
+    expect(brainParsed.context.coordinator).toBe("Alice");
+    expect(brainParsed.context.pe).toBe("Eve");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
