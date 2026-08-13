@@ -40,10 +40,29 @@ injects context; it never decides or blocks.
    The boundary with the persona sub-project is therefore explicit (decided by
    `repoAtCwd`), not merely implied by the platform. The hook reads
    `$CLAUDE_PROJECT_DIR/.aipe/` at the root it resolves.
-3. **Opt-out is conversational, per session.** The block is always injected and carries
+3. **The hook also self-heals stale skills (auto-rehydrate).** Since plan
+   `2026-08-12-auto-rehydrate-on-session-start.md`, every firing of the hook compares a
+   version stamp against the running binary's `VERSION` and, when they differ, silently
+   re-runs `rehydratePersonas` / `rehydrateToolbox` / `rehydrateFlowSkills` before
+   emitting the awareness block — so upgrading the binary re-syncs the workspace on the
+   next session, with no `aipe rehydrate` from the PE. It is called directly (never via
+   the CLI wrapper) to keep stdout at exactly one JSON line, and any failure is
+   swallowed: skills stay stale one more session, the hook never breaks.
+   The stamp is `.aipe/toolchain.yaml` (`aipeVersion: <x.y.z>`) and it is **gitignored**
+   — it records what last rehydrated *this machine's* copy, so publishing it would make a
+   fresh clone elsewhere believe it is already in sync and skip the very rehydrate it
+   needs. Debugging a "my skills didn't update" report starts here: check the stamp on
+   *that* machine, not in the published workspace.
+   Because the same hook fires from the root *and* from every specialist repo (decision
+   2), several processes can see the same stale stamp at once and race over the same
+   `.claude/settings.json` and `SKILL.md` files. A best-effort exclusive lock at
+   `.aipe/.rehydrate.lock` (`open(…, "wx")`, released in a `finally`, reaped after 5
+   minutes if a process died holding it) lets exactly one process do the work; the others
+   skip that session.
+4. **Opt-out is conversational, per session.** The block is always injected and carries
    an instruction to stop following it if the PE explicitly asks to leave AIPe mode. No
    persistent kill-switch file.
-4. **Bash orchestrates + emits; Bun parses the YAML.** `brain.yaml` is hand-editable, so
+5. **Bash orchestrates + emits; Bun parses the YAML.** `brain.yaml` is hand-editable, so
    parsing it robustly (quotes, comments, flow style) is the fragile part — delegated to
    a typed, tested Bun helper. Bun is already a hard dependency of AIPe, so this adds
    nothing new. Matcher `startup|resume|clear|compact` so the awareness survives
