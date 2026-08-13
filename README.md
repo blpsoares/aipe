@@ -140,6 +140,7 @@ aipe serve --port 8080 --workspace ../aipe-opvibes
 | 9 | **Spec-first operation** (coordinator Orientation Spec + PE gate + specialist SDD) | Built | [10](docs/dossie/10-spec-first-operation.md) |
 | 10 | **Model policy** (`aipe model` — model selection by tier + authorization/volume gates) | Built | [12](docs/dossie/12-model-policy.md) |
 | 11 | **Toolbox kits** (`aipe skill add sdd-lite\|spec-kit\|pdd` + `aipe skill preset` — vendored Spec Kit, wired PDD plugin) | Built | — |
+| 12 | **`/handoff`** (portable `CLAUDE.md` export for a collaborator who won't install AIPe) | Built | [13](docs/dossie/13-handoff.md) |
 
 ### Roadmap (pending)
 
