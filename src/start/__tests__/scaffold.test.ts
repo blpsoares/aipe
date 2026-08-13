@@ -48,6 +48,32 @@ test("cloned repos are ignored but .aipe/.claude are tracked", async () => {
   }
 });
 
+test("the per-machine toolchain stamp is ignored, the rest of .aipe stays tracked", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-scaf-"));
+  try {
+    await scaffoldWorkspace(dir);
+    await Bun.write(join(dir, ".aipe", "toolchain.yaml"), "aipeVersion: 0.3.0\n");
+    await Bun.write(join(dir, ".aipe", ".rehydrate.lock"), "");
+    await Bun.write(join(dir, ".aipe", "brain.yaml"), "context: {}\n");
+    await Bun.write(join(dir, ".aipe", "personas.yaml"), "personas: []\n");
+    await Bun.write(join(dir, ".aipe", "relations", "core.yaml"), "relations: []\n");
+
+    // git-ignore semantics, not string matching: only the stamp + lock are ignored.
+    expect(await sh(["git", "check-ignore", ".aipe/toolchain.yaml"], dir)).toBe(".aipe/toolchain.yaml");
+    expect(await sh(["git", "check-ignore", ".aipe/.rehydrate.lock"], dir)).toBe(".aipe/.rehydrate.lock");
+    expect(await sh(["git", "check-ignore", ".aipe/brain.yaml"], dir)).toBe("");
+    expect(await sh(["git", "check-ignore", ".aipe/personas.yaml"], dir)).toBe("");
+    expect(await sh(["git", "check-ignore", ".aipe/relations/core.yaml"], dir)).toBe("");
+
+    const status = await sh(["git", "status", "--porcelain"], dir);
+    expect(status).not.toContain("toolchain.yaml");
+    expect(status).not.toContain(".rehydrate.lock");
+    expect(status).toContain(".aipe/");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("scaffoldWorkspace is idempotent and never clobbers a custom .gitignore", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-scaf-"));
   try {

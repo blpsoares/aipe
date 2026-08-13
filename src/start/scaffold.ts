@@ -17,6 +17,11 @@ const GITIGNORE = `# AIPe workspace — publish the brain, never the cloned repo
 !/README.md
 # Transient staging inside .aipe is never published.
 .aipe/**/.reports/
+# Per-machine artifacts of the SessionStart auto-rehydrate: the stamp records
+# which binary version last rehydrated THIS machine's copy (publishing it would
+# make a fresh clone think it is already up to date), and the lock is transient.
+/.aipe/toolchain.yaml
+/.aipe/.rehydrate.lock
 `;
 
 const README = `# AIPe workspace
