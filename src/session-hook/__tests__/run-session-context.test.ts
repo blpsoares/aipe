@@ -2,7 +2,7 @@
 // persona-context → awareness → JSON on stdout) against a real temp workspace,
 // in both directions — root (coordinator) and repo (persona).
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
@@ -97,6 +97,23 @@ test("runSessionContext inside a declared repo emits persona-mode JSON", async (
     expect(ctx).toContain("You work for Bruno");
     expect(ctx).toContain("calls the payments API");
     expect(ctx).not.toContain("DISPATCH GATE");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("runSessionContext rehydrates a stale workspace before emitting JSON, and stamps the current version", async () => {
+  const dir = await makeWorkspace();
+  try {
+    const out = await capture(() => runSessionContext(["--workspace", dir]));
+    // Still emits valid, complete JSON — rehydrating must not corrupt stdout.
+    const parsed = JSON.parse(out);
+    expect(parsed.hookSpecificOutput.hookEventName).toBe("SessionStart");
+    // The workspace had no .aipe/toolchain.yaml before this call (makeWorkspace()
+    // doesn't create one) — confirm the wiring actually ran ensureRehydrated and
+    // it stamped the running binary's version.
+    const stamped = await readFile(join(dir, ".aipe", "toolchain.yaml"), "utf8");
+    expect(stamped).toContain("aipeVersion");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

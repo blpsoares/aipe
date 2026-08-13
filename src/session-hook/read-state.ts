@@ -5,6 +5,8 @@ import { parse } from "yaml";
 import type { BrainFile, Phase, RepoEntry, StateFile } from "../context-brain/types";
 import { renderSessionContext } from "./awareness";
 import { readPersonaContext } from "./persona-context";
+import { VERSION } from "../cli";
+import { ensureRehydrated } from "./auto-rehydrate";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -201,6 +203,9 @@ export async function runSessionContext(args: string[]): Promise<number> {
     return 0;
   }
   const fields = await readState(workspace);
+  if (fields.root) {
+    await ensureRehydrated(fields.root, VERSION).catch(() => {});
+  }
   if (fields.repoAtCwd) {
     const ctx = await readPersonaContext(fields.root, fields.repoAtCwd.name);
     console.log(renderSessionContext(fields, ctx));
