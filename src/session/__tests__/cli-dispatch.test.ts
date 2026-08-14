@@ -133,6 +133,75 @@ test("a missing persona for one of three units leaves no orphaned prompt file fo
   expect(ledger!.dispatches.every((d) => d.sessionId === undefined)).toBe(true);
 });
 
+// Parses a shell command line into argv the way a POSIX shell actually would:
+// single-quoted segments are literal (the only escape recognized inside them
+// is the classic `'\''` close-escape-reopen idiom), double-quoted segments
+// honor backslash-escaping of `"`, `\`, `$` and backtick, and a backslash
+// outside any quotes escapes the next character. Adjacent quoted/unquoted
+// runs with no separating whitespace concatenate into one word, exactly as a
+// real shell does. This replaces a naive `.split(" ")`, which would treat
+// every space inside a quoted value as a new argv element and silently
+// truncate any multi-word value — the exact bug Finding 3 is about, so the
+// test's own argv construction must not reintroduce it.
+function shellSplit(cmd: string): string[] {
+  const args: string[] = [];
+  let cur = "";
+  let inWord = false;
+  let i = 0;
+  while (i < cmd.length) {
+    const c = cmd[i];
+    if (c === " " || c === "\t") {
+      if (inWord) { args.push(cur); cur = ""; inWord = false; }
+      i++;
+      continue;
+    }
+    inWord = true;
+    if (c === "'") {
+      i++;
+      while (i < cmd.length && cmd[i] !== "'") { cur += cmd[i]; i++; }
+      i++; // skip closing quote
+      continue;
+    }
+    if (c === '"') {
+      i++;
+      while (i < cmd.length && cmd[i] !== '"') {
+        if (cmd[i] === "\\" && i + 1 < cmd.length && ['"', "\\", "$", "`"].includes(cmd[i + 1]!)) {
+          cur += cmd[i + 1];
+          i += 2;
+        } else {
+          cur += cmd[i];
+          i++;
+        }
+      }
+      i++; // skip closing quote
+      continue;
+    }
+    if (c === "\\" && i + 1 < cmd.length) {
+      cur += cmd[i + 1];
+      i += 2;
+      continue;
+    }
+    cur += c;
+    i++;
+  }
+  if (inWord) args.push(cur);
+  return args;
+}
+
+test("shellSplit reconstructs a value with spaces, an apostrophe and a double quote", () => {
+  // Sanity-checks the test helper itself against the exact quoting style
+  // shQuote (src/session/cli.ts) produces: single-quoted, with an embedded
+  // single quote escaped via close-escape-reopen.
+  const awkward = `Ana Paula "the closer" O'Brien`;
+  const quoted = `'${awkward.replace(/'/g, `'\\''`)}'`;
+  expect(shellSplit(`--specialist ${quoted} --status dispatched`)).toEqual([
+    "--specialist",
+    awkward,
+    "--status",
+    "dispatched",
+  ]);
+});
+
 // Two units, "a" and "b", each with a real persona and a dispatched
 // session-mode unit on the ledger. Used by the cwd-pairing tests below, which
 // need at least two units to be able to tell "paired correctly" apart from
@@ -341,17 +410,17 @@ test("the ledger-write recovery command forwards intensity and harness, and runn
   expect(r.code).toBe(1);
   const expectedRecordCmd = [
     "aipe journey record",
-    "--journey j1",
-    `--workspace ${dir}`,
-    "--repo embark",
-    "--specialist Joaquim",
-    "--branch aipe/j1/joaquim",
-    `--worktree ${worktree}`,
-    "--status dispatched",
-    "--mode session",
-    "--intensity ultracode",
-    "--harness claude-code",
-    "--session-id s-1",
+    "--journey 'j1'",
+    `--workspace '${dir}'`,
+    "--repo 'embark'",
+    "--specialist 'Joaquim'",
+    "--branch 'aipe/j1/joaquim'",
+    `--worktree '${worktree}'`,
+    "--status 'dispatched'",
+    "--mode 'session'",
+    "--intensity 'ultracode'",
+    "--harness 'claude-code'",
+    "--session-id 's-1'",
   ].join(" ");
   expect(r.lines).toEqual([
     `ERROR ledger: session s-1 for embark is running but could not be recorded (simulated disk full) — record it manually: ${expectedRecordCmd}`,
@@ -363,8 +432,10 @@ test("the ledger-write recovery command forwards intensity and harness, and runn
   expect(before!.dispatches[0]!.sessionId).toBeUndefined();
 
   // Actually run the printed command through the real `aipe journey record`
-  // (unmocked at this point) rather than merely re-parsing its text.
-  const args = expectedRecordCmd.split(" ").slice(2); // drop "aipe", "journey" → ["record", ...]
+  // (unmocked at this point), parsed the way a real shell would parse it —
+  // not merely re-parsed by splitting on spaces — rather than only
+  // re-checking its text.
+  const args = shellSplit(expectedRecordCmd).slice(2); // drop "aipe", "journey" → ["record", ...]
   const recoveryCode = await journeyRun(args);
   expect(recoveryCode).toBe(0);
 
@@ -377,6 +448,145 @@ test("the ledger-write recovery command forwards intensity and harness, and runn
   expect(recovered!.status).toBe("dispatched");
   expect(recovered!.branch).toBe("aipe/j1/joaquim");
   expect(recovered!.worktree).toBe(worktree);
+});
+
+// Finding 3: values are concatenated into the recovery command with no
+// escaping, and `getFlag` (both here and in src/journey/cli.ts) reads only
+// the single token immediately after a flag — so a multi-word specialist, an
+// evidence summary containing spaces and an apostrophe, or a value holding a
+// double quote would each silently truncate at the first space if left
+// unquoted. Truncation is worse than omission: it lands a plausible-looking
+// but wrong value in the ledger. Checked the same way as the test above: the
+// exact printed text, AND a real round trip through `aipe journey record`
+// parsed with shell semantics — proving the awkward values survive intact,
+// not merely that the printed string looks quoted.
+test("the recovery command quotes a multi-word specialist, an evidence summary with an apostrophe, and a value containing a double quote — and they round-trip intact", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-sess-dispatch-"));
+  await mkdir(join(dir, "embark", ".claude", "skills", "ana-paula"), { recursive: true });
+  await writeFile(
+    join(dir, "embark", ".claude", "skills", "ana-paula", "SKILL.md"),
+    "---\nname: ana-paula\n---\n\nYou are Ana Paula.\n",
+    "utf8",
+  );
+  await mkdir(join(dir, ".aipe", "journeys", "j1"), { recursive: true });
+  await writeFile(join(dir, ".aipe", "journeys", "j1", "orientation.md"), "## embark\nFix it.\n", "utf8");
+  await startJourney(dir, "j1");
+
+  const worktree = join(dir, ".worktrees", "j1-ana-paula");
+  const specialist = "Ana Paula";
+  const summary = "all tests pass, and it's holding up";
+  const evidenceCmd = 'bun test && echo "done"';
+  const artifact = 'see "notes.md"';
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist, branch: "aipe/j1/ana-paula",
+    worktree, status: "dispatched",
+    mode: "session", intensity: "normal", harness: "claude-code",
+    evidence: { by: "dev", commands: [evidenceCmd], summary, artifact },
+  });
+
+  const realRecordDispatch = ledgerModule.recordDispatch;
+  mock.module("../../journey/ledger", () => ({
+    ...ledgerModule,
+    recordDispatch: async () => {
+      throw new Error("simulated disk full");
+    },
+  }));
+
+  let r: { code: number; lines: string[] };
+  try {
+    r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: okRunner });
+  } finally {
+    mock.module("../../journey/ledger", () => ({ ...ledgerModule, recordDispatch: realRecordDispatch }));
+  }
+
+  expect(r.code).toBe(1);
+  const expectedRecordCmd = [
+    "aipe journey record",
+    "--journey 'j1'",
+    `--workspace '${dir}'`,
+    "--repo 'embark'",
+    "--specialist 'Ana Paula'",
+    "--branch 'aipe/j1/ana-paula'",
+    `--worktree '${worktree}'`,
+    "--status 'dispatched'",
+    "--mode 'session'",
+    "--intensity 'normal'",
+    "--harness 'claude-code'",
+    "--session-id 's-1'",
+    "--evidence-by 'dev'",
+    `--evidence-summary 'all tests pass, and it'\\''s holding up'`,
+    `--evidence-cmd 'bun test && echo "done"'`,
+    `--evidence-artifact 'see "notes.md"'`,
+  ].join(" ");
+  expect(r.lines).toEqual([
+    `ERROR ledger: session s-1 for embark is running but could not be recorded (simulated disk full) — record it manually: ${expectedRecordCmd}`,
+  ]);
+
+  // Actually run the printed command, shell-parsed, through the real
+  // `aipe journey record`, and confirm every awkward value survived intact —
+  // not merely that the printed text looked correctly quoted.
+  const args = shellSplit(expectedRecordCmd).slice(2);
+  const recoveryCode = await journeyRun(args);
+  expect(recoveryCode).toBe(0);
+
+  const after = await readLedger(dir, "j1");
+  const recovered = after!.dispatches.find((d) => d.repo === "embark");
+  expect(recovered!.sessionId).toBe("s-1");
+  expect(recovered!.specialist).toBe("Ana Paula");
+  expect(recovered!.evidence?.by).toBe("dev");
+  expect(recovered!.evidence?.summary).toBe(summary);
+  expect(recovered!.evidence?.commands).toEqual([evidenceCmd]);
+  expect(recovered!.evidence?.artifact).toBe(artifact);
+});
+
+// Finding 2: `recordDispatchGuarded` (src/journey/ledger.ts) only writes
+// `redispatchReason` when it detects a reopening transition — current ledger
+// status delivered/verified moving back to `dispatched`. A unit already
+// sitting at `dispatched` when its session-id write fails (this recovery
+// path) is a no-op transition from the guard's point of view, so `--reason`
+// cannot restore a `redispatchReason` the unit already carries (e.g. from an
+// earlier genuine QA-rejection redispatch). Since it cannot be represented,
+// dispatchCommand must say so explicitly rather than let it be silently lost.
+test("a dispatch being recovered that carries a redispatchReason gets an explicit WARN line, since the recovery command cannot restore it", async () => {
+  const dir = await fixture(); // repo "embark", specialist "Joaquim"
+  const worktree = join(dir, ".worktrees", "j1-joaquim");
+  // Simulate: this unit was delivered, QA rejected it, and it was
+  // re-dispatched with a reason — landing back on "dispatched" with
+  // `redispatchReason` set, exactly per the lifecycle in journey/types.ts.
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "aipe/j1/joaquim",
+    worktree, status: "dispatched",
+    mode: "session", intensity: "ultracode", harness: "claude-code",
+    redispatchReason: "QA found a regression in the retry path",
+  });
+
+  const realRecordDispatch = ledgerModule.recordDispatch;
+  mock.module("../../journey/ledger", () => ({
+    ...ledgerModule,
+    recordDispatch: async () => {
+      throw new Error("simulated disk full");
+    },
+  }));
+
+  let r: { code: number; lines: string[] };
+  try {
+    r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: okRunner });
+  } finally {
+    mock.module("../../journey/ledger", () => ({ ...ledgerModule, recordDispatch: realRecordDispatch }));
+  }
+
+  expect(r.code).toBe(1);
+  expect(r.lines.length).toBe(2);
+  expect(r.lines[0]).toBe(
+    "ERROR ledger: session s-1 for embark is running but could not be recorded (simulated disk full) — record it manually: aipe journey record --journey 'j1' --workspace '" +
+      dir +
+      "' --repo 'embark' --specialist 'Joaquim' --branch 'aipe/j1/joaquim' --worktree '" +
+      worktree +
+      "' --status 'dispatched' --mode 'session' --intensity 'ultracode' --harness 'claude-code' --session-id 's-1'",
+  );
+  expect(r.lines[1]).toBe(
+    'WARN ledger: embark\'s redispatchReason ("QA found a regression in the retry path") cannot be represented by the recovery command above and will be lost if it is run verbatim — restore it manually',
+  );
 });
 
 // Finding 2: `started.length !== pending.length` must be reachable on its

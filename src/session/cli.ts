@@ -123,6 +123,15 @@ function specSlice(orientation: string, fqid: string): string {
   return lines.slice(start, end < 0 ? undefined : end).join("\n");
 }
 
+// Wraps a value in POSIX single quotes so it survives shell re-parsing intact
+// — spaces, double quotes, `$`, backticks, everything except the single quote
+// itself, which single quotes cannot represent and must therefore end the
+// quoted segment, escape one literal `'`, and reopen it: `'\''`. This is the
+// standard POSIX-safe quoting idiom, not a partial hand-rolled escaper.
+function shQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 // Builds the `aipe journey record` command printed as the operator's recovery
 // path when a ledger write fails for a session that is already running (see
 // the ERROR ledger: branch below). `recordDispatch` does a full REPLACE of the
@@ -130,43 +139,61 @@ function specSlice(orientation: string, fqid: string): string {
 // is actually present on the record being recovered — a flag silently
 // omitted here means that field gets wiped the moment the printed command is
 // run verbatim. Flag names are taken from `recordCommand` in
-// src/journey/cli.ts, not guessed: whichever flags that parser reads for
-// JourneyDispatch's fields are exactly the ones emitted here, so a field
-// added to JourneyDispatch later is caught by extending FIELD_FLAGS rather
-// than by silently dropping it again.
+// src/journey/cli.ts, not guessed.
 //
-// `redispatchReason` has no flag in `recordCommand` — it is derived there
-// from `--reason` only when the guard detects a delivered/verified unit being
-// reopened, which cannot be true of a unit still `dispatched` (the state
-// every pending session-mode unit is in here). It is intentionally left off.
-const FIELD_FLAGS: { field: keyof JourneyDispatch; flag: string }[] = [
-  { field: "repo", flag: "--repo" },
-  { field: "package", flag: "--package" },
-  { field: "specialist", flag: "--specialist" },
-  { field: "branch", flag: "--branch" },
-  { field: "worktree", flag: "--worktree" },
-  { field: "pr", flag: "--pr" },
-  { field: "status", flag: "--status" },
-  { field: "tier", flag: "--tier" },
-  { field: "model", flag: "--model" },
-  { field: "mode", flag: "--mode" },
-  { field: "intensity", flag: "--intensity" },
-  { field: "harness", flag: "--harness" },
-];
+// FIELD_FLAGS is typed via `satisfies Record<..., string>` over
+// `keyof JourneyDispatch` minus the three fields handled outside this table
+// (`evidence`, `sessionId`, `redispatchReason` — see below), rather than as an
+// array of `{ field, flag }` pairs. An array only constrains listed fields to
+// be valid keys; it does not require every key to be listed, so a field added
+// to JourneyDispatch later would compile cleanly while silently being dropped
+// here — the original bug. The `Record` shape makes every key mandatory: a
+// new JourneyDispatch field fails `bunx tsc --noEmit` until someone adds it
+// here (mapped to a flag) or to the `Exclude` list (deliberately excluded).
+//
+// `redispatchReason` cannot currently be forwarded through `recordCommand` at
+// all, even via `--reason`. `recordDispatchGuarded` (src/journey/ledger.ts)
+// only turns `--reason` into a written `redispatchReason` when it detects a
+// reopening transition: the ledger's CURRENT status for the unit is
+// delivered/verified and the incoming write's status is `dispatched`. Here
+// the record being recovered is already sitting at `dispatched` in the ledger
+// — only its `sessionId` write failed, its status never changed — so from the
+// guard's point of view this is a no-op transition, not a reopening, and
+// `--reason` would be silently ignored. So the field is excluded here too,
+// but a unit still `dispatched` CAN legitimately carry a non-empty
+// `redispatchReason` from an earlier genuine reopening (the lifecycle in
+// src/journey/types.ts is delivered → failed → (re)dispatched, landing back
+// on `dispatched` with `redispatchReason` set) — so when that is the case, an
+// explicit WARN line is printed alongside the recovery command (see
+// dispatchCommand below) rather than silently letting it be lost.
+const FIELD_FLAGS = {
+  repo: "--repo",
+  package: "--package",
+  specialist: "--specialist",
+  branch: "--branch",
+  worktree: "--worktree",
+  pr: "--pr",
+  status: "--status",
+  tier: "--tier",
+  model: "--model",
+  mode: "--mode",
+  intensity: "--intensity",
+  harness: "--harness",
+} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason">, string>;
 
 function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: JourneyDispatch, sessionId: string): string {
-  const parts = ["aipe journey record", `--journey ${journeyId}`, `--workspace ${workspace}`];
-  for (const { field, flag } of FIELD_FLAGS) {
+  const parts = ["aipe journey record", `--journey ${shQuote(journeyId)}`, `--workspace ${shQuote(workspace)}`];
+  for (const field of Object.keys(FIELD_FLAGS) as (keyof typeof FIELD_FLAGS)[]) {
     const value = dispatch[field];
-    if (value !== undefined) parts.push(`${flag} ${value}`);
+    if (value !== undefined) parts.push(`${FIELD_FLAGS[field]} ${shQuote(value)}`);
   }
-  parts.push(`--session-id ${sessionId}`);
+  parts.push(`--session-id ${shQuote(sessionId)}`);
   if (dispatch.evidence) {
     const ev = dispatch.evidence;
-    parts.push(`--evidence-by ${ev.by}`);
-    parts.push(`--evidence-summary ${ev.summary}`);
-    for (const cmd of ev.commands) parts.push(`--evidence-cmd ${cmd}`);
-    if (ev.artifact !== undefined) parts.push(`--evidence-artifact ${ev.artifact}`);
+    parts.push(`--evidence-by ${shQuote(ev.by)}`);
+    parts.push(`--evidence-summary ${shQuote(ev.summary)}`);
+    for (const cmd of ev.commands) parts.push(`--evidence-cmd ${shQuote(cmd)}`);
+    if (ev.artifact !== undefined) parts.push(`--evidence-artifact ${shQuote(ev.artifact)}`);
   }
   return parts.join(" ");
 }
@@ -297,6 +324,14 @@ export async function dispatchCommand(
       lines.push(
         `ERROR ledger: session ${session.id} for ${fqid} is running but could not be recorded (${err instanceof Error ? err.message : String(err)}) — record it manually: ${recordCmd}`,
       );
+      // recoveryRecordCommand cannot represent redispatchReason (see the
+      // comment on FIELD_FLAGS) — if this unit actually carries one, running
+      // the command above verbatim would silently lose it. Say so.
+      if (d.redispatchReason) {
+        lines.push(
+          `WARN ledger: ${fqid}'s redispatchReason (${JSON.stringify(d.redispatchReason)}) cannot be represented by the recovery command above and will be lost if it is run verbatim — restore it manually`,
+        );
+      }
     }
   }
   if (started.length !== pending.length) {
