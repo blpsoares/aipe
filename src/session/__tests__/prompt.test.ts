@@ -22,8 +22,8 @@ test("the prompt carries persona, spec slice and the return contract", () => {
   expect(p).toContain("--journey j1");
   expect(p).toContain("/w/.worktrees/j1-joaquim");
   expect(p).toContain("aipe/j1/joaquim");
-  // Both delivered and escalated blocks must emit --repo correctly
-  expect((p.match(/--repo aipe/g) || []).length).toBe(2);
+  // All three blocks (delivered, escalated, redirected) must emit --repo correctly
+  expect((p.match(/--repo aipe/g) || []).length).toBe(3);
 });
 
 test("ultracode appears if and only if the intensity says so", () => {

@@ -48,6 +48,8 @@ test("the prompt carries the redirect MUST, with the exact command", () => {
   });
   expect(p).toContain("--status redirected");
   expect(p).toContain("before acting on it");
+  // All three blocks (delivered, escalated, redirected) must interpolate --repo embark exactly once each
+  expect((p.match(/--repo embark/g) || []).length).toBe(3);
 });
 
 // ── collectCommand: redirected must never yield a clean exit ──────────────

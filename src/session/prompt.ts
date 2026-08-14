@@ -68,7 +68,7 @@ export function composePrompt(input: PromptInput): string {
       "",
       "```bash",
       `aipe journey record --journey ${input.journeyId} --workspace ${input.workspace} \\`,
-      `  --repo <repo> --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
+      `  --repo ${input.repo} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
       '  --status redirected --reason "<what you were asked to do instead>"',
       "```",
       "",
