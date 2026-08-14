@@ -11,7 +11,11 @@ import { packageFqid } from "../context-brain/packages";
 import { checkDependenciesLanded, validateBatch } from "./law";
 import { claimLock, releaseLock } from "./lock";
 import { readPersonas } from "./personas";
-import type { Batch, DispatchEntry } from "./types";
+import { isContainable } from "../harness/types";
+import { getAdapter } from "../harness/registry";
+import { probe, realRunner } from "../session/runner";
+import type { AgentopRunner } from "../session/types";
+import type { Batch, DispatchEntry, SessionContext } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -21,16 +25,42 @@ function getFlag(args: string[], name: string): string | undefined {
   return value;
 }
 
-function parseBatch(value: unknown): Batch | null {
+export function parseBatch(value: unknown): Batch | null {
   if (!Array.isArray(value)) return null;
   const batch: DispatchEntry[] = [];
   for (const e of value) {
     if (typeof e !== "object" || e === null) return null;
     const r = e as Record<string, unknown>;
     if (typeof r.repo !== "string" || typeof r.specialist !== "string") return null;
-    batch.push({ repo: r.repo, specialist: r.specialist, ...(typeof r.package === "string" ? { package: r.package } : {}) });
+    // An unrecognised mode/intensity is a REJECT, never a silent downgrade to
+    // the default: a typo'd "session" must not quietly run as a subagent.
+    if (r.mode !== undefined && r.mode !== "subagent" && r.mode !== "session") return null;
+    if (r.intensity !== undefined && r.intensity !== "normal" && r.intensity !== "ultracode") return null;
+    batch.push({
+      repo: r.repo,
+      specialist: r.specialist,
+      ...(typeof r.package === "string" ? { package: r.package } : {}),
+      ...(typeof r.tier === "string" ? { tier: r.tier } : {}),
+      ...(r.mode !== undefined ? { mode: r.mode as "subagent" | "session" } : {}),
+      ...(r.intensity !== undefined ? { intensity: r.intensity as "normal" | "ultracode" } : {}),
+      ...(typeof r.harness === "string" ? { harness: r.harness } : {}),
+    });
   }
   return batch;
+}
+
+// Which harnesses AIPe may start a session on: exactly those whose adapter can
+// install a containment hook. Everything else is unreachable by construction.
+const KNOWN_HARNESSES = ["claude-code", "generic"];
+
+export async function buildSessionContext(
+  runner: AgentopRunner = realRunner,
+): Promise<SessionContext> {
+  const probed = await probe(runner);
+  return {
+    agentopOk: probed.ok,
+    containableHarnesses: KNOWN_HARNESSES.filter((id) => isContainable(getAdapter(id))),
+  };
 }
 
 async function validateCommand(args: string[]): Promise<number> {
@@ -60,10 +90,15 @@ async function validateCommand(args: string[]): Promise<number> {
   }
   const roster = await readPersonas(workspace);
 
+  // Probing agentop spawns a subprocess — only pay for it when the batch
+  // actually contains a session-mode entry. A pure subagent batch never
+  // depends on agentop being present.
+  const sessionCtx = batch.some((e) => e.mode === "session") ? await buildSessionContext() : undefined;
   const verdict = validateBatch(
     batch,
     brainResult.brain.repos.map((r) => r.name),
     roster,
+    sessionCtx,
   );
   const rejects = verdict.ok ? [] : [...verdict.rejects];
 

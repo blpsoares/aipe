@@ -1,6 +1,6 @@
 import { packageFqid } from "../context-brain/packages";
-import { MAX_CONCURRENT } from "./types";
-import type { Batch, PersonaRegistryEntry, Verdict } from "./types";
+import { MAX_CONCURRENT, SESSION_MAX_CONCURRENT } from "./types";
+import type { Batch, PersonaRegistryEntry, SessionContext, Verdict } from "./types";
 
 // Pure adjudication of the parallel-dispatch law for a single proposed batch.
 // The coordinator owns *sequencing* (which batch runs before which, derived
@@ -16,12 +16,41 @@ export function validateBatch(
   batch: Batch,
   knownRepos: string[],
   roster: PersonaRegistryEntry[],
+  session?: SessionContext,
 ): Verdict {
   const rejects: string[] = [];
   const repoSet = new Set(knownRepos);
 
   if (batch.length > MAX_CONCURRENT) {
     rejects.push(`cap-exceeded ${batch.length}`);
+  }
+
+  // Session mode has its own, far lower cap, and depends on agentop actually
+  // being present/governable — none of which applies to subagent dispatch, so
+  // a pure subagent batch must sail through unaffected (even with no `session`
+  // context and even when agentop is unavailable).
+  const sessionEntries = batch.filter((e) => e.mode === "session");
+  if (sessionEntries.length > 0) {
+    if (sessionEntries.length > SESSION_MAX_CONCURRENT) {
+      rejects.push(`session-cap-exceeded ${sessionEntries.length}`);
+    }
+    if (session && !session.agentopOk) {
+      rejects.push("agentop-unavailable");
+    }
+    if (session) {
+      const containable = new Set(session.containableHarnesses);
+      // Each distinct non-containable harness is reported exactly once — a
+      // batch that repeats the same bad harness across units isn't N distinct
+      // problems, but two different bad harnesses are two distinct problems.
+      const rejectedHarnesses = new Set<string>();
+      for (const entry of sessionEntries) {
+        const harness = entry.harness ?? session.containableHarnesses[0] ?? "claude-code";
+        if (containable.has(harness)) continue;
+        if (rejectedHarnesses.has(harness)) continue;
+        rejectedHarnesses.add(harness);
+        rejects.push(`harness-not-containable ${harness}`);
+      }
+    }
   }
 
   const seenKeys = new Set<string>();
