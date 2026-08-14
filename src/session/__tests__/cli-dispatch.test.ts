@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { dispatchCommand } from "../cli";
 import * as ledgerModule from "../../journey/ledger";
 import { readLedger, recordDispatch, startJourney } from "../../journey/ledger";
+import { run as journeyRun } from "../../journey/cli";
 import type { AgentopRunner } from "../types";
 
 async function fixture(): Promise<string> {
@@ -294,6 +295,118 @@ test("a ledger write failure for one unit does not lose already-recorded session
     const recorded = ledger!.dispatches.filter((d) => d.sessionId !== undefined);
     expect(recorded.length).toBe(2);
   } finally {
-    mock.module("../../journey/ledger", () => ledgerModule);
+    // Restoring with `() => ledgerModule` (rather than a snapshot taken
+    // before mocking) would be a no-op: `ledgerModule` is a live binding onto
+    // the same module record mock.module() just patched in place, so by this
+    // point `ledgerModule.recordDispatch` already IS the wrapper above, and
+    // "restoring" to it would leave the throwing wrapper permanently wired
+    // in for every later test in this file that imports `recordDispatch`.
+    mock.module("../../journey/ledger", () => ({ ...ledgerModule, recordDispatch: realRecordDispatch }));
   }
+});
+
+// Finding 1: `recordDispatch` REPLACES the matching entry wholesale, not a
+// merge. The recovery command printed on an ERROR ledger: line is meant to be
+// run verbatim by an operator to repair a record for a session that is
+// ALREADY running — so if it omits a field the record actually carries (e.g.
+// `intensity`, `harness`), running it exactly as printed silently wipes that
+// field. This is checked two ways: the exact text of the printed command, and
+// — the part a text-only assertion cannot catch — actually executing that
+// command through `aipe journey record`'s real `run()` and re-reading the
+// ledger to prove the fields survived the round trip.
+test("the ledger-write recovery command forwards intensity and harness, and running it verbatim restores them", async () => {
+  const dir = await fixture(); // repo "embark", intensity "ultracode", harness "claude-code"
+  const worktree = join(dir, ".worktrees", "j1-joaquim");
+
+  // Snapshot the real implementation BEFORE mocking: `ledgerModule` is a live
+  // binding onto the module record mock.module() patches in place, so once
+  // mocked, `ledgerModule.recordDispatch` reflects the mock too. Only a
+  // reference captured beforehand lets the round-trip call below reach the
+  // genuine `aipe journey record` write path.
+  const realRecordDispatch = ledgerModule.recordDispatch;
+  mock.module("../../journey/ledger", () => ({
+    ...ledgerModule,
+    recordDispatch: async () => {
+      throw new Error("simulated disk full");
+    },
+  }));
+
+  let r: { code: number; lines: string[] };
+  try {
+    r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: okRunner });
+  } finally {
+    mock.module("../../journey/ledger", () => ({ ...ledgerModule, recordDispatch: realRecordDispatch }));
+  }
+
+  expect(r.code).toBe(1);
+  const expectedRecordCmd = [
+    "aipe journey record",
+    "--journey j1",
+    `--workspace ${dir}`,
+    "--repo embark",
+    "--specialist Joaquim",
+    "--branch aipe/j1/joaquim",
+    `--worktree ${worktree}`,
+    "--status dispatched",
+    "--mode session",
+    "--intensity ultracode",
+    "--harness claude-code",
+    "--session-id s-1",
+  ].join(" ");
+  expect(r.lines).toEqual([
+    `ERROR ledger: session s-1 for embark is running but could not be recorded (simulated disk full) — record it manually: ${expectedRecordCmd}`,
+  ]);
+
+  // The ledger write never landed (recordDispatch was made to throw above),
+  // so the fixture's original entry — no sessionId — is still on disk.
+  const before = await readLedger(dir, "j1");
+  expect(before!.dispatches[0]!.sessionId).toBeUndefined();
+
+  // Actually run the printed command through the real `aipe journey record`
+  // (unmocked at this point) rather than merely re-parsing its text.
+  const args = expectedRecordCmd.split(" ").slice(2); // drop "aipe", "journey" → ["record", ...]
+  const recoveryCode = await journeyRun(args);
+  expect(recoveryCode).toBe(0);
+
+  const after = await readLedger(dir, "j1");
+  const recovered = after!.dispatches.find((d) => d.repo === "embark");
+  expect(recovered!.sessionId).toBe("s-1");
+  expect(recovered!.intensity).toBe("ultracode");
+  expect(recovered!.harness).toBe("claude-code");
+  expect(recovered!.mode).toBe("session");
+  expect(recovered!.status).toBe("dispatched");
+  expect(recovered!.branch).toBe("aipe/j1/joaquim");
+  expect(recovered!.worktree).toBe(worktree);
+});
+
+// Finding 2: `started.length !== pending.length` must be reachable on its
+// own. `shortRunner` (above) bundles it with a per-unit "no session for X"
+// line (fewer sessions than requested ⇒ some unit is unmatched), and
+// `wrongCwdRunner` deliberately keeps the counts equal to suppress it. The
+// one combination that fires the length-mismatch line ALONE is agentop
+// answering with MORE sessions than requested while every pending unit still
+// finds its match — e.g. a stale session echoed back from a previous wave.
+test("more sessions returned than requested, but every pending unit still matches: only the length-mismatch line fires", async () => {
+  const { dir, worktreeA, worktreeB } = await twoUnitFixture();
+  const extraRunner: AgentopRunner = async (args) => {
+    if (args[0] === "--version") return { code: 0, stdout: "agentop v1.9.0", stderr: "" };
+    const flags = parseSessionFlags(args);
+    const sessions = flags.map(({ cwd }) => ({ id: cwd === worktreeA ? "s-a" : "s-b", harness: "claude", cwd }));
+    sessions.push({ id: "s-stale", harness: "claude", cwd: "/nowhere/stale-from-previous-wave" });
+    return { code: 0, stdout: JSON.stringify({ sessions }), stderr: "" };
+  };
+
+  const r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: extraRunner });
+  expect(r.code).toBe(1);
+  expect(r.lines).toEqual([
+    "OK a → s-a",
+    "OK b → s-b",
+    "ERROR session: asked agentop for 2 sessions, it started 3",
+  ]);
+
+  const ledger = await readLedger(dir, "j1");
+  const a = ledger!.dispatches.find((d) => d.repo === "a");
+  const b = ledger!.dispatches.find((d) => d.repo === "b");
+  expect(a!.sessionId).toBe("s-a");
+  expect(b!.sessionId).toBe("s-b");
 });

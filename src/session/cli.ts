@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { packageFqid } from "../context-brain/packages";
 import { readLedger, recordDispatch } from "../journey/ledger";
+import type { JourneyDispatch } from "../journey/types";
 import { resolveAdapter } from "../harness/registry";
 import { personaSlug } from "../hire-specialists/render";
 import { startBatch, type BatchUnit } from "./batch";
@@ -120,6 +121,54 @@ function specSlice(orientation: string, fqid: string): string {
   if (start < 0) return orientation;
   const end = lines.findIndex((l, i) => i > start && /^#{1,3}\s/.test(l));
   return lines.slice(start, end < 0 ? undefined : end).join("\n");
+}
+
+// Builds the `aipe journey record` command printed as the operator's recovery
+// path when a ledger write fails for a session that is already running (see
+// the ERROR ledger: branch below). `recordDispatch` does a full REPLACE of the
+// matching entry, not a merge, so this command must forward every field that
+// is actually present on the record being recovered — a flag silently
+// omitted here means that field gets wiped the moment the printed command is
+// run verbatim. Flag names are taken from `recordCommand` in
+// src/journey/cli.ts, not guessed: whichever flags that parser reads for
+// JourneyDispatch's fields are exactly the ones emitted here, so a field
+// added to JourneyDispatch later is caught by extending FIELD_FLAGS rather
+// than by silently dropping it again.
+//
+// `redispatchReason` has no flag in `recordCommand` — it is derived there
+// from `--reason` only when the guard detects a delivered/verified unit being
+// reopened, which cannot be true of a unit still `dispatched` (the state
+// every pending session-mode unit is in here). It is intentionally left off.
+const FIELD_FLAGS: { field: keyof JourneyDispatch; flag: string }[] = [
+  { field: "repo", flag: "--repo" },
+  { field: "package", flag: "--package" },
+  { field: "specialist", flag: "--specialist" },
+  { field: "branch", flag: "--branch" },
+  { field: "worktree", flag: "--worktree" },
+  { field: "pr", flag: "--pr" },
+  { field: "status", flag: "--status" },
+  { field: "tier", flag: "--tier" },
+  { field: "model", flag: "--model" },
+  { field: "mode", flag: "--mode" },
+  { field: "intensity", flag: "--intensity" },
+  { field: "harness", flag: "--harness" },
+];
+
+function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: JourneyDispatch, sessionId: string): string {
+  const parts = ["aipe journey record", `--journey ${journeyId}`, `--workspace ${workspace}`];
+  for (const { field, flag } of FIELD_FLAGS) {
+    const value = dispatch[field];
+    if (value !== undefined) parts.push(`${flag} ${value}`);
+  }
+  parts.push(`--session-id ${sessionId}`);
+  if (dispatch.evidence) {
+    const ev = dispatch.evidence;
+    parts.push(`--evidence-by ${ev.by}`);
+    parts.push(`--evidence-summary ${ev.summary}`);
+    for (const cmd of ev.commands) parts.push(`--evidence-cmd ${cmd}`);
+    if (ev.artifact !== undefined) parts.push(`--evidence-artifact ${ev.artifact}`);
+  }
+  return parts.join(" ");
 }
 
 export async function dispatchCommand(
@@ -244,18 +293,7 @@ export async function dispatchCommand(
       await recordDispatch(opts.workspace, opts.journeyId, { ...d, sessionId: session.id });
       lines.push(`OK ${fqid} → ${session.id}`);
     } catch (err) {
-      const recordCmd = [
-        "aipe journey record",
-        `--journey ${opts.journeyId}`,
-        `--workspace ${opts.workspace}`,
-        `--repo ${d.repo}`,
-        ...(d.package ? [`--package ${d.package}`] : []),
-        `--specialist ${d.specialist}`,
-        `--branch ${d.branch}`,
-        `--worktree ${d.worktree}`,
-        "--mode session",
-        `--session-id ${session.id}`,
-      ].join(" ");
+      const recordCmd = recoveryRecordCommand(opts.journeyId, opts.workspace, d, session.id);
       lines.push(
         `ERROR ledger: session ${session.id} for ${fqid} is running but could not be recorded (${err instanceof Error ? err.message : String(err)}) — record it manually: ${recordCmd}`,
       );
