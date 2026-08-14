@@ -49,6 +49,21 @@ export interface HarnessAdapter {
   id: string;
   label: string;
 
+  // The name `agentop` (the session runner used for session-mode dispatch)
+  // knows this harness by — e.g. "claude", "codex", "gemini", "copilot",
+  // "antigravity", "kimi". This is a DIFFERENT namespace from `id` above:
+  // `id` is what AIPe and the PE-approved Orientation Spec call the adapter
+  // ("claude-code", "codex", "generic", …) and what the journey ledger's
+  // `harness` field stores. `claude-code` (the AIPe adapter id) is not
+  // `claude` (the agentop harness name) — conflating the two, or hardcoding
+  // one adapter's mapping as a literal everywhere agentop is invoked, means
+  // a unit approved for one harness can silently start a session on another.
+  // `null` means agentop has no equivalent for this harness, which makes it
+  // not session-dispatchable for the same reason a non-containable harness
+  // is (see `isContainable` below) — a caller resolving this MUST treat
+  // `null` as "cannot session-dispatch", never let it reach an argv.
+  agentopHarness: string | null;
+
   // A — write this harness's native integration into the workspace folder.
   installIntegration(workspaceDir: string): Promise<InstallReport>;
 

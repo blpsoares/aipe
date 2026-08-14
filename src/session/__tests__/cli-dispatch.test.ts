@@ -6,6 +6,9 @@ import { dispatchCommand } from "../cli";
 import * as ledgerModule from "../../journey/ledger";
 import { readLedger, recordDispatch, startJourney } from "../../journey/ledger";
 import { run as journeyRun } from "../../journey/cli";
+import * as registryModule from "../../harness/registry";
+import { claudeCodeAdapter } from "../../harness/claude-code";
+import type { HarnessAdapter } from "../../harness/types";
 import type { AgentopRunner } from "../types";
 
 async function fixture(): Promise<string> {
@@ -131,6 +134,57 @@ test("a missing persona for one of three units leaves no orphaned prompt file fo
   await expect(readdir(join(dir, ".aipe", "journeys", "j1", "prompts"))).rejects.toThrow();
   const ledger = await readLedger(dir, "j1");
   expect(ledger!.dispatches.every((d) => d.sessionId === undefined)).toBe(true);
+});
+
+// Two namespaces: AIPe identifies a harness by its adapter id ("claude-code",
+// "codex", …) — what the ledger's `harness` field stores; agentop identifies
+// one by its own harness name ("claude", "codex", …). "claude-code" is NOT
+// "claude". dispatchCommand must resolve the argv's harness name from the
+// UNIT's recorded adapter id (via HarnessAdapter#agentopHarness), never from
+// a literal — a unit approved for one harness must not silently start a
+// session tagged for another. This test stands in for a second real adapter
+// (Task 16 adds Codex) by registering a fake one whose agentopHarness differs
+// from "claude", so it fails against a hardcoded literal regardless of which
+// real adapters exist yet.
+test("a unit whose harness is not claude-code produces its own agentop harness name in the argv, not a hardcoded literal", async () => {
+  const dir = await fixture();
+  const acmeAdapter: HarnessAdapter = { ...claudeCodeAdapter, id: "acme", agentopHarness: "acme-agentop" };
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "aipe/j1/joaquim",
+    worktree: join(dir, ".worktrees", "j1-joaquim"), status: "dispatched",
+    mode: "session", intensity: "ultracode", harness: "acme",
+  });
+
+  // Snapshot the REAL getAdapter as a plain function reference before
+  // mocking, not via `registryModule.getAdapter` inside the override itself:
+  // `registryModule` is a live binding onto the module record mock.module()
+  // patches in place, so once mocked, `registryModule.getAdapter` IS the
+  // override below — falling back to it from inside itself would recurse
+  // forever instead of reaching the original implementation (see the
+  // identical note on `realRecordDispatch` elsewhere in this file).
+  const realGetAdapter = registryModule.getAdapter;
+  mock.module("../../harness/registry", () => ({
+    ...registryModule,
+    getAdapter: (id: string | null | undefined) => (id === "acme" ? acmeAdapter : realGetAdapter(id)),
+  }));
+  try {
+    let capturedArgs: string[] = [];
+    const capturingRunner: AgentopRunner = async (args) => {
+      if (args[0] === "--version") return { code: 0, stdout: "agentop v1.9.0", stderr: "" };
+      capturedArgs = args;
+      return okRunner(args);
+    };
+    const r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: capturingRunner });
+    expect(r.code).toBe(0);
+    const sessionFlag = capturedArgs[capturedArgs.indexOf("--session") + 1]!;
+    expect(sessionFlag.startsWith("acme-agentop@")).toBe(true);
+    expect(sessionFlag.startsWith("claude@")).toBe(false);
+  } finally {
+    // Restore to the real implementation explicitly — `() => registryModule`
+    // would be a no-op (same live-binding trap) and leave the mock wired in
+    // for every later test in this file.
+    mock.module("../../harness/registry", () => ({ ...registryModule, getAdapter: realGetAdapter }));
+  }
 });
 
 // Parses a shell command line into argv the way a POSIX shell actually would:

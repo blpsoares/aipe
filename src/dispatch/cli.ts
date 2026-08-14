@@ -51,7 +51,7 @@ export function parseBatch(value: unknown): Batch | null {
 
 // Which harnesses AIPe may start a session on: exactly those whose adapter can
 // install a containment hook. Everything else is unreachable by construction.
-const KNOWN_HARNESSES = ["claude-code", "generic"];
+const KNOWN_HARNESSES = ["claude-code", "codex", "generic"];
 
 export async function buildSessionContext(
   runner: AgentopRunner = realRunner,

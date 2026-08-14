@@ -169,5 +169,5 @@ test("parseBatch rejects an unknown intensity rather than silently dropping it",
 test("buildSessionContext reports only containable harnesses", async () => {
   const ctx = await buildSessionContext(async () => ({ code: 0, stdout: "agentop v1.9.0", stderr: "" }));
   expect(ctx.agentopOk).toBe(true);
-  expect(ctx.containableHarnesses).toEqual(["claude-code"]);
+  expect(ctx.containableHarnesses).toEqual(["claude-code", "codex"]);
 });

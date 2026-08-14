@@ -29,6 +29,10 @@ on-PATH \`aipe\` binary — never hand-edit the files it owns.
 export const genericAdapter: HarnessAdapter = {
   id: "generic",
   label: "Generic / AGENTS.md harness",
+  // A file-based harness has no session-runner identity agentop can address:
+  // it cannot be contained (see containmentHook below), so it is not
+  // session-dispatchable either way — null makes both facts consistent.
+  agentopHarness: null,
 
   async installIntegration(workspaceDir: string): Promise<InstallReport> {
     const flowsDir = join(workspaceDir, ".aipe", "flows");

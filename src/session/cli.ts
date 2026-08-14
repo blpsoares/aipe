@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { packageFqid } from "../context-brain/packages";
 import { readLedger, recordDispatch } from "../journey/ledger";
 import type { JourneyDispatch } from "../journey/types";
-import { resolveAdapter } from "../harness/registry";
+import { getAdapter, resolveAdapter } from "../harness/registry";
 import { personaSlug } from "../hire-specialists/render";
 import { startBatch, type BatchUnit } from "./batch";
 import { composePrompt } from "./prompt";
@@ -258,13 +258,36 @@ export async function dispatchCommand(
   // dispatch that fails partway (persona missing for unit 2 of 3, say) must
   // not leave unit 1's prompt file behind, orphaned, implying a dispatch that
   // never happened. Validate everything first; write only once all reads land.
-  const resolved: { d: (typeof pending)[number]; fqid: string; personaBody: string }[] = [];
+  const resolved: { d: (typeof pending)[number]; fqid: string; personaBody: string; agentopHarness: string }[] = [];
   for (const d of pending) {
     const fqid = packageFqid(d.repo, d.package);
+
+    // Two namespaces: `d.harness` is the AIPe adapter id the PE approved for
+    // this unit ("claude-code", "codex", …) — NOT the name agentop itself
+    // uses for that harness ("claude", "codex", …). Resolving it from the
+    // UNIT's own recorded harness (never a literal, never the workspace's
+    // default adapter) is exactly what keeps a unit approved for one harness
+    // from silently starting a session on another. `getAdapter` falls back
+    // to the default (claude-code) for an absent/legacy `d.harness`, same as
+    // every other reader of this field.
+    const unitAdapter = getAdapter(d.harness);
+    const agentopHarness = unitAdapter.agentopHarness;
+    // null means agentop has no equivalent for this harness — not
+    // session-dispatchable, for the same reason a non-containable harness
+    // isn't (see isContainable). This should already have been caught by
+    // `aipe dispatch validate` before the unit ever reached the ledger, but
+    // dispatchCommand does not re-run that law here — so it must refuse
+    // explicitly rather than let a `null` reach the argv as a literal
+    // "null" harness (or worse, silently coerce to something else).
+    if (agentopHarness === null) {
+      lines.push(`ERROR harness: ${unitAdapter.id} has no agentop equivalent — not session-dispatchable`);
+      return { code: 1, lines };
+    }
+
     const target = adapter.personaTarget(personaSlug(d.specialist));
     try {
       const personaBody = await readFile(join(opts.workspace, d.repo, target.relDir, target.filename), "utf8");
-      resolved.push({ d, fqid, personaBody });
+      resolved.push({ d, fqid, personaBody, agentopHarness });
     } catch {
       lines.push(`ERROR persona: could not read the persona for ${d.specialist}@${d.repo}`);
       return { code: 1, lines };
@@ -273,7 +296,7 @@ export async function dispatchCommand(
 
   await mkdir(promptsDir, { recursive: true });
   const units: BatchUnit[] = [];
-  for (const { d, fqid, personaBody } of resolved) {
+  for (const { d, fqid, personaBody, agentopHarness } of resolved) {
     const prompt = composePrompt({
       personaBody,
       specSlice: specSlice(orientation, fqid),
@@ -290,7 +313,7 @@ export async function dispatchCommand(
     const promptFile = join(promptsDir, `${fqid.replace(/\//g, "--")}.md`);
     await writeFile(promptFile, prompt, "utf8");
     units.push({
-      harness: "claude",
+      harness: agentopHarness,
       cwd: d.worktree,
       promptFile,
       name: `${fqid}/${personaSlug(d.specialist)}`,

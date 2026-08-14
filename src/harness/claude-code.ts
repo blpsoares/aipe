@@ -67,6 +67,7 @@ export async function ensureSessionStartHook(targetDir: string): Promise<void> {
 export const claudeCodeAdapter: HarnessAdapter = {
   id: "claude-code",
   label: "Claude Code",
+  agentopHarness: "claude",
 
   async installIntegration(workspaceDir: string): Promise<InstallReport> {
     // 1. merge the SessionStart hook into settings.json (idempotent)
