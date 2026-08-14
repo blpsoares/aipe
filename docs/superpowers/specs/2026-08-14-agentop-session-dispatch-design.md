@@ -72,9 +72,10 @@ by file and the shell never sees its content.
 Surface:
 
 - `probe(): Promise<{ present: boolean; version: string | null; ok: boolean }>` —
-  minimum version **1.9.0**, the version verified to carry
-  `session batch`/`open`/`list` with `--json`. That is the verified floor, not
-  necessarily the earliest release that works.
+  **1.9.0** is the version verified to carry `session batch`/`open`/`list`
+  with `--json`, but the effective minimum is the first release that stamps
+  `AGENTOP_SESSION_ID` (see "The one change agentop needs"), since containment
+  depends on it.
 - `dispatch(journey, units, opts): Promise<SessionId[]>` — composes one prompt
   file per unit, runs a single `agentop session batch --task aipe/<journey>
   --json`, returns the started ids.
@@ -106,6 +107,12 @@ rejections:
 
 - `agentop-unavailable` when any entry is `mode: "session"` and `probe()` fails.
 - `session-cap-exceeded` when session-mode entries exceed their own cap.
+- `harness-not-containable` when a session-mode entry targets a harness whose
+  adapter does not implement containment (see below).
+
+`DispatchEntry` also gains an optional `harness?: string` (default: the
+workspace harness), so a QA unit can be pointed at a different model from the
+dev unit it reviews.
 
 **On the cap:** `MAX_CONCURRENT = 16` (`src/dispatch/types.ts:16`) was
 calibrated for subagents. Sixteen real Claude sessions — each with its own
@@ -114,16 +121,47 @@ different order of cost. Session mode gets its own cap of **4** concurrent
 sessions per wave, adjudicated by the same `validateBatch`. The subagent cap
 stays at 16; a mixed wave is checked against both.
 
-### The containment hook
+### Containment: a property of the harness adapter
 
-Installed by the claude-code adapter into the workspace's
-`.claude/settings.json`, alongside the `SessionStart` hook that already exists
-(`src/harness/claude-code.ts:50`). It is a thin shim: it calls
-`aipe session guard` and applies the printed decision, so the "is this a
-session spawn?" question is a pure, tested function rather than a regex loose
-in a shell script.
+Blocking a command before it runs is **not** a Claude Code exclusive. Verified
+mechanisms across the harnesses agentop can start:
 
-Rules:
+| Harness | Mechanism | Decision shape |
+| --- | --- | --- |
+| Claude Code | `PreToolUse`, matcher `Bash`, external command | `permissionDecision: "deny"` |
+| Codex CLI | `PreToolUse`, matcher `Bash`, external command, in `~/.codex/hooks.json` or `config.toml`; **on by default** | `hookSpecificOutput.permissionDecision: "deny"`, or exit 2 + stderr |
+| Gemini CLI | `BeforeTool` hook, regex matcher, `type: command`; plus a policy engine with `commandPrefix`/`commandRegex` deny as a static second layer | JSON on stdout — and nothing else on stdout |
+| Copilot CLI | `preToolUse` hook, plus the `--deny-tool 'shell(...)'` flag | `permissionDecision: "deny"` / `behavior: "deny"` |
+| antigravity, kimi | **not verified** | — |
+
+Codex's is near-identical to Claude Code's; Gemini and Copilot differ in event
+name and output shape but do the same job. So the cost is not "does a
+mechanism exist" — it is four config files, four event names, three output
+shapes to write and keep working.
+
+That is exactly the cost `HarnessAdapter` (`src/harness/types.ts`) already
+exists to absorb: it is the abstraction that answers "where does the persona
+go, what is the MCP config path" per harness. So:
+
+**`HarnessAdapter` gains `containmentHook()`**, and `installIntegration` writes
+it in that harness's own format. Every one of them invokes the same
+`aipe session guard`; only the wrapper differs. The "is this a session spawn?"
+question stays a single pure, tested function — never a regex loose in a shell
+script, and never duplicated per harness.
+
+**Eligibility rule** — this replaces the earlier "claude only" restriction:
+
+> A harness is eligible for `mode: session` **if and only if** its adapter
+> implements containment.
+
+Claude Code, Codex, Gemini and Copilot qualify. `antigravity` and `kimi` do not,
+until someone verifies their mechanism and implements the adapter method —
+`validateBatch` rejects them with `harness-not-containable`. This unlocks the
+thing that was actually worth having: a QA specialist running on a **different
+model** from the dev that wrote the code, which is real independence rather than
+a second persona sharing the first one's blind spots.
+
+Rules the guard applies, identically on every harness:
 
 | Condition | Decision |
 | --- | --- |
@@ -138,23 +176,42 @@ against an on-disk counter in the journey directory, using the same lock
 mechanism as `aipe dispatch claim` (`src/dispatch/lock.ts`) — without an
 atomic counter, a grant of 1 becomes unbounded spawning.
 
-#### Stated limit: the gate is Claude Code-only
+### Awareness: the rule is told, not just enforced
 
-`PreToolUse` is a Claude Code mechanism. A specialist started under another
-harness agentop can launch — codex, gemini, copilot, antigravity, kimi — does
-**not** pass through this gate; for those, the prohibition is prose only.
+A deny the session runs into is a wall it discovers by hitting. Every session
+agentop opens is therefore **briefed** on its relationship to agentop, up front:
 
-Design consequence: **while the gate exists only for Claude Code, session-mode
-dispatch is restricted to the `claude` harness.** Multi-harness dispatch is a
-door agentop opens that this spec deliberately does not walk through.
+- what it **may** do — `list`, `attach`, `rename`, `note`, including to orient
+  itself about the sibling sessions filed under the same task;
+- what it **may not** do — open or kill a session;
+- its grant, if the coordinator issued one, and what it is for.
+
+The hook then becomes the safety net under a rule the session already knows,
+rather than the only thing standing between intent and a token fork-bomb. The
+briefing is a property of an agentop-managed session, so it belongs in agentop
+itself and applies to sessions AIPe did not start.
+
+### The one change agentop needs
+
+Stamp `AGENTOP_SESSION_ID` into the environment of the `tmux new-session` it
+already runs (agentop spawns via `tmux new-session -d -s <id> -c <cwd> -- <argv>`
+on its own socket, and stamps nothing today).
+
+This is **not** for the deny — `AIPE_ROLE=specialist`, injected by the
+coordinator, already answers "should this be blocked". It is for the **grant
+counter**: decrementing a per-session quota requires knowing *which* session is
+spending it, and from inside the session there is currently no way to tell.
+
+Because containment depends on this stamp, the minimum agentop version rises to
+the first release carrying it.
 
 ## Flow: a session-mode wave
 
 Steps 0–3 of `/operate` are unchanged (read the ledger, open the journey,
 decompose into per-package tasks, sequence into waves).
 
-**3.5 — the Orientation Spec gains two fields per unit:** `mode` and
-`intensity`. Both go through the PE's existing approval gate. The PE is the
+**3.5 — the Orientation Spec gains three fields per unit:** `mode`, `intensity`
+and `harness`. All go through the PE's existing approval gate. The PE is the
 role that approves budget in AIPe's model, so turning on `ultracode` — which
 multiplies token spend via Workflow — belongs to the gate they already sign.
 The coordinator executes what was approved; it does not raise intensity on its
@@ -167,9 +224,11 @@ dispatched`.
 **5 — dispatch.** `aipe session dispatch` reads the ledger for units marked
 `dispatched` with `mode: session` and, for each, composes a prompt file:
 
-1. the persona body, read from `<repo>/.claude/skills/<slug>/SKILL.md` — the
-   same source the coordinator already reads for subagent dispatch, so it does
-   not depend on the worktree carrying `.claude/`;
+1. the persona body, read from the path the target harness's adapter reports via
+   `personaTarget(slug)` (for Claude Code,
+   `<repo>/.claude/skills/<slug>/SKILL.md`) — the same source the coordinator
+   already reads for subagent dispatch, inlined into the prompt, so it does not
+   depend on the worktree carrying the harness's skill directory;
 2. that unit's slice of the approved Orientation Spec (scope, acceptance,
    relevant files, relations, definition of done);
 3. the **return contract** (below).
@@ -185,8 +244,8 @@ which the in-memory subagent brief never left behind.
 Then one `agentop session batch --task aipe/<journey> --json` for the whole
 wave. The returned session ids are written back to the ledger.
 
-**Ledger fields added by this spec** (per unit): `mode`, `intensity`, and
-`sessionId`. Nothing else in the ledger schema changes.
+**Ledger fields added by this spec** (per unit): `mode`, `intensity`, `harness`
+and `sessionId`. Nothing else in the ledger schema changes.
 
 ### The return contract
 
@@ -196,7 +255,7 @@ subagent's return is appended to every dispatched prompt:
 - operate strictly inside `<worktree>` (for a monorepo package: stay within
   `<package-path>`);
 - run spec-driven first (`aipe skill match`), then TDD;
-- run `/verify-before-done` and gather evidence before claiming done;
+- verify before claiming done, and gather evidence;
 - push `<branch>` and open the PR;
 - **then record the result in the ledger:**
   `aipe journey record --journey <id> … --status delivered --pr <url>
@@ -206,6 +265,13 @@ subagent's return is appended to every dispatched prompt:
 
 The ledger remains the source of truth. The session does not *return* — it
 *records*.
+
+**Harness-neutral phrasing is required.** The contract must not name Claude Code
+constructs: `/verify-before-done` is a slash command a Codex or Gemini session
+does not have. Every step is phrased as an outcome ("verify before claiming
+done") or as an `aipe` subcommand, which is harness-agnostic by construction.
+The adapter supplies the harness's own idiom for the flow-skills where one
+exists.
 
 **6 — collection.** `aipe session collect --journey <id> --timeout <s>` polls,
 cross-referencing `agentop session list --json` with the ledger, and classifies
@@ -251,15 +317,38 @@ agentop enters through an injectable runner; no test executes the binary.
   fake ledger.
 - **`probe()`** — absent binary, below-minimum version, ok.
 - **`validateBatch`** — rejects session mode without agentop; rejects above the
-  session cap; existing rejections unchanged.
+  session cap; rejects a non-containable harness; existing rejections unchanged.
 - **`session guard`** — allow/deny table across command shapes, plus the grant
-  counter decrementing and exhausting under concurrent calls.
+  counter decrementing and exhausting under concurrent calls. The guard is one
+  function, so this table is written **once**, not per harness.
+- **`containmentHook()` per adapter** — each adapter renders a config its
+  harness actually accepts: the right file (`.claude/settings.json`,
+  `~/.codex/hooks.json`, Gemini settings, Copilot config), the right event name
+  (`PreToolUse` / `BeforeTool` / `preToolUse`), the right matcher, and a command
+  that invokes `aipe session guard`. Asserted against a golden fixture per
+  harness, since a silently malformed hook config is a guardrail that looks
+  installed and denies nothing.
+- **Harness-neutral contract** — the composed prompt contains no Claude
+  Code-only construct (no `/`-prefixed slash commands) for a non-claude target.
 
 ## Out of scope
 
 - Replacing subagent dispatch.
-- Multi-harness dispatch (codex/gemini/…), until the containment gate covers
-  them.
-- A dedicated supervisor session per journey.
+- Session-mode dispatch on `antigravity` and `kimi` — their blocking mechanisms
+  were not verified, so their adapters cannot implement containment and
+  `validateBatch` rejects them.
+- A dedicated supervisor session per journey (the coordinator waits actively
+  instead, so the PE's session is occupied during a wave).
 - Any change to worktree lifecycle, the relations graph, the QA gate, or the
   ledger's schema beyond the new per-unit fields.
+
+## References
+
+Harness containment mechanisms, verified 2026-08-14 — re-check before
+implementing an adapter, since these CLIs move fast:
+
+- Codex CLI hooks — <https://learn.chatgpt.com/docs/hooks>
+- Gemini CLI hooks — <https://geminicli.com/docs/hooks/>
+- Gemini CLI policy engine — <https://geminicli.com/docs/reference/policy-engine/>
+- Copilot CLI hooks reference — <https://docs.github.com/en/copilot/reference/hooks-reference>
+- Copilot CLI allow/deny tools — <https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools>
