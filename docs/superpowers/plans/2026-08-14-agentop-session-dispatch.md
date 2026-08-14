@@ -2129,12 +2129,19 @@ export async function dispatchCommand(
     units.push({ harness: "claude", cwd: d.worktree, promptFile, ...(d.model ? { model: d.model } : {}) });
   }
 
-  let started;
+  let result;
   try {
-    started = await startBatch(`aipe/${opts.journeyId}`, units, opts.runner);
+    result = await startBatch(`aipe/${opts.journeyId}`, units, opts.runner);
   } catch (err) {
     lines.push(`ERROR agentop: ${err instanceof Error ? err.message : String(err)}`);
     return { code: 1, lines };
+  }
+  const started = result.sessions;
+  // `malformed` counts entries agentop returned that could not be used. It is
+  // NOT an error to abort on — the sessions it did start are already running,
+  // and throwing here would orphan them. Report it so the shortfall is visible.
+  if (result.malformed > 0) {
+    lines.push(`ERROR session: agentop returned ${result.malformed} unusable session record(s)`);
   }
 
   // Pair by cwd, NOT by position. `parseBatchOutput` returns agentop's list
