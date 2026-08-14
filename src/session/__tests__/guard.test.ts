@@ -71,3 +71,31 @@ test("kill wins over a spawn appearing in the same command", () => {
   expect(decide({ command: '{ REASON="a b" agentop session kill abc; }', role: "specialist" }).action)
     .toBe("deny");
 });
+
+test("the guard is case-insensitive, so kill-deny cannot be dodged with case", () => {
+  expect(decide({ command: "AGENTOP SESSION KILL abc", role: "specialist" })).toEqual({
+    action: "deny",
+    reason: "a specialist must not kill sessions",
+  });
+  expect(decide({ command: "AGENTOP SESSION CLAUDE", role: "specialist" })).toEqual({
+    action: "needs-grant",
+    reason: "specialist-session-spawn",
+  });
+  expect(
+    decide({
+      command: "agentop session claude -p x; AGENTOP SESSION KILL abc",
+      role: "specialist",
+    }),
+  ).toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+});
+
+test("a mixed-case read-only verb is still allowed", () => {
+  expect(decide({ command: "AGENTOP SESSION LIST", role: "specialist" }).action).toBe("allow");
+});
+
+test("a flag-shaped token after session is not recognised, so it needs a grant", () => {
+  expect(decide({ command: "agentop session --foo claude", role: "specialist" })).toEqual({
+    action: "needs-grant",
+    reason: "specialist-session-spawn",
+  });
+});

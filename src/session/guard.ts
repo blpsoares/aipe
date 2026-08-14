@@ -25,7 +25,17 @@ export type GuardDecision =
 // or annotate, they never create or destroy.
 const READ_ONLY = new Set(["list", "attach", "note", "rename"]);
 
-const INVOCATION = /agentop\s+session\s+([A-Za-z][\w-]*)/g;
+// Case-insensitive: `AGENTOP SESSION KILL` is exactly as dangerous as the
+// lowercase form, and a case-sensitive match would silently defeat the
+// kill-deny. The verb capture allows leading hyphens too, so a flag-shaped
+// token (`--foo`) after `session` is captured rather than matching nothing —
+// an unrecognised token must fall through to needs-grant, never allow.
+//
+// Known boundary (accepted, not fixed here): this can't see an invocation
+// assembled from shell variables (`A=agentop; B=session; $A $B claude`), nor
+// a renamed/copied binary (`/tmp/ao session claude`). Both require
+// deliberately evading a known guard rather than drifting into it.
+const INVOCATION = /agentop\s+session\s+([\w-]+)/gi;
 
 export function decide(input: GuardInput): GuardDecision {
   if (input.role !== "specialist") return { action: "allow" };
