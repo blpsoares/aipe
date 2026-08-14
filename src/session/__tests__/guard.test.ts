@@ -99,3 +99,36 @@ test("a flag-shaped token after session is not recognised, so it needs a grant",
     reason: "specialist-session-spawn",
   });
 });
+
+// Regression for a matchAll parity artifact: when a captured verb is itself
+// the literal token `agentop`, a naive consuming capture group eats it, so it
+// can't start the next match — and a real `kill` right after can be skipped.
+// The lookahead fix leaves the verb's characters available to begin the next
+// match, so this must always resolve to deny.
+test("a kill hidden behind a repeated agentop-session verb is still caught", () => {
+  expect(
+    decide({ command: "agentop session agentop session kill x", role: "specialist" }),
+  ).toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+
+  expect(
+    decide({
+      command: "agentop session claude -p 'ask agentop session agentop session kill x'",
+      role: "specialist",
+    }),
+  ).toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+});
+
+test("repeated agentop-session verbs without a kill still need a grant", () => {
+  expect(
+    decide({ command: "agentop session agentop session claude", role: "specialist" }),
+  ).toEqual({ action: "needs-grant", reason: "specialist-session-spawn" });
+});
+
+test("a three-agentop chain in front of kill is still denied (parity check)", () => {
+  expect(
+    decide({
+      command: "agentop session agentop session agentop session kill x",
+      role: "specialist",
+    }),
+  ).toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+});
