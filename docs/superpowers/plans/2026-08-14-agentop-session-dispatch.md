@@ -324,6 +324,29 @@ test("kill wins over a spawn appearing in the same command", () => {
   expect(decide({ command: '{ REASON="a b" agentop session kill abc; }', role: "specialist" }).action)
     .toBe("deny");
 });
+
+// Plain capitalization must never hide an invocation.
+test("matching is case-insensitive", () => {
+  expect(decide({ command: "AGENTOP SESSION KILL abc", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "AGENTOP SESSION CLAUDE", role: "specialist" }).action).toBe("needs-grant");
+  expect(decide({ command: "agentop session claude -p x; AGENTOP SESSION KILL abc", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "AGENTOP SESSION LIST", role: "specialist" }).action).toBe("allow");
+});
+
+// An unrecognised token after `session` must fall through to needs-grant, never allow.
+test("a flag-shaped token after session is not a free pass", () => {
+  expect(decide({ command: "agentop session --foo claude", role: "specialist" }).action).toBe("needs-grant");
+  expect(decide({ command: "agentop session -- claude", role: "specialist" }).action).toBe("needs-grant");
+});
+
+// Regression: consuming the verb let `agentop` be eaten as one match's verb and
+// so miss starting the next — hiding a real kill. The lookahead prevents it.
+test("a repeated token sequence cannot swallow a following kill", () => {
+  expect(decide({ command: "agentop session agentop session kill x", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "agentop session agentop session agentop session kill x", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "agentop session claude -p 'ask agentop session agentop session kill x'", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "agentop session agentop session claude", role: "specialist" }).action).toBe("needs-grant");
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -363,22 +386,37 @@ export type GuardDecision =
 // or annotate, they never create or destroy.
 const READ_ONLY = new Set(["list", "attach", "note", "rename"]);
 
-const INVOCATION = /agentop\s+session\s+([A-Za-z][\w-]*)/g;
+// `i`: plain capitalization must not hide an invocation (`AGENTOP SESSION KILL`).
+// `[\w-]+`: a flag-shaped token (`--foo`) is captured too — it will not be in
+//   READ_ONLY, so an unrecognised token after `session` falls through to
+//   needs-grant rather than silently allowing.
+// Lookahead: the verb is captured WITHOUT being consumed. Consuming it lets
+//   `agentop session agentop session kill x` eat the second `agentop` as a verb,
+//   hiding the real `kill` from the scan — a regex-engine artifact, not a boundary.
+const INVOCATION = /agentop\s+session\s+(?=([\w-]+))/gi;
 
 export function decide(input: GuardInput): GuardDecision {
   if (input.role !== "specialist") return { action: "allow" };
 
   let sawSpawn = false;
+  // A FRESH regex per call: the module-level one is only ever read via .source,
+  // so no `lastIndex` state can leak between calls. decide() stays re-entrant.
+  const re = new RegExp(INVOCATION.source, "gi");
+  let m: RegExpExecArray | null;
   // Scan every occurrence: `kill` outranks a spawn appearing in the same
   // command, so a compound that does both is denied outright, not granted.
-  for (const m of input.command.matchAll(INVOCATION)) {
+  while ((m = re.exec(input.command)) !== null) {
     const verb = m[1]!.toLowerCase();
     if (verb === "kill") {
       return { action: "deny", reason: "a specialist must not kill sessions" };
     }
-    if (READ_ONLY.has(verb)) continue;
     // Anything else under `session` creates one: a harness name, or `batch`.
-    sawSpawn = true;
+    if (!READ_ONLY.has(verb)) sawSpawn = true;
+    // Advance ONE character, so matches fully overlap and nothing is consumed.
+    // Consuming lets a token that is itself part of the trigger sequence hide
+    // the next match — `agentop session session session kill x` would lose its
+    // kill. Each match's start index strictly increases, so this terminates.
+    re.lastIndex = m.index + 1;
   }
   return sawSpawn
     ? { action: "needs-grant", reason: "specialist-session-spawn" }
@@ -389,7 +427,7 @@ export function decide(input: GuardInput): GuardDecision {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `bun test src/session/__tests__/guard.test.ts`
-Expected: PASS — 6 tests
+Expected: PASS — the full guard suite
 
 - [ ] **Step 5: Commit**
 
@@ -1839,7 +1877,7 @@ export async function pollOnce(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `bun test src/session/__tests__/poll.test.ts`
-Expected: PASS — 6 tests
+Expected: PASS — the full guard suite
 
 - [ ] **Step 5: Commit**
 
