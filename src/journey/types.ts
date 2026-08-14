@@ -6,6 +6,7 @@
 //   dispatched → delivered → verified → merged      (happy path)
 //   delivered  → failed → (re)dispatched → …        (QA rejected the delivery)
 //   dispatched → escalated                          (cross-repo need, PE decides)
+//   * → redirected                                 (PE redirected it live via attach)
 //   * → removed                                     (worktree torn down)
 // `verified` = a dev delivery that PASSED its QA gate (the only "cleared for PE"
 // non-merged state). `failed` = QA rejected it; the unit is NOT done.
@@ -16,7 +17,8 @@ export type DispatchStatus =
   | "failed"
   | "escalated"
   | "merged"
-  | "removed";
+  | "removed"
+  | "redirected";
 
 export const DISPATCH_STATUSES: DispatchStatus[] = [
   "dispatched",
@@ -26,6 +28,7 @@ export const DISPATCH_STATUSES: DispatchStatus[] = [
   "escalated",
   "merged",
   "removed",
+  "redirected",
 ];
 
 // Statuses that assert a unit of work is DONE and therefore MUST carry evidence

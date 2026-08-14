@@ -81,11 +81,21 @@ export function classify(ledger: JourneyLedger, live: Set<string>): UnitState[] 
     // before `live` is even consulted). That is intentional, not an
     // oversight: nothing is running and nothing was recorded, so
     // inspect-and-re-dispatch is the right response either way.
-    const phase = LANDED_STATUSES.has(d.status)
-      ? "landed"
-      : d.sessionId && live.has(d.sessionId)
-        ? "running"
-        : "dead-silent";
+    //
+    // `redirected` is checked FIRST, ahead of both the landed and live-session
+    // checks. A redirected unit's session can still be alive (the PE redirected
+    // it via `agentop session attach`, it did not stop) — if the live check ran
+    // first, that would read as ordinary `running` progress and hide the fact
+    // that the approved spec no longer describes what is being built. Checking
+    // `redirected` first makes that divergence loud regardless of whether the
+    // session is still up or has since ended.
+    const phase = d.status === "redirected"
+      ? "redirected"
+      : LANDED_STATUSES.has(d.status)
+        ? "landed"
+        : d.sessionId && live.has(d.sessionId)
+          ? "running"
+          : "dead-silent";
     states.push({
       fqid: packageFqid(d.repo, d.package),
       sessionId: d.sessionId ?? null,

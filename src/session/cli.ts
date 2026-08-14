@@ -280,7 +280,13 @@ export async function dispatchCommand(
 
     const promptFile = join(promptsDir, `${fqid.replace(/\//g, "--")}.md`);
     await writeFile(promptFile, prompt, "utf8");
-    units.push({ harness: "claude", cwd: d.worktree, promptFile, ...(d.model ? { model: d.model } : {}) });
+    units.push({
+      harness: "claude",
+      cwd: d.worktree,
+      promptFile,
+      name: `${fqid}/${personaSlug(d.specialist)}`,
+      ...(d.model ? { model: d.model } : {}),
+    });
   }
 
   let result;
@@ -421,15 +427,20 @@ export async function collectCommand(
 
   const lines: string[] = [];
   for (const s of states) {
-    // Exhaustive switch, not if/else-if/else: `UnitPhase` has exactly three
-    // members today, but a later task adds a fourth (`redirected`, for a
-    // unit whose direction the human changed mid-flight). An if/else chain
-    // would let that new phase fall silently into the DEAD-SILENT branch,
-    // and the coordinator would re-dispatch work that was deliberately
-    // redirected. The `default` branch below assigns to a `never`-typed
-    // variable so an unhandled UnitPhase member fails `bunx tsc --noEmit`
-    // instead of compiling clean.
+    // Exhaustive switch, not if/else-if/else: `UnitPhase` has four members
+    // (`redirected` added alongside session naming, for a unit whose
+    // direction the human changed mid-flight). An if/else chain would let an
+    // unhandled phase fall silently into the DEAD-SILENT branch, and the
+    // coordinator would re-dispatch work that was deliberately redirected.
+    // The `default` branch below assigns to a `never`-typed variable so an
+    // unhandled UnitPhase member fails `bunx tsc --noEmit` instead of
+    // compiling clean.
     switch (s.phase) {
+      case "redirected":
+        lines.push(
+          `REDIRECTED ${s.fqid} session ${s.sessionId} — the PE changed this unit's direction live. Fold the change into the Orientation Spec (bump its version) or escalate. A redirected unit MUST NOT pass the QA gate against an unreconciled spec`,
+        );
+        break;
       case "landed":
         lines.push(`LANDED ${s.fqid}`);
         break;

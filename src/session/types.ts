@@ -24,7 +24,7 @@ export interface StartedSession {
   cwd: string;
 }
 
-export type UnitPhase = "landed" | "running" | "dead-silent";
+export type UnitPhase = "landed" | "running" | "dead-silent" | "redirected";
 
 export interface UnitState {
   fqid: string; // repo or repo/package

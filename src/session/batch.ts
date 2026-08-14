@@ -6,6 +6,10 @@ export interface BatchUnit {
   cwd: string;
   promptFile: string;
   model?: string;
+  // "<repo>/<persona-slug>" — how this session shows up in the agentop cockpit
+  // (`session list`, `attach`) instead of an opaque generated id. Optional so
+  // a caller with no fqid/specialist context can still start a batch.
+  name?: string;
 }
 
 // The prompt is handed over as `@<file>`. Inlining a 40-line brief into an argv
@@ -15,6 +19,7 @@ export function buildBatchArgs(task: string, units: BatchUnit[]): string[] {
   const args = ["session", "batch", "--task", task, "--json"];
   for (const unit of units) {
     if (unit.model) args.push("--model", unit.model);
+    if (unit.name) args.push("--name", unit.name);
     args.push("--session", `${unit.harness}@${unit.cwd}: @${unit.promptFile}`);
   }
   return args;
