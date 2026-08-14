@@ -64,6 +64,13 @@ export interface JourneyDispatch {
   // coordinator assigned and the concrete model the specialist ran on.
   tier?: string;
   model?: string;
+  // Session-mode dispatch (absent on subagent dispatches and legacy ledgers).
+  // `sessionId` is what `aipe session collect` cross-references against
+  // `agentop session list --json` to tell "still working" from "died silently".
+  mode?: "subagent" | "session";
+  intensity?: "normal" | "ultracode";
+  harness?: string;
+  sessionId?: string;
 }
 
 // An explicit PE grant for a gated tier, recorded only after the PE says yes in
