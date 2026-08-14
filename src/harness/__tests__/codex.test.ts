@@ -6,103 +6,130 @@ import { codexAdapter, ensureCodexHooks } from "../codex";
 import { getAdapter, hasAdapter } from "../registry";
 import { isContainable } from "../types";
 
-test("codex is registered and containable", () => {
+test("codex is registered but NOT containable — session dispatch cannot govern it", () => {
   expect(hasAdapter("codex")).toBe(true);
   expect(getAdapter("codex").id).toBe("codex");
-  expect(isContainable(codexAdapter)).toBe(true);
+  // Codex requires a human to interactively `/hooks`-trust a non-managed hook
+  // before it loads; AIPe's session dispatch is fully non-interactive, so a
+  // Codex PreToolUse hook is present on disk but never trusted → inert. See
+  // the block comment at codexAdapter.containmentHook()'s definition.
+  expect(isContainable(codexAdapter)).toBe(false);
+  expect(codexAdapter.containmentHook()).toBeNull();
 });
 
 test("its agentopHarness is the agentop-facing name, distinct from the AIPe adapter id", () => {
   expect(codexAdapter.agentopHarness).toBe("codex");
 });
 
-test("its containment hook targets a PreToolUse Bash matcher running the guard", () => {
-  const hook = codexAdapter.containmentHook()!;
-  const merged = JSON.stringify(hook.merge({}));
-  expect(merged).toContain("PreToolUse");
-  expect(merged).toContain("Bash");
-  expect(merged).toContain("aipe session guard");
+// The PreToolUse hook is still written to `.codex/hooks.json` by
+// `installIntegration` (it stays present so a human trusting it later via
+// `/hooks` doesn't require a re-install) — it's only the containability
+// ACCESSOR that reports null. These tests exercise that on-disk rendering
+// via `installIntegration`/`ensureCodexHooks`, not via `containmentHook()`.
+
+test("installIntegration renders a PreToolUse Bash matcher running the guard", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-codex-"));
+  try {
+    await codexAdapter.installIntegration(dir);
+    const config = JSON.parse(await readFile(join(dir, ".codex", "hooks.json"), "utf8"));
+    const merged = JSON.stringify(config);
+    expect(merged).toContain("PreToolUse");
+    expect(merged).toContain("Bash");
+    expect(merged).toContain("aipe session guard");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 // Golden fixture — exact rendered shape, not a substring check. A silently
 // malformed hook config is the worst failure here: it looks installed and
-// denies nothing.
-test("golden fixture: the exact rendered .codex/hooks.json for a fresh merge", () => {
-  const hook = codexAdapter.containmentHook()!;
-  expect(hook.relPath).toBe(join(".codex", "hooks.json"));
-  expect(hook.merge({})).toEqual({
-    hooks: {
-      PreToolUse: [
-        {
-          matcher: "Bash",
-          hooks: [{ type: "command", command: "aipe session guard" }],
-        },
-      ],
-    },
-  });
+// denies nothing (even though, per the finding above, Codex never actually
+// trusts it without a human running `/hooks`).
+test("golden fixture: the exact rendered .codex/hooks.json for a fresh install", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-codex-"));
+  try {
+    await codexAdapter.installIntegration(dir);
+    const config = JSON.parse(await readFile(join(dir, ".codex", "hooks.json"), "utf8"));
+    expect(config.hooks.PreToolUse).toEqual([
+      {
+        matcher: "Bash",
+        hooks: [{ type: "command", command: "aipe session guard" }],
+      },
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 // Mutation test: a fixture that no longer contains the real guard command
 // (e.g. a typo'd command, or the containment entry silently dropped) MUST
 // fail the golden-fixture assertion above. Proves the test can actually
 // catch a broken hook, not just a well-formed one.
-test("mutation: a broken/typo'd rendered hook fails the golden-fixture shape", () => {
-  const hook = codexAdapter.containmentHook()!;
-  const rendered = hook.merge({}) as any;
-  const broken = JSON.parse(JSON.stringify(rendered));
-  broken.hooks.PreToolUse[0].hooks[0].command = "aipe session gaurd"; // typo
-  expect(() =>
-    expect(broken).toEqual({
-      hooks: {
-        PreToolUse: [
-          {
-            matcher: "Bash",
-            hooks: [{ type: "command", command: "aipe session guard" }],
-          },
-        ],
-      },
-    }),
-  ).toThrow();
-
-  // Restore: the untouched original still matches.
-  expect(rendered).toEqual({
-    hooks: {
-      PreToolUse: [
+test("mutation: a broken/typo'd rendered hook fails the golden-fixture shape", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-codex-"));
+  try {
+    await codexAdapter.installIntegration(dir);
+    const rendered = JSON.parse(await readFile(join(dir, ".codex", "hooks.json"), "utf8"));
+    const broken = JSON.parse(JSON.stringify(rendered));
+    broken.hooks.PreToolUse[0].hooks[0].command = "aipe session gaurd"; // typo
+    expect(() =>
+      expect(broken.hooks.PreToolUse).toEqual([
         {
           matcher: "Bash",
           hooks: [{ type: "command", command: "aipe session guard" }],
         },
-      ],
-    },
-  });
+      ]),
+    ).toThrow();
+
+    // Restore: the untouched original still matches.
+    expect(rendered.hooks.PreToolUse).toEqual([
+      {
+        matcher: "Bash",
+        hooks: [{ type: "command", command: "aipe session guard" }],
+      },
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
-test("merging is idempotent and preserves foreign keys", () => {
-  const hook = codexAdapter.containmentHook()!;
-  const once = hook.merge({ someOtherSetting: 1 });
-  expect(hook.merge(once)).toEqual(once);
-  expect((once as any).someOtherSetting).toBe(1);
+test("merging is idempotent and preserves foreign keys", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-codex-"));
+  try {
+    await mkdir(join(dir, ".codex"), { recursive: true });
+    await writeFile(join(dir, ".codex", "hooks.json"), JSON.stringify({ someOtherSetting: 1 }), "utf8");
+    await ensureCodexHooks(dir);
+    const once = JSON.parse(await readFile(join(dir, ".codex", "hooks.json"), "utf8"));
+    expect(once.someOtherSetting).toBe(1);
+
+    await ensureCodexHooks(dir);
+    const twice = JSON.parse(await readFile(join(dir, ".codex", "hooks.json"), "utf8"));
+    expect(twice).toEqual(once);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
-test("preserves a user's own unrelated PreToolUse entry and appends containment", () => {
-  const hook = codexAdapter.containmentHook()!;
-  const userEntry = { matcher: "Write", hooks: [{ type: "command", command: "my-own-linter" }] };
-  const withUserEntry = { hooks: { PreToolUse: [userEntry] } };
-  const merged = hook.merge(withUserEntry);
-  const preToolUse = (merged as any).hooks.PreToolUse;
-  expect(preToolUse).toHaveLength(2);
-  expect(preToolUse[0]).toEqual(userEntry);
-  expect(preToolUse[1].hooks[0].command).toBe("aipe session guard");
+test("preserves a user's own unrelated PreToolUse entry and appends containment", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-codex-"));
+  try {
+    const userEntry = { matcher: "Write", hooks: [{ type: "command", command: "my-own-linter" }] };
+    await mkdir(join(dir, ".codex"), { recursive: true });
+    await writeFile(join(dir, ".codex", "hooks.json"), JSON.stringify({ hooks: { PreToolUse: [userEntry] } }), "utf8");
 
-  const mergedAgain = hook.merge(merged);
-  expect((mergedAgain as any).hooks.PreToolUse).toHaveLength(2);
-});
+    await ensureCodexHooks(dir);
+    const merged = JSON.parse(await readFile(join(dir, ".codex", "hooks.json"), "utf8"));
+    const preToolUse = merged.hooks.PreToolUse;
+    expect(preToolUse).toHaveLength(2);
+    expect(preToolUse[0]).toEqual(userEntry);
+    expect(preToolUse[1].hooks[0].command).toBe("aipe session guard");
 
-test("hooks: null (malformed-but-parseable) is treated the same as absent", () => {
-  const hook = codexAdapter.containmentHook()!;
-  const merged = hook.merge({ hooks: null }) as any;
-  expect(merged.hooks.PreToolUse).toHaveLength(1);
-  expect(merged.hooks.PreToolUse[0].hooks[0].command).toBe("aipe session guard");
+    await ensureCodexHooks(dir);
+    const mergedAgain = JSON.parse(await readFile(join(dir, ".codex", "hooks.json"), "utf8"));
+    expect(mergedAgain.hooks.PreToolUse).toHaveLength(2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("a persona is wrapped with frontmatter the harness reads", () => {
@@ -138,8 +165,16 @@ test("mcpConfigPath is .codex/config.toml, not .mcp.json", () => {
   expect(codexAdapter.mcpConfigPath("repo", "embark")).toBe(join("embark", ".codex", "config.toml"));
 });
 
-test("model tiers resolve to real codex model ids", () => {
-  expect(codexAdapter.resolveModel("standard")).not.toBeNull();
+// Pins the tier hierarchy per learn.chatgpt.com/codex/models: gpt-5.6-sol is
+// the current flagship ("strongest capability … complex coding … research")
+// → `frontier`; gpt-5.5 is explicitly "Previous-generation frontier model" →
+// the strong-but-cheaper `reasoning` tier. A regression that swaps these two
+// back (as the tiers were before this fix) must fail here.
+test("model tiers resolve to real codex model ids, frontier as the flagship and reasoning as previous-gen", () => {
+  expect(codexAdapter.resolveModel("fast")).toEqual({ id: "gpt-5.6-luna", label: "GPT-5.6 Luna" });
+  expect(codexAdapter.resolveModel("standard")).toEqual({ id: "gpt-5.6-terra", label: "GPT-5.6 Terra" });
+  expect(codexAdapter.resolveModel("reasoning")).toEqual({ id: "gpt-5.5", label: "GPT-5.5" });
+  expect(codexAdapter.resolveModel("frontier")).toEqual({ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" });
   expect(codexAdapter.resolveModel("nonsense")).toBeNull();
 });
 

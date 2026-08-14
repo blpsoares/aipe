@@ -166,8 +166,27 @@ test("parseBatch rejects an unknown intensity rather than silently dropping it",
   expect(parseBatch([{ repo: "embark", specialist: "Joaquim", intensity: "turbo" }])).toBeNull();
 });
 
-test("buildSessionContext reports only containable harnesses", async () => {
+// Codex is registered (KNOWN_HARNESSES still probes it) but its adapter's
+// containmentHook() returns null — see src/harness/codex.ts — so it must NOT
+// show up as containable here. "generic" is also excluded (no containment
+// hook), leaving only "claude-code".
+test("buildSessionContext reports only containable harnesses (codex excluded — not containable)", async () => {
   const ctx = await buildSessionContext(async () => ({ code: 0, stdout: "agentop v1.9.0", stderr: "" }));
   expect(ctx.agentopOk).toBe(true);
-  expect(ctx.containableHarnesses).toEqual(["claude-code", "codex"]);
+  expect(ctx.containableHarnesses).toEqual(["claude-code"]);
+});
+
+// Pins the new specified behaviour end-to-end: a session-mode batch targeting
+// harness: "codex" is REJECTED, since codexAdapter.containmentHook() is null
+// and therefore "codex" never appears in containableHarnesses.
+test("a session-mode batch targeting harness: codex is rejected as not-containable", async () => {
+  const ctx = await buildSessionContext(async () => ({ code: 0, stdout: "agentop v1.9.0", stderr: "" }));
+  const v = validateBatch(
+    [{ repo: "embark", specialist: "Joaquim", mode: "session", harness: "codex" }],
+    repos,
+    roster,
+    ctx,
+  );
+  expect(v.ok).toBe(false);
+  expect(v.ok === false && v.rejects).toContain("harness-not-containable codex");
 });

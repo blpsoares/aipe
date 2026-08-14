@@ -49,8 +49,15 @@ export function parseBatch(value: unknown): Batch | null {
   return batch;
 }
 
-// Which harnesses AIPe may start a session on: exactly those whose adapter can
-// install a containment hook. Everything else is unreachable by construction.
+// The universe of registered adapter ids to PROBE for session eligibility —
+// not the eligibility answer itself. `buildSessionContext` below filters this
+// through `isContainable`, so an entry here whose adapter isn't containable
+// (e.g. "codex" — see codexAdapter.containmentHook()'s null, and "generic",
+// which never had a containment hook) is correctly dropped from
+// `containableHarnesses` rather than misreported. Leaving them listed here is
+// intentional: it's what keeps this list "every adapter AIPe knows about,"
+// letting the containability filter — not a second hand-maintained list — be
+// the single source of truth for which ones are actually session-dispatchable.
 const KNOWN_HARNESSES = ["claude-code", "codex", "generic"];
 
 export async function buildSessionContext(
