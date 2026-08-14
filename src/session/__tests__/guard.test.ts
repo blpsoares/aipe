@@ -132,3 +132,30 @@ test("a three-agentop chain in front of kill is still denied (parity check)", ()
     }),
   ).toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
 });
+
+// Regression: a naive fix that stopped consuming the VERB but still consumed
+// the `agentop session ` PREFIX itself could be defeated by repeating a
+// prefix token (here, `session`) instead of repeating `agentop`. The scan
+// must overlap matches so nothing — not even the matched prefix — can hide a
+// later `kill`.
+test("a kill hidden behind a repeated 'session' token is still caught", () => {
+  expect(
+    decide({ command: "agentop session session session kill x", role: "specialist" }),
+  ).toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+});
+
+test("repeated 'session' tokens without a kill still need a grant", () => {
+  expect(
+    decide({ command: "agentop session session claude", role: "specialist" }),
+  ).toEqual({ action: "needs-grant", reason: "specialist-session-spawn" });
+});
+
+// Regression: `exec` with the `g` flag mutates `lastIndex` on the RegExp
+// instance it's called with. If `decide` reused a shared module-level
+// global regex, a first call could leave `lastIndex` non-zero, corrupting
+// the scan position for a second, unrelated call.
+test("two successive calls on the same input give the same answer", () => {
+  const input = { command: "agentop session session session kill x", role: "specialist" as const };
+  expect(decide(input)).toEqual(decide(input));
+  expect(decide(input)).toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+});

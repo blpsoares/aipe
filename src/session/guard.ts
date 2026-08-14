@@ -36,31 +36,60 @@ const READ_ONLY = new Set(["list", "attach", "note", "rename"]);
 // a renamed/copied binary (`/tmp/ao session claude`). Both require
 // deliberately evading a known guard rather than drifting into it.
 //
-// The verb is captured via a lookahead rather than consumed directly. With
-// `matchAll`, a consumed capture group means the verb's own characters are
-// swallowed by the match and unavailable to start the next one — so when the
-// verb IS itself the literal token `agentop` (e.g. two `agentop session`
-// invocations back to back), a real `kill` immediately after it could be
-// skipped depending on parity. The lookahead advances the scan position only
-// past `agentop\s+session\s+`, leaving the verb's characters in the string
-// for the next match to begin at, so no arrangement of these tokens can hide
-// a `kill` from the scan.
-const INVOCATION = /agentop\s+session\s+(?=([\w-]+))/gi;
+// The verb is captured via a lookahead rather than consumed directly, so its
+// characters remain in the string after the match. That alone is not enough:
+// a regex-driven scan (`matchAll`, or manual `exec` that jumps `lastIndex` to
+// the end of each match) still CONSUMES the rest of the matched text — the
+// literal `agentop\s+session\s+` prefix — before looking for the next match.
+// Any token that is itself part of that consumed prefix can then hide a real
+// match starting inside it, because the scan already skipped past it. This
+// has broken under a different hiding token each time it was patched
+// narrowly, because a hiding token can be a repeat of EITHER prefix word.
+// The general fix treats both halves of that risk the same way, not one
+// token at a time:
+//   1. `(?:session\s+)+` folds any number of repeated `session` tokens into
+//      a single match, so a run like `session session session kill` is
+//      consumed as one unit and the lookahead lands on the real next word
+//      (`kill`) — a repeated LITERAL word inside the pattern can never hide
+//      anything, because the pattern itself absorbs all of it.
+//   2. That doesn't cover a token the pattern does NOT expect to repeat —
+//      `agentop` itself, since one `agentop\s+...` match only ever consumes
+//      one leading `agentop`. So after each match we also rewind `lastIndex`
+//      to exactly one character past where the match STARTED (not where it
+//      ended), making every scan step overlap the previous one. Nothing is
+//      ever truly consumed from the scan's perspective; no arrangement of
+//      `agentop`/`session`/verb tokens can put a real invocation in a
+//      stretch of text the scan skips over.
+const INVOCATION = /agentop\s+(?:session\s+)+(?=([\w-]+))/i;
 
 export function decide(input: GuardInput): GuardDecision {
   if (input.role !== "specialist") return { action: "allow" };
 
   let sawSpawn = false;
+  // Fresh RegExp per call (built from the shared pattern's source): `exec`
+  // with the `g` flag mutates `lastIndex` on the instance it's called on, so
+  // reusing a module-level global regex across calls would make `decide`
+  // stateful and non-re-entrant. Constructing it here keeps `decide` pure.
+  const re = new RegExp(INVOCATION.source, "gi");
   // Scan every occurrence: `kill` outranks a spawn appearing in the same
   // command, so a compound that does both is denied outright, not granted.
-  for (const m of input.command.matchAll(INVOCATION)) {
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input.command)) !== null) {
     const verb = m[1]!.toLowerCase();
     if (verb === "kill") {
       return { action: "deny", reason: "a specialist must not kill sessions" };
     }
-    if (READ_ONLY.has(verb)) continue;
-    // Anything else under `session` creates one: a harness name, or `batch`.
-    sawSpawn = true;
+    if (!READ_ONLY.has(verb)) {
+      // Anything else under `session` creates one: a harness name, or `batch`.
+      sawSpawn = true;
+    }
+    // Overlap, never consume: resume the scan just one character past where
+    // THIS match started. Since `m.index` strictly increases with the input
+    // length (there are finitely many start positions), this always makes
+    // progress and the loop always terminates — including for a
+    // theoretically zero-width match, which would otherwise loop forever if
+    // `lastIndex` were left unchanged.
+    re.lastIndex = m.index + 1;
   }
   return sawSpawn
     ? { action: "needs-grant", reason: "specialist-session-spawn" }
