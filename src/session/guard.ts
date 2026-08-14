@@ -63,7 +63,8 @@ const READ_ONLY = new Set(["list", "attach", "note", "rename"]);
 const INVOCATION = /agentop\s+(?:session\s+)+(?=([\w-]+))/i;
 
 export function decide(input: GuardInput): GuardDecision {
-  if (input.role !== "specialist") return { action: "allow" };
+  const normalizedRole = input.role?.trim().toLowerCase();
+  if (normalizedRole !== "specialist") return { action: "allow" };
 
   let sawSpawn = false;
   // Fresh RegExp per call (built from the shared pattern's source): `exec`

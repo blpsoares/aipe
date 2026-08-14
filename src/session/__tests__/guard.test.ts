@@ -6,6 +6,24 @@ test("a non-specialist passes everything through", () => {
   expect(decide({ command: "agentop session claude -p hi", role: "coordinator" }).action).toBe("allow");
 });
 
+test("role comparison is case-insensitive and whitespace-tolerant", () => {
+  // "specialist" in various cases and with whitespace must all behave the same
+  for (const role of ["specialist", "Specialist", "SPECIALIST", " specialist", "specialist ", " specialist "]) {
+    // Capitalize spawn behavior: needs grant
+    expect(decide({ command: "agentop session claude -p x", role })).toEqual({
+      action: "needs-grant",
+      reason: "specialist-session-spawn",
+    });
+    // Kill is always deny
+    expect(decide({ command: "agentop session kill abc", role })).toEqual({
+      action: "deny",
+      reason: "a specialist must not kill sessions",
+    });
+  }
+  // An unrelated role still passes everything through
+  expect(decide({ command: "agentop session claude -p x", role: "coordinator" }).action).toBe("allow");
+});
+
 test("a specialist spawning a session needs a grant", () => {
   for (const cmd of [
     "agentop session claude -p 'do the thing'",

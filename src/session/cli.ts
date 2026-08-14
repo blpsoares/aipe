@@ -119,7 +119,7 @@ if (import.meta.main) {
   run(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((err) => {
-      console.log(`ERROR ${err}`);
+      console.error(`ERROR ${err}`);
       process.exit(1);
     });
 }
