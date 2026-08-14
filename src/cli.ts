@@ -18,6 +18,7 @@ import { run as start } from "./start/cli";
 import { run as worktree } from "./worktree/cli";
 import { run as dispatchCmd } from "./dispatch/cli";
 import { run as journey } from "./journey/cli";
+import { run as session } from "./session/cli";
 import { run as rehydrate } from "./rehydrate/cli";
 import { runSkill, runMcp } from "./toolbox/cli";
 import { run as addRepo } from "./add-repo/cli";
@@ -45,6 +46,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   worktree: worktree,
   dispatch: dispatchCmd,
   journey: journey,
+  session: session,
   rehydrate: rehydrate,
   skill: runSkill,
   mcp: runMcp,
@@ -75,6 +77,7 @@ const HELP = [
   "  hire-specialists   Generate the per-repo persona skills + personas.yaml",
   "  worktree           Provision/list/remove per-specialist git worktrees",
   "  dispatch           Adjudicate the parallel-dispatch law for a batch",
+  "  session            Dispatch specialists as real agentop sessions (detached, own context)",
   "  journey            Track dispatches + verify the ledger's reliability invariants",
   "  dashboard          Live terminal view of workers, pipeline & worktrees",
   "  serve              Responsive web console (org chart, pipeline, terminal)",
