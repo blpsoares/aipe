@@ -50,3 +50,43 @@ test("a spawn hidden behind a shell operator is still caught", () => {
   expect(decide({ command: "true; agentop session batch --task t", role: "specialist" }).action)
     .toBe("needs-grant");
 });
+
+// Regression: a segment can legitimately open with a shell keyword, which used
+// to push `agentop` off the `^` anchor and fall through to `allow`. These are
+// the two reproductions from the review finding, verbatim.
+test("a spawn behind a shell keyword is still caught", () => {
+  expect(decide({ command: "if true; then agentop session claude; fi", role: "specialist" })).toEqual({
+    action: "needs-grant",
+    reason: "specialist-session-spawn",
+  });
+  expect(
+    decide({ command: "for i in 1 2 3; do agentop session claude; done", role: "specialist" }),
+  ).toEqual({
+    action: "needs-grant",
+    reason: "specialist-session-spawn",
+  });
+});
+
+test("a spawn backgrounded with a bare & is still caught", () => {
+  expect(decide({ command: "sleep 1 & agentop session claude", role: "specialist" })).toEqual({
+    action: "needs-grant",
+    reason: "specialist-session-spawn",
+  });
+});
+
+test("a spawn via sudo or an env-var prefix is still caught", () => {
+  expect(decide({ command: "sudo agentop session claude", role: "specialist" })).toEqual({
+    action: "needs-grant",
+    reason: "specialist-session-spawn",
+  });
+  expect(decide({ command: "FOO=1 agentop session claude", role: "specialist" })).toEqual({
+    action: "needs-grant",
+    reason: "specialist-session-spawn",
+  });
+});
+
+// Documents the boundary the anchor exists to protect: `agentop` as a mere
+// *argument* to an ordinary command must never trip the guard.
+test("agentop as an argument to an ordinary command does not trip the guard", () => {
+  expect(decide({ command: "echo agentop session claude", role: "specialist" }).action).toBe("allow");
+});
