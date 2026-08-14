@@ -9,6 +9,7 @@ export interface PromptInput {
   worktree: string;
   packagePath: string | null;
   branch: string;
+  repo: string;
   journeyId: string;
   workspace: string;
   fqid: string;
@@ -48,8 +49,8 @@ export function composePrompt(input: PromptInput): string {
       "",
       "```bash",
       `aipe journey record --journey ${input.journeyId} --workspace ${input.workspace} \\`,
-      `  --repo <repo> --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
-      "  --status delivered --pr <url> \\",
+      `  --repo ${input.repo} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
+      "  --status <delivered|escalated> --pr <url> \\",
       '  --evidence-cmd "<command you ran>" --evidence-summary "<what its output showed>"',
       "```",
       "",

@@ -7,6 +7,7 @@ const base = {
   worktree: "/w/.worktrees/j1-joaquim",
   packagePath: null,
   branch: "aipe/j1/joaquim",
+  repo: "aipe",
   journeyId: "j1",
   workspace: "/w",
   fqid: "embark",
@@ -30,16 +31,23 @@ test("ultracode appears if and only if the intensity says so", () => {
 
 test("the prompt names no harness-specific slash command", () => {
   const p = composePrompt({ ...base, intensity: "ultracode" });
-  // A slash command is a standalone token — e.g. `/verify-before-done` — bounded
-  // by whitespace/start on the left and whitespace/end on the right. The naive
-  // `/(^|\s)\/[a-z][a-z-]+/` (no right boundary) also flags the *first* segment
-  // of any absolute path that happens to start with a plain lowercase word
-  // (e.g. " /workspace/foo"), because it doesn't require the match to end at a
-  // word boundary — it only fails on this fixture by luck, since the worktree
-  // here is "/w/..." and "w" alone is too short to satisfy `[a-z][a-z-]+`. The
-  // lookahead below makes the assertion precise about what it actually forbids:
-  // a lone slash-word, not a path segment followed by more path.
-  expect(p).not.toMatch(/(^|\s)\/[a-z][a-z-]+(?=$|\s)/);
+  // A slash command is a standalone token — e.g. `/verify-before-done` — that
+  // can be preceded by start-of-string, whitespace, a backtick, `(`, or `[`
+  // (the realistic ways it shows up in markdown-flavored prose: inline, in a
+  // sentence, backtick-wrapped, or parenthesized), and that ends where a path
+  // would keep going. `(^|\s)\/[a-z][a-z-]+(?=$|\s)` — requiring the *right*
+  // side to be exactly end-of-string or whitespace — missed a command
+  // followed by punctuation or a closing backtick (e.g.
+  // "`/verify-before-done`," or "/verify-before-done."), which is exactly how
+  // one would leak into this prose. The distinguishing feature of a path
+  // segment, not the command itself, is that it continues with another `/` or
+  // more word characters; a negative lookahead for `[\w/-]` expresses that
+  // directly and lets any other terminator (space, punctuation, backtick,
+  // end-of-string) count as the command ending. Short absolute paths like
+  // "/tmp" are still indistinguishable from a slash command by this rule and
+  // will be flagged — an acceptable false positive here, since a missed real
+  // slash command is the failure mode that matters.
+  expect(p).not.toMatch(/(^|[\s`(\[])\/[a-z][a-z-]+(?![\w/-])/);
 });
 
 test("the containment rule is stated, not only enforced", () => {
