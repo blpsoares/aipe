@@ -13,7 +13,7 @@ import { classify, pollOnce } from "./poll";
 import { probe, realRunner } from "./runner";
 import type { AgentopRunner, UnitState } from "./types";
 import { decide } from "./guard";
-import { consumeGrant } from "./grants";
+import { consumeGrant, issueGrant } from "./grants";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -453,11 +453,60 @@ export async function collectCommand(
   return { code: clean ? 0 : 2, lines, states };
 }
 
+export interface GrantOptions {
+  workspace: string;
+  journeyId: string;
+  sessionId: string;
+  count: number;
+}
+
+// Issues a quota of session spawns for one (journey, session) pair — the
+// production call site `issueGrant` never had before this command existed.
+// `count` must already be a parsed number by the time it reaches here (`run`
+// hands it `Number(getFlag(...))`, so a missing or non-numeric `--count`
+// arrives as `NaN`). NaN, 0 and negative values are all rejected right here
+// rather than forwarded to `issueGrant`: a grant of 0 would create the grant
+// directory with zero tokens, which prints exactly like a successful grant
+// (`OK`, exit 0) while authorizing nothing — the "looks granted, isn't"
+// mistake this whole feature exists to prevent, just on the write side
+// instead of the read side.
+export async function grantCommand(
+  opts: GrantOptions,
+): Promise<{ code: number; lines: string[] }> {
+  if (!Number.isFinite(opts.count) || opts.count <= 0) {
+    return {
+      code: 1,
+      lines: [`ERROR count: --count must be a positive number, got ${opts.count}`],
+    };
+  }
+  // issueGrant() throws when a grant already exists for this (journey,
+  // session) pair — deliberately (see grants.ts): silently widening an
+  // existing quota is the exact bug class this feature exists to prevent
+  // (a specialist's already-spent tokens would appear restored), and
+  // replacing the grant instead would hand back units already spent. Surface
+  // the throw as an ERROR line and a non-zero exit; never swallow it into a
+  // silent OK.
+  try {
+    await issueGrant(opts.workspace, opts.journeyId, opts.sessionId, opts.count);
+  } catch (err) {
+    return {
+      code: 1,
+      lines: [`ERROR grant: ${err instanceof Error ? err.message : String(err)}`],
+    };
+  }
+  return {
+    code: 0,
+    lines: [`OK grant journey=${opts.journeyId} session=${opts.sessionId} count=${opts.count}`],
+  };
+}
+
 const HELP = [
   "aipe session — dispatch specialists as real agentop sessions",
   "",
   "  dispatch --journey <id> [--workspace <dir>]   Start the wave's session-mode units",
   "  collect  --journey <id> [--timeout <s>] [--workspace <dir>]",
+  "  grant    --journey <id> --session-id <id> --count <n> [--workspace <dir>]",
+  "                                                 Issue a quota of session spawns to a specialist",
   "  doctor                                        Report agentop availability",
   "  guard                                         (internal) containment hook decision",
 ].join("\n");
@@ -489,6 +538,29 @@ export async function run(args: string[]): Promise<number> {
       const { code, lines } = await collectCommand({
         workspace, journeyId, runner: realRunner,
         timeoutMs: timeoutS * 1000, intervalMs: 15_000,
+      });
+      for (const line of lines) console.log(line);
+      return code;
+    }
+    case "grant": {
+      const workspace = getFlag(rest, "--workspace") ?? process.cwd();
+      const journeyId = getFlag(rest, "--journey");
+      if (!journeyId) {
+        console.log("ERROR journey: --journey <id> is required");
+        return 1;
+      }
+      const sessionId = getFlag(rest, "--session-id");
+      if (!sessionId) {
+        console.log("ERROR session-id: --session-id <id> is required");
+        return 1;
+      }
+      const countFlag = getFlag(rest, "--count");
+      if (!countFlag) {
+        console.log("ERROR count: --count <n> is required");
+        return 1;
+      }
+      const { code, lines } = await grantCommand({
+        workspace, journeyId, sessionId, count: Number(countFlag),
       });
       for (const line of lines) console.log(line);
       return code;

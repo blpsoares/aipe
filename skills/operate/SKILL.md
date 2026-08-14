@@ -38,7 +38,8 @@ one of your actions. Your **only** allowed actions as coordinator are:
 **Opening sessions is yours alone.** A dispatched specialist is forbidden from
 opening an agentop session — a containment hook denies it, and the persona is
 told so up front. If a specialist genuinely needs sub-work, it asks you; you
-either do it, dispatch it as its own unit, or issue an explicit grant. A
+either do it, dispatch it as its own unit, or issue an explicit quota with
+`aipe session grant --journey <id> --session-id <id> --count <n>`. A
 specialist that could spawn specialists is an unbounded token fork-bomb with no
 ledger entry for any of it.
 
@@ -278,8 +279,10 @@ digraph operate {
      re-dispatch blind. If there is real work on the branch, prefer
      re-dispatching with a brief that says *continue from what is on the
      branch* over starting the unit over; if the branch is empty or the state
-     is unclear, escalate to the PE instead. The ledger law that forbids
-     re-dispatching merged work applies here too.
+     is unclear, report it to the PE instead and let them decide how to
+     proceed. This is not the cross-repo `escalated` status (step 5) — it's
+     the same repo/unit, just an unclear state for the PE's eyes. The ledger
+     law that forbids re-dispatching merged work applies here too.
 
    If the wave times out with units still `RUNNING`, don't keep looping
    `collect` on your own judgement — report the standing wave to the PE
