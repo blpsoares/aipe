@@ -27,9 +27,20 @@ Tasks 15–17 build the three new adapters. Each begins by **re-verifying that h
 
 | Harness | Containment config | Personas / skills | Always-on context |
 | --- | --- | --- | --- |
-| Codex CLI | `~/.codex/hooks.json` | `.codex/skills/<slug>/SKILL.md` | `AGENTS.md` |
+| Codex CLI | `.codex/hooks.json` (project-scoped — see below) | `.codex/skills/<slug>/SKILL.md` | `AGENTS.md` |
 | Gemini CLI | `.gemini/settings.json` | `.gemini/commands/*.toml` | `GEMINI.md` |
 | Copilot CLI | `.github/hooks/` | `.github/agents/<slug>.agent.md` | `AGENTS.md` |
+
+**`ContainmentHook.relPath` is workspace-relative, and that is a requirement, not
+a limitation.** A containment hook written to a harness's *global* config
+(`~/.codex/hooks.json`, `~/.copilot/settings.json`) would install AIPe's
+containment into every session that harness ever runs on that machine, including
+ones with nothing to do with this workspace — and would survive the workspace
+being deleted. Each adapter MUST therefore target its harness's **project-scoped**
+hook config. If a harness turns out to support only global hooks, it is not
+containable and `containmentHook()` returns `null`: it is then ineligible for
+session-mode dispatch, which is exactly what the eligibility rule is for. Verify
+project-scoped support as part of each adapter's Step 1.
 
 ## File Structure
 
