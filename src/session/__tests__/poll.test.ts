@@ -62,9 +62,46 @@ test("garbage stdout on a successful exit throws instead of reading as an empty 
   expect(() => parseSessionList("not json")).toThrow();
 });
 
-test("an entry with no usable id is dropped, not defaulted, while its siblings survive", () => {
-  const out = JSON.stringify({ sessions: [{ id: "s-1" }, { notId: "x" }, { id: 42 }, { id: "s-2" }] });
+test("an entry with a missing id throws instead of being silently dropped", () => {
+  const out = JSON.stringify({ sessions: [{ id: "s-1" }, { notId: "x" }] });
+  expect(() => parseSessionList(out)).toThrow();
+});
+
+test("an entry with a non-string id throws instead of being silently dropped", () => {
+  const out = JSON.stringify({ sessions: [{ id: "s-1" }, { id: 42 }] });
+  expect(() => parseSessionList(out)).toThrow();
+});
+
+test("an entry with an empty-string id throws instead of being silently dropped", () => {
+  const out = JSON.stringify({ sessions: [{ id: "s-1" }, { id: "" }] });
+  expect(() => parseSessionList(out)).toThrow();
+});
+
+// ── parseSessionList: top-level shape hardening ────────────────────────────
+
+test("a bare array is read directly, without needing a sessions wrapper", () => {
+  const out = JSON.stringify([{ id: "s-1" }, { id: "s-2" }]);
   expect(parseSessionList(out)).toEqual(new Set(["s-1", "s-2"]));
+});
+
+test("a genuinely empty array is a confident, well-formed empty result", () => {
+  expect(parseSessionList(JSON.stringify([]))).toEqual(new Set());
+});
+
+test("a genuinely empty sessions object is a confident, well-formed empty result", () => {
+  expect(parseSessionList(JSON.stringify({ sessions: [] }))).toEqual(new Set());
+});
+
+test.each([
+  ["null", "null"],
+  ["an empty object", "{}"],
+  ["a bare number", "42"],
+  ["a bare string", JSON.stringify("a string")],
+  ["an error object", JSON.stringify({ error: "boom" })],
+  ["a differently-shaped wrapper", JSON.stringify({ result: { sessions: [] } })],
+  ["a renamed sessions field", JSON.stringify({ status: "ok" })],
+])("valid JSON with an unrecognised top-level shape (%s) throws rather than reading as empty", (_label, out) => {
+  expect(() => parseSessionList(out)).toThrow();
 });
 
 // ── pollOnce: a failed/unparseable `session list` call must fail OPEN ─────

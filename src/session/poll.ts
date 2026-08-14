@@ -35,21 +35,39 @@ export function parseSessionList(stdout: string): Set<string> {
       `agentop session list printed unparseable JSON on a successful exit: ${previewStdout(stdout)}`,
     );
   }
-  const list = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === "object" && Array.isArray((parsed as any).sessions)
-      ? (parsed as any).sessions
-      : [];
+  const parsedIsArray = Array.isArray(parsed);
+  const parsedHasSessionsArray =
+    !parsedIsArray && parsed !== null && typeof parsed === "object" && Array.isArray((parsed as any).sessions);
+  if (!parsedIsArray && !parsedHasSessionsArray) {
+    // Valid JSON, but a top-level shape we don't recognise (null, {}, an
+    // error object, a bare number/string, a renamed field, ...) is the same
+    // ambiguity the unparseable-JSON throw above exists to eliminate, one
+    // boundary later: silently falling through to `list = []` would make it
+    // indistinguishable from a genuinely empty, well-formed result ([] or
+    // {"sessions":[]}), and pollOnce would trust that empty Set instead of
+    // failing open — pushing every live, un-recorded unit straight to
+    // dead-silent. Mirrors the same guard in parseBatchOutput (batch.ts).
+    throw new Error(
+      `agentop session list printed valid JSON with an unexpected shape (not an array, and no "sessions" array) on a successful exit: ${previewStdout(stdout)}`,
+    );
+  }
+  const list = parsedIsArray ? parsed : (parsed as any).sessions;
   const ids = new Set<string>();
   for (const entry of list) {
-    const id = entry && typeof entry === "object" ? (entry as Record<string, unknown>).id : null;
-    // An entry with no usable id is dropped, not defaulted — the same rule
-    // batch.ts applies to its own malformed entries. There is no companion
-    // "malformed" count to return here (the interface is a bare
-    // Set<string>), but dropping one unreadable entry is a narrow, per-entry
-    // loss — unlike the unparseable-payload case above, it does not turn the
-    // whole live list into an indistinguishable "everyone is dead".
-    if (typeof id === "string") ids.add(id);
+    const id = entry && typeof entry === "object" ? (entry as Record<string, unknown>).id : undefined;
+    // Unlike batch.ts, this parser has no "malformed" counter to report a
+    // per-entry loss through — the interface is a bare Set<string>. Dropping
+    // an entry with no usable id here would silently vanish a live session
+    // from the returned set, and the caller has no signal that anything was
+    // lost: the same "everyone is dead" ambiguity as the wrong-shape case
+    // above, just one level deeper. So an unusable id throws instead of
+    // being dropped, letting pollOnce's fail-open fallback take over.
+    if (typeof id !== "string" || id === "") {
+      throw new Error(
+        `agentop session list entry has no usable id: ${previewStdout(JSON.stringify(entry))}`,
+      );
+    }
+    ids.add(id);
   }
   return ids;
 }
@@ -58,6 +76,11 @@ export function classify(ledger: JourneyLedger, live: Set<string>): UnitState[] 
   const states: UnitState[] = [];
   for (const d of ledger.dispatches) {
     if (d.mode !== "session") continue;
+    // A session-mode dispatch recorded with no sessionId at all always falls
+    // through to dead-silent here (the `d.sessionId &&` short-circuits
+    // before `live` is even consulted). That is intentional, not an
+    // oversight: nothing is running and nothing was recorded, so
+    // inspect-and-re-dispatch is the right response either way.
     const phase = LANDED_STATUSES.has(d.status)
       ? "landed"
       : d.sessionId && live.has(d.sessionId)
