@@ -76,15 +76,20 @@ test("json output is parsed into started sessions", () => {
       { id: "s-2", harness: "claude", cwd: "/w/.worktrees/j1-pedro" },
     ],
   });
-  expect(parseBatchOutput(out)).toEqual([
-    { id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" },
-    { id: "s-2", harness: "claude", cwd: "/w/.worktrees/j1-pedro" },
-  ]);
+  expect(parseBatchOutput(out)).toEqual({
+    sessions: [
+      { id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" },
+      { id: "s-2", harness: "claude", cwd: "/w/.worktrees/j1-pedro" },
+    ],
+    malformed: 0,
+  });
 });
 
 test("a bare json array is accepted too", () => {
   const out = JSON.stringify([{ id: "s-1", harness: "claude", cwd: "/x" }]);
-  expect(parseBatchOutput(out)).toHaveLength(1);
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toHaveLength(1);
+  expect(result.malformed).toBe(0);
 });
 
 // RISK (see task report): startBatch's caller pairs the returned list
@@ -94,7 +99,10 @@ test("a bare json array is accepted too", () => {
 // change here is visible, not silent.
 test("fewer sessions than requested are returned as-is, not padded", () => {
   const out = JSON.stringify({ sessions: [{ id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }] });
-  expect(parseBatchOutput(out)).toEqual([{ id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }]);
+  expect(parseBatchOutput(out)).toEqual({
+    sessions: [{ id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }],
+    malformed: 0,
+  });
 });
 
 test("sessions out of request order are returned in agentop's order, not re-sorted", () => {
@@ -104,10 +112,94 @@ test("sessions out of request order are returned in agentop's order, not re-sort
       { id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" },
     ],
   });
-  expect(parseBatchOutput(out).map((s) => s.id)).toEqual(["s-2", "s-1"]);
+  expect(parseBatchOutput(out).sessions.map((s) => s.id)).toEqual(["s-2", "s-1"]);
+});
+
+test("an entry missing cwd is dropped, not defaulted to an empty string", () => {
+  const out = JSON.stringify({ sessions: [{ id: "s-1", harness: "claude" }] });
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toEqual([]);
+  expect(result.malformed).toBe(1);
+});
+
+test("an entry with a non-string cwd is dropped", () => {
+  const out = JSON.stringify({ sessions: [{ id: "s-1", harness: "claude", cwd: 42 }] });
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toEqual([]);
+  expect(result.malformed).toBe(1);
+});
+
+test("a mixed response keeps the usable sessions and counts the rest as malformed", () => {
+  const out = JSON.stringify({
+    sessions: [
+      { id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" },
+      { id: "s-2", harness: "claude" }, // missing cwd
+      { harness: "claude", cwd: "/w/.worktrees/j1-pedro" }, // missing id
+      { id: "s-4", harness: "claude", cwd: "/w/.worktrees/j1-x" },
+      "not-even-an-object",
+    ],
+  });
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toEqual([
+    { id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" },
+    { id: "s-4", harness: "claude", cwd: "/w/.worktrees/j1-x" },
+  ]);
+  expect(result.malformed).toBe(3);
+});
+
+test("an entry missing harness defaults to claude (not a pairing key)", () => {
+  const out = JSON.stringify({ sessions: [{ id: "s-1", cwd: "/w/.worktrees/j1-joaquim" }] });
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toEqual([{ id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }]);
+  expect(result.malformed).toBe(0);
+});
+
+test("unparseable stdout on a successful exit throws instead of resolving as empty", () => {
+  expect(() => parseBatchOutput("not json at all")).toThrow(/unparseable/);
+});
+
+test("unparseable stdout includes what agentop actually printed, truncated", () => {
+  const garbage = "x".repeat(1000);
+  try {
+    parseBatchOutput(garbage);
+    throw new Error("expected parseBatchOutput to throw");
+  } catch (err) {
+    const message = (err as Error).message;
+    expect(message).toContain("x".repeat(50));
+    expect(message.length).toBeLessThan(garbage.length);
+  }
+});
+
+test("a well-formed empty array result still resolves normally", () => {
+  expect(parseBatchOutput("[]")).toEqual({ sessions: [], malformed: 0 });
+});
+
+test("a well-formed empty sessions object still resolves normally", () => {
+  expect(parseBatchOutput(JSON.stringify({ sessions: [] }))).toEqual({ sessions: [], malformed: 0 });
 });
 
 test("startBatch surfaces a non-zero exit as an error", async () => {
   const failing: AgentopRunner = async () => ({ code: 1, stdout: "", stderr: "boom" });
   await expect(startBatch("aipe/j1", units, failing)).rejects.toThrow("boom");
+});
+
+test("startBatch surfaces malformed entries to the caller alongside the usable sessions", async () => {
+  const mixed: AgentopRunner = async () => ({
+    code: 0,
+    stdout: JSON.stringify({
+      sessions: [
+        { id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" },
+        { id: "s-2", harness: "claude" }, // missing cwd
+      ],
+    }),
+    stderr: "",
+  });
+  const result = await startBatch("aipe/j1", units, mixed);
+  expect(result.sessions).toEqual([{ id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }]);
+  expect(result.malformed).toBe(1);
+});
+
+test("startBatch throws when agentop exits 0 but prints unparseable stdout", async () => {
+  const garbled: AgentopRunner = async () => ({ code: 0, stdout: "{not json", stderr: "" });
+  await expect(startBatch("aipe/j1", units, garbled)).rejects.toThrow(/unparseable/);
 });
