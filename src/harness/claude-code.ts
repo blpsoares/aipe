@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FLOW_SKILLS } from "./skills";
 import type { ContainmentHook, HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDelivery } from "./types";
+import { CONTAINMENT_COMMAND } from "./types";
 
 const ROLE_LABEL: Record<PersonaRole, string> = {
   "dev-fullstack": "Fullstack specialist",
@@ -20,8 +21,6 @@ const SESSION_START_HOOK = {
   matcher: "startup|resume|clear|compact",
   hooks: [{ type: "command", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' }],
 };
-
-const CONTAINMENT_COMMAND = "aipe session guard";
 
 const PRE_TOOL_USE_HOOK = {
   matcher: "Bash",

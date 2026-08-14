@@ -28,6 +28,11 @@ export interface InstallReport {
   notes: string[];
 }
 
+// The guard command that every harness adapter MUST use in its containment hook.
+// Do not repeat the literal string — import and use this constant to prevent typos
+// that silently produce a hook that denies nothing.
+export const CONTAINMENT_COMMAND = "aipe session guard";
+
 // How a harness is told to block a command before it runs. `relPath` is the
 // config file, relative to the workspace; `merge` folds the containment rule
 // into that file's existing contents, idempotently.

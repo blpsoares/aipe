@@ -45,3 +45,24 @@ test("installIntegration writes the containment hook to disk", async () => {
   expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe("aipe session guard");
   expect(JSON.stringify(settings.hooks.SessionStart)).toContain("aipe session-context");
 });
+
+test("preserves user's own unrelated PreToolUse entry and appends containment", () => {
+  const hook = claudeCodeAdapter.containmentHook()!;
+  const userEntry = {
+    matcher: "Write",
+    hooks: [{ type: "command", command: "my-own-linter" }],
+  };
+  const withUserEntry = {
+    hooks: { PreToolUse: [userEntry] },
+  };
+  const merged = hook.merge(withUserEntry);
+  const preToolUse = (merged as any).hooks.PreToolUse;
+  expect(preToolUse).toHaveLength(2);
+  expect(preToolUse[0]).toEqual(userEntry);
+  expect(preToolUse[1].hooks[0].command).toBe("aipe session guard");
+
+  // Merging again should be idempotent and still have exactly 2 elements
+  const mergedAgain = hook.merge(merged);
+  const preToolUseAgain = (mergedAgain as any).hooks.PreToolUse;
+  expect(preToolUseAgain).toHaveLength(2);
+});
