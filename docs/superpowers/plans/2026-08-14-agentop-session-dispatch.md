@@ -42,6 +42,29 @@ containable and `containmentHook()` returns `null`: it is then ineligible for
 session-mode dispatch, which is exactly what the eligibility rule is for. Verify
 project-scoped support as part of each adapter's Step 1.
 
+**Two namespaces, and the mapping between them is load-bearing — fix this in
+Task 16, before a second adapter exists.** AIPe identifies a harness by its
+*adapter id* (`claude-code`, and soon `codex`/`gemini`/`copilot`) — that is what
+the Orientation Spec approves and what the ledger's `harness` field stores.
+`agentop` identifies one by its *harness name* (`claude`, `codex`, `gemini`,
+`copilot`, `antigravity`, `kimi`). **`claude-code` is not `claude`.**
+
+`dispatchCommand` in `src/session/cli.ts` currently writes the literal
+`harness: "claude"` into every `BatchUnit`, ignoring the unit's recorded
+`harness`. That is correct only while `claude-code` is the only containable
+adapter. The moment a second one becomes eligible, a unit the PE approved for
+Codex silently starts a **Claude** session — destroying the cross-model
+independence that is the entire reason these adapters exist, with nothing
+failing and nothing logged.
+
+So `HarnessAdapter` gains an **`agentopHarness: string | null`** member naming
+the harness agentop knows, and `dispatchCommand` resolves it from the unit's
+recorded adapter id instead of using a literal. `null` means the adapter has no
+agentop equivalent, which makes it not session-dispatchable for the same reason
+a non-containable one is. Task 16 does this as its first step, and its tests
+must include a unit whose `harness` is not `claude-code` producing the right
+agentop harness name in the argv — a test the current hardcode would fail.
+
 ## File Structure
 
 **Created:**
