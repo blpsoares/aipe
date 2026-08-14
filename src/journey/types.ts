@@ -63,6 +63,17 @@ export interface JourneyDispatch {
   // Why a unit that was already delivered/verified was re-dispatched (a fix loop
   // or an intentional redo). Recorded so a re-dispatch is never silent.
   redispatchReason?: string;
+  // What the PE asked for, live, when they redirected this unit's direction
+  // via `agentop session attach` (status `redirected`). Deliberately a
+  // separate field from `redispatchReason` above, not a reuse of it: that
+  // field means "why finished work was reopened" (a fix loop / redo on a
+  // delivered|verified→dispatched transition) — a reader who saw it non-empty
+  // on a `redirected` record would misread this as a reopened redo instead of
+  // a live scope change the approved spec no longer describes. Required by
+  // the ledger gate whenever `status: "redirected"` is recorded (see
+  // recordDispatchGuarded in ledger.ts); absent on legacy ledgers written
+  // before this field existed.
+  redirectReason?: string;
   // Model-policy audit (optional; absent on legacy ledgers): the tier the
   // coordinator assigned and the concrete model the specialist ran on.
   tier?: string;

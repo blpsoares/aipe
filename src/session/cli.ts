@@ -143,14 +143,15 @@ function shQuote(value: string): string {
 // src/journey/cli.ts, not guessed.
 //
 // FIELD_FLAGS is typed via `satisfies Record<..., string>` over
-// `keyof JourneyDispatch` minus the three fields handled outside this table
-// (`evidence`, `sessionId`, `redispatchReason` — see below), rather than as an
-// array of `{ field, flag }` pairs. An array only constrains listed fields to
-// be valid keys; it does not require every key to be listed, so a field added
-// to JourneyDispatch later would compile cleanly while silently being dropped
-// here — the original bug. The `Record` shape makes every key mandatory: a
-// new JourneyDispatch field fails `bunx tsc --noEmit` until someone adds it
-// here (mapped to a flag) or to the `Exclude` list (deliberately excluded).
+// `keyof JourneyDispatch` minus the four fields handled outside this table
+// (`evidence`, `sessionId`, `redispatchReason`, `redirectReason` — see
+// below), rather than as an array of `{ field, flag }` pairs. An array only
+// constrains listed fields to be valid keys; it does not require every key to
+// be listed, so a field added to JourneyDispatch later would compile cleanly
+// while silently being dropped here — the original bug. The `Record` shape
+// makes every key mandatory: a new JourneyDispatch field fails
+// `bunx tsc --noEmit` until someone adds it here (mapped to a flag) or to the
+// `Exclude` list (deliberately excluded).
 //
 // `redispatchReason` cannot currently be forwarded through `recordCommand` at
 // all, even via `--reason`. `recordDispatchGuarded` (src/journey/ledger.ts)
@@ -167,6 +168,14 @@ function shQuote(value: string): string {
 // on `dispatched` with `redispatchReason` set) — so when that is the case, an
 // explicit WARN line is printed alongside the recovery command (see
 // dispatchCommand below) rather than silently letting it be lost.
+//
+// `redirectReason` is excluded for the identical reason: the guard only turns
+// `--reason` into a written `redirectReason` when the incoming write's status
+// is `redirected` (src/journey/ledger.ts), and the record being recovered
+// here is always sitting at `dispatched` — its session write failed, its
+// status never changed. A unit sitting at `dispatched` could still carry a
+// leftover `redirectReason` from an earlier genuine redirect that was later
+// reconciled and re-dispatched, so the same explicit WARN line covers it too.
 const FIELD_FLAGS = {
   repo: "--repo",
   package: "--package",
@@ -180,7 +189,7 @@ const FIELD_FLAGS = {
   mode: "--mode",
   intensity: "--intensity",
   harness: "--harness",
-} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason">, string>;
+} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason">, string>;
 
 function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: JourneyDispatch, sessionId: string): string {
   const parts = ["aipe journey record", `--journey ${shQuote(journeyId)}`, `--workspace ${shQuote(workspace)}`];
@@ -331,12 +340,18 @@ export async function dispatchCommand(
       lines.push(
         `ERROR ledger: session ${session.id} for ${fqid} is running but could not be recorded (${err instanceof Error ? err.message : String(err)}) — record it manually: ${recordCmd}`,
       );
-      // recoveryRecordCommand cannot represent redispatchReason (see the
-      // comment on FIELD_FLAGS) — if this unit actually carries one, running
-      // the command above verbatim would silently lose it. Say so.
+      // recoveryRecordCommand cannot represent redispatchReason or
+      // redirectReason (see the comment on FIELD_FLAGS) — if this unit
+      // actually carries either, running the command above verbatim would
+      // silently lose it. Say so.
       if (d.redispatchReason) {
         lines.push(
           `WARN ledger: ${fqid}'s redispatchReason (${JSON.stringify(d.redispatchReason)}) cannot be represented by the recovery command above and will be lost if it is run verbatim — restore it manually`,
+        );
+      }
+      if (d.redirectReason) {
+        lines.push(
+          `WARN ledger: ${fqid}'s redirectReason (${JSON.stringify(d.redirectReason)}) cannot be represented by the recovery command above and will be lost if it is run verbatim — restore it manually`,
         );
       }
     }
@@ -437,8 +452,15 @@ export async function collectCommand(
     // compiling clean.
     switch (s.phase) {
       case "redirected":
+        // The reason is what the coordinator actually needs to act on next —
+        // reconcile the Orientation Spec against it — so it is surfaced right
+        // here instead of sending the coordinator to open the ledger file.
+        // JSON-quoted so an awkward reason (quotes, apostrophes, embedded
+        // newlines) stays on this one line instead of corrupting it; `null`
+        // (never a blank string) marks a legacy record written before the
+        // reason was required.
         lines.push(
-          `REDIRECTED ${s.fqid} session ${s.sessionId} — the PE changed this unit's direction live. Fold the change into the Orientation Spec (bump its version) or escalate. A redirected unit MUST NOT pass the QA gate against an unreconciled spec`,
+          `REDIRECTED ${s.fqid} session ${s.sessionId} reason=${JSON.stringify(s.reason)} — the PE changed this unit's direction live. Fold the change into the Orientation Spec (bump its version) or escalate. A redirected unit MUST NOT pass the QA gate against an unreconciled spec`,
         );
         break;
       case "landed":

@@ -589,6 +589,44 @@ test("a dispatch being recovered that carries a redispatchReason gets an explici
   );
 });
 
+// Same gap, for `redirectReason`: a unit currently sitting at `dispatched`
+// can still carry a leftover `redirectReason` from an earlier genuine
+// redirect that was reconciled and re-dispatched. The recovery command's
+// `--status` comes back as `dispatched` too (see FIELD_FLAGS comment), so
+// `recordDispatchGuarded`'s redirect gate never fires on the recovery write
+// and `--reason` cannot restore it either — the same WARN treatment applies.
+test("a dispatch being recovered that carries a redirectReason gets an explicit WARN line, since the recovery command cannot restore it", async () => {
+  const dir = await fixture(); // repo "embark", specialist "Joaquim"
+  const worktree = join(dir, ".worktrees", "j1-joaquim");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "aipe/j1/joaquim",
+    worktree, status: "dispatched",
+    mode: "session", intensity: "ultracode", harness: "claude-code",
+    redirectReason: "use Stripe instead of the in-house gateway",
+  });
+
+  const realRecordDispatch = ledgerModule.recordDispatch;
+  mock.module("../../journey/ledger", () => ({
+    ...ledgerModule,
+    recordDispatch: async () => {
+      throw new Error("simulated disk full");
+    },
+  }));
+
+  let r: { code: number; lines: string[] };
+  try {
+    r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: okRunner });
+  } finally {
+    mock.module("../../journey/ledger", () => ({ ...ledgerModule, recordDispatch: realRecordDispatch }));
+  }
+
+  expect(r.code).toBe(1);
+  expect(r.lines.length).toBe(2);
+  expect(r.lines[1]).toBe(
+    'WARN ledger: embark\'s redirectReason ("use Stripe instead of the in-house gateway") cannot be represented by the recovery command above and will be lost if it is run verbatim — restore it manually',
+  );
+});
+
 // Finding 2: `started.length !== pending.length` must be reachable on its
 // own. `shortRunner` (above) bundles it with a per-unit "no session for X"
 // line (fewer sessions than requested ⇒ some unit is unmatched), and

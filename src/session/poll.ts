@@ -102,6 +102,7 @@ export function classify(ledger: JourneyLedger, live: Set<string>): UnitState[] 
       phase,
       branch: d.branch,
       worktree: d.worktree,
+      reason: phase === "redirected" ? d.redirectReason ?? null : null,
     });
   }
   return states;

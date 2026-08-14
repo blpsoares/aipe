@@ -32,4 +32,9 @@ export interface UnitState {
   phase: UnitPhase;
   branch: string;
   worktree: string;
+  // The PE's reason for a `redirected` unit (see JourneyDispatch.redirectReason
+  // in journey/types.ts) — null for every other phase, and also null for a
+  // `redirected` record written before the reason was required/persisted, so
+  // a legacy ledger still reads without throwing.
+  reason: string | null;
 }

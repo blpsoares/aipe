@@ -132,10 +132,20 @@ export function grantedTiers(ledger: JourneyLedger | null): Set<string> {
 //   • no-silent-redispatch (Pilar 3): moving a unit that was already
 //     `delivered`/`verified` back to `dispatched` (a fix loop / redo) REQUIRES a
 //     reason, so re-dispatching finished work is always deliberate and audited.
+//   • no-reasonless-redirect: recording a unit `redirected` REQUIRES a reason
+//     (what the PE asked for, live). A `redirected` status without its reason
+//     tells the coordinator something changed but not what — exactly the gap
+//     the status exists to close (the approved spec is what gets reconciled
+//     against it next), so a redirect that carries no reason is rejected
+//     rather than silently recorded as noise.
 //
 // The guard keys on the UNIT (repo + package), not the specialist — a fix can
 // reuse or swap the specialist and the invariant still holds.
-export type LedgerGateCode = "evidence-required" | "unit-immutable" | "redispatch-needs-reason";
+export type LedgerGateCode =
+  | "evidence-required"
+  | "unit-immutable"
+  | "redispatch-needs-reason"
+  | "redirect-needs-reason";
 
 export interface GuardedRecordResult {
   ok: boolean;
@@ -193,7 +203,24 @@ export async function recordDispatchGuarded(
       message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} was already "${current!.status}" — re-dispatching it needs --reason (a fix loop or a deliberate redo), so finished work is never silently redone.`,
     };
   }
-  const toWrite: JourneyDispatch = reopening ? { ...dispatch, redispatchReason: opts.reason!.trim() } : dispatch;
+  // 4 — no-reasonless-redirect: the whole value of a `redirected` record is
+  // the reason — what the PE asked for, live — so the coordinator can
+  // reconcile the Orientation Spec against it. A redirect that records
+  // nothing useful is close to no record at all, so it is rejected the same
+  // way an undocumented re-dispatch is, rather than accepted as silent noise.
+  if (dispatch.status === "redirected" && !opts.reason?.trim()) {
+    return {
+      ok: false,
+      code: "redirect-needs-reason",
+      message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} is being recorded "redirected" — --reason is required (what the PE asked for, live), so the coordinator can reconcile the Orientation Spec instead of silently drifting from what is actually being built.`,
+    };
+  }
+
+  const toWrite: JourneyDispatch = reopening
+    ? { ...dispatch, redispatchReason: opts.reason!.trim() }
+    : dispatch.status === "redirected"
+      ? { ...dispatch, redirectReason: opts.reason!.trim() }
+      : dispatch;
 
   const path = await recordDispatch(workspaceDir, id, toWrite);
   return { ok: true, path };
