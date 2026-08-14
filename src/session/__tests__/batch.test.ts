@@ -129,6 +129,32 @@ test("an entry with a non-string cwd is dropped", () => {
   expect(result.malformed).toBe(1);
 });
 
+test("an entry with an empty-string cwd is dropped, not pushed through", () => {
+  const out = JSON.stringify({ sessions: [{ id: "s-1", harness: "claude", cwd: "" }] });
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toEqual([]);
+  expect(result.malformed).toBe(1);
+});
+
+test("an entry with an empty-string id is dropped, not pushed through", () => {
+  const out = JSON.stringify({ sessions: [{ id: "", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }] });
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toEqual([]);
+  expect(result.malformed).toBe(1);
+});
+
+test("two entries with cwd: \"\" do not collide into sessions together", () => {
+  const out = JSON.stringify({
+    sessions: [
+      { id: "s-1", harness: "claude", cwd: "" },
+      { id: "s-2", harness: "claude", cwd: "" },
+    ],
+  });
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toEqual([]);
+  expect(result.malformed).toBe(2);
+});
+
 test("a mixed response keeps the usable sessions and counts the rest as malformed", () => {
   const out = JSON.stringify({
     sessions: [
@@ -176,6 +202,30 @@ test("a well-formed empty array result still resolves normally", () => {
 
 test("a well-formed empty sessions object still resolves normally", () => {
   expect(parseBatchOutput(JSON.stringify({ sessions: [] }))).toEqual({ sessions: [], malformed: 0 });
+});
+
+// Valid JSON of a top-level shape we don't recognise (no array, no
+// `sessions` array) must not silently read as "zero sessions" — that's
+// indistinguishable from a genuinely empty, well-formed result. It throws,
+// the same way unparseable JSON does.
+test("a top-level null throws instead of resolving as empty", () => {
+  expect(() => parseBatchOutput("null")).toThrow(/unexpected shape/);
+});
+
+test("a top-level empty object throws instead of resolving as empty", () => {
+  expect(() => parseBatchOutput("{}")).toThrow(/unexpected shape/);
+});
+
+test("a top-level object without a sessions array throws instead of resolving as empty", () => {
+  expect(() => parseBatchOutput(JSON.stringify({ error: "boom" }))).toThrow(/unexpected shape/);
+});
+
+test("a top-level number throws instead of resolving as empty", () => {
+  expect(() => parseBatchOutput("42")).toThrow(/unexpected shape/);
+});
+
+test("a top-level string throws instead of resolving as empty", () => {
+  expect(() => parseBatchOutput(JSON.stringify("a string"))).toThrow(/unexpected shape/);
 });
 
 test("startBatch surfaces a non-zero exit as an error", async () => {

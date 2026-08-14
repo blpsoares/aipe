@@ -59,11 +59,23 @@ export function parseBatchOutput(stdout: string): BatchParseResult {
       `agentop session batch printed unparseable JSON on a successful exit: ${previewStdout(stdout)}`,
     );
   }
-  const list = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === "object" && Array.isArray((parsed as any).sessions)
-      ? (parsed as any).sessions
-      : [];
+  const parsedIsArray = Array.isArray(parsed);
+  const parsedHasSessionsArray =
+    !parsedIsArray && parsed !== null && typeof parsed === "object" && Array.isArray((parsed as any).sessions);
+  if (!parsedIsArray && !parsedHasSessionsArray) {
+    // Valid JSON, but a top-level shape we don't recognise (null, {}, an
+    // error object, a bare number/string, ...) is the same ambiguity the
+    // unparseable-JSON throw above exists to eliminate, one boundary later:
+    // silently falling through to `list = []` would make it indistinguishable
+    // from a genuinely empty, well-formed result ([] or {"sessions":[]}). A
+    // caller can't act on "malformed: N" here — there's no list to have
+    // partially started sessions in, unlike the per-entry case below — so
+    // this throws exactly like the unparseable-JSON path.
+    throw new Error(
+      `agentop session batch printed valid JSON with an unexpected shape (not an array, and no "sessions" array) on a successful exit: ${previewStdout(stdout)}`,
+    );
+  }
+  const list = parsedIsArray ? parsed : (parsed as any).sessions;
   const sessions: StartedSession[] = [];
   let malformed = 0;
   for (const entry of list) {
@@ -73,11 +85,12 @@ export function parseBatchOutput(stdout: string): BatchParseResult {
     }
     const r = entry as Record<string, unknown>;
     // `cwd` is the pairing key a later task uses to match a session back to
-    // the unit that requested it. A missing/non-string `cwd` is exactly as
-    // unusable as a missing `id`: defaulting it to "" would make two bad
-    // entries collide on the same key and silently mispair or overwrite one
-    // another, which is worse than dropping the entry outright.
-    if (typeof r.id !== "string" || typeof r.cwd !== "string") {
+    // the unit that requested it. A missing/non-string/empty-string `cwd` is
+    // exactly as unusable as a missing/empty `id`: defaulting or letting an
+    // empty string through would make two bad entries collide on the same
+    // key (or write a useless "" into the ledger) and silently mispair or
+    // overwrite one another, which is worse than dropping the entry outright.
+    if (typeof r.id !== "string" || r.id === "" || typeof r.cwd !== "string" || r.cwd === "") {
       malformed++;
       continue;
     }
