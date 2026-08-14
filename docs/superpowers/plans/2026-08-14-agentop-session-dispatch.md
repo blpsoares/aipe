@@ -2137,12 +2137,25 @@ export async function dispatchCommand(
     return { code: 1, lines };
   }
 
-  for (let i = 0; i < pending.length; i++) {
-    const d = pending[i]!;
-    const session = started[i];
-    if (!session) continue;
+  // Pair by cwd, NOT by position. `parseBatchOutput` returns agentop's list
+  // as-is: nothing guarantees it comes back in the order the --session flags
+  // went out, or that it is the same length. Zipping by index would write a
+  // session id onto the wrong unit, and `collect` would then report the wrong
+  // unit dead. Each unit's worktree is unique within a wave, so cwd is a key.
+  const byCwd = new Map(started.map((s) => [s.cwd, s]));
+  for (const d of pending) {
+    const fqid = packageFqid(d.repo, d.package);
+    const session = byCwd.get(d.worktree);
+    if (!session) {
+      lines.push(`ERROR session: agentop reported no session for ${fqid} (${d.worktree})`);
+      continue;
+    }
     await recordDispatch(opts.workspace, opts.journeyId, { ...d, sessionId: session.id });
-    lines.push(`OK ${packageFqid(d.repo, d.package)} → ${session.id}`);
+    lines.push(`OK ${fqid} → ${session.id}`);
+  }
+  if (started.length !== pending.length) {
+    lines.push(`ERROR session: asked agentop for ${pending.length} sessions, it started ${started.length}`);
+    return { code: 1, lines };
   }
 
   return { code: 0, lines };
