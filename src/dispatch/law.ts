@@ -34,6 +34,13 @@ export function validateBatch(
     if (sessionEntries.length > SESSION_MAX_CONCURRENT) {
       rejects.push(`session-cap-exceeded ${sessionEntries.length}`);
     }
+    if (!session) {
+      // A caller that omits the 4th argument while proposing session-mode
+      // entries must not fail open: without a SessionContext there is no way
+      // to confirm agentop is reachable or the harness is containable, so the
+      // batch is rejected outright rather than silently skipping those checks.
+      rejects.push("session-context-missing");
+    }
     if (session && !session.agentopOk) {
       rejects.push("agentop-unavailable");
     }

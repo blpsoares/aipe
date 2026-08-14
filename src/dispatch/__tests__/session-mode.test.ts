@@ -62,6 +62,60 @@ test("more than four session-mode units is rejected, while 16 subagents pass", (
   }));
   const v = validateBatch(five, repos, roster, ctx);
   expect(v.ok === false && v.rejects).toContain("session-cap-exceeded 5");
+
+  const sixteen = Array.from({ length: 16 }, (_, i) => ({
+    repo: "embark",
+    package: `p${i}`,
+    specialist: "Joaquim",
+  }));
+  const subagentVerdict = validateBatch(sixteen, repos, roster, ctx);
+  expect(subagentVerdict.ok).toBe(true);
+});
+
+// The two caps are enforced independently against their own counts: the total
+// batch size (mode-agnostic) against MAX_CONCURRENT, and the session-mode
+// subset against SESSION_MAX_CONCURRENT. A batch can trip one without the
+// other.
+test("a mixed batch trips the overall cap without tripping the session cap", () => {
+  const sessionEntries = ["s1", "s2", "s3"].map((p) => ({
+    repo: "embark",
+    package: p,
+    specialist: "Joaquim",
+    mode: "session" as const,
+    harness: "claude-code",
+  }));
+  const subagentEntries = Array.from({ length: 14 }, (_, i) => ({
+    repo: "embark",
+    package: `a${i}`,
+    specialist: "Joaquim",
+  }));
+  const batch = [...sessionEntries, ...subagentEntries];
+  expect(batch).toHaveLength(17);
+
+  const v = validateBatch(batch, repos, roster, ctx);
+  expect(v.ok).toBe(false);
+  const rejects = v.ok === false ? v.rejects : [];
+  expect(rejects).toContain("cap-exceeded 17");
+  expect(rejects.some((r) => r.startsWith("session-cap-exceeded"))).toBe(false);
+});
+
+test("session entries with no session context are rejected as session-context-missing", () => {
+  const v = validateBatch(
+    [{ repo: "embark", specialist: "Joaquim", mode: "session", harness: "claude-code" }],
+    repos,
+    roster,
+  );
+  expect(v.ok).toBe(false);
+  expect(v.ok === false && v.rejects).toContain("session-context-missing");
+});
+
+test("a subagent-only batch with no session context still validates (backward compat)", () => {
+  const v = validateBatch(
+    [{ repo: "embark", specialist: "Joaquim" }],
+    repos,
+    roster,
+  );
+  expect(v.ok).toBe(true);
 });
 
 test("a repeated bad harness is reported exactly once", () => {
