@@ -28,6 +28,18 @@ export interface InstallReport {
   notes: string[];
 }
 
+// How a harness is told to block a command before it runs. `relPath` is the
+// config file, relative to the workspace; `merge` folds the containment rule
+// into that file's existing contents, idempotently.
+//
+// A harness whose adapter returns null cannot be contained — and is therefore
+// NOT eligible for session-mode dispatch. That is the whole eligibility rule:
+// AIPe never starts a session it cannot govern.
+export interface ContainmentHook {
+  relPath: string;
+  merge: (existing: unknown) => unknown;
+}
+
 export interface HarnessAdapter {
   id: string;
   label: string;
@@ -37,6 +49,11 @@ export interface HarnessAdapter {
 
   // B — how the (portable) awareness text reaches a session.
   startupDelivery(awareness: string): StartupDelivery;
+
+  // How this harness is told to block a command before it runs. `null` means
+  // the harness cannot be contained, and is therefore not eligible for
+  // session-mode dispatch.
+  containmentHook(): ContainmentHook | null;
 
   // C — where a persona file lives inside its repo, and how it is wrapped so
   //     THIS harness auto-loads it. `personaTarget` is relative to the repo root.
@@ -57,4 +74,8 @@ export interface HarnessAdapter {
   //     null = no mapping (the coordinator falls back to the session default);
   //     the tier's policy gates (authorization/volume) still apply either way.
   resolveModel(tier: string): { id: string; label: string } | null;
+}
+
+export function isContainable(adapter: HarnessAdapter): boolean {
+  return adapter.containmentHook() !== null;
 }

@@ -60,6 +60,12 @@ export const genericAdapter: HarnessAdapter = {
     return { mode: "file", path: "AGENTS.md", content };
   },
 
+  // A harness AIPe drives only through files has no block-before-execute
+  // mechanism, so it can never be trusted to hold a specialist inside its lane.
+  containmentHook(): null {
+    return null;
+  },
+
   personaTarget(slug: string): { relDir: string; filename: string } {
     return { relDir: ".aipe-personas", filename: `${slug}.md` };
   },

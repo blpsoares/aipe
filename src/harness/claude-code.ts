@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FLOW_SKILLS } from "./skills";
-import type { HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDelivery } from "./types";
+import type { ContainmentHook, HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDelivery } from "./types";
 
 const ROLE_LABEL: Record<PersonaRole, string> = {
   "dev-fullstack": "Fullstack specialist",
@@ -21,8 +21,15 @@ const SESSION_START_HOOK = {
   hooks: [{ type: "command", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' }],
 };
 
+const CONTAINMENT_COMMAND = "aipe session guard";
+
+const PRE_TOOL_USE_HOOK = {
+  matcher: "Bash",
+  hooks: [{ type: "command", command: CONTAINMENT_COMMAND }],
+};
+
 interface Settings {
-  hooks?: { SessionStart?: unknown[]; [k: string]: unknown };
+  hooks?: { SessionStart?: unknown[]; PreToolUse?: unknown[]; [k: string]: unknown };
   [k: string]: unknown;
 }
 
@@ -51,7 +58,9 @@ export async function ensureSessionStartHook(targetDir: string): Promise<void> {
   const sessionStart = Array.isArray(settings.hooks.SessionStart) ? settings.hooks.SessionStart : [];
   if (!hasAipeHook(sessionStart)) sessionStart.push(SESSION_START_HOOK);
   settings.hooks.SessionStart = sessionStart;
-  await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+
+  const merged = claudeCodeAdapter.containmentHook()!.merge(settings);
+  await writeFile(settingsPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
 }
 
 // The Claude Code adapter: a project-scoped SessionStart hook + skills under
@@ -76,6 +85,7 @@ export const claudeCodeAdapter: HarnessAdapter = {
       files: [".claude/settings.json", `.claude/skills/ (${Object.keys(FLOW_SKILLS).length} skills)`],
       notes: [
         "SessionStart hook → aipe session-context",
+        "PreToolUse hook → aipe session guard (containment)",
         `${Object.keys(FLOW_SKILLS).length} AIPe skills installed`,
       ],
     };
@@ -86,6 +96,23 @@ export const claudeCodeAdapter: HarnessAdapter = {
     // the awareness text is computed live by `aipe session-context`, so nothing
     // static is written here.
     return { mode: "hook", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' };
+  },
+
+  containmentHook(): ContainmentHook {
+    return {
+      relPath: join(".claude", "settings.json"),
+      merge(existing: unknown): unknown {
+        const settings: Settings =
+          existing && typeof existing === "object" ? { ...(existing as Settings) } : {};
+        const hooks = { ...(settings.hooks ?? {}) };
+        const list = Array.isArray(hooks.PreToolUse) ? [...hooks.PreToolUse] : [];
+        const already = list.some((e) => JSON.stringify(e).includes(CONTAINMENT_COMMAND));
+        if (!already) list.push(PRE_TOOL_USE_HOOK);
+        hooks.PreToolUse = list;
+        settings.hooks = hooks;
+        return settings;
+      },
+    };
   },
 
   personaTarget(slug: string): { relDir: string; filename: string } {
