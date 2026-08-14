@@ -512,9 +512,25 @@ Create `src/session/grants.ts`:
 // file exists, so exactly one concurrent caller can claim each token. Counting
 // an integer in a file would race — two readers see "2" and both write "1".
 import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+
+// These ids become path segments, so a separator or a `.`/`..` would collapse
+// the per-(journey, session) isolation this module exists to provide.
+function assertSafeId(label: string, id: string): void {
+  if (id === "" || id === "." || id === ".." || id.includes("/") || id.includes("\\")) {
+    throw new Error(`grantPath: unsafe ${label} id ${JSON.stringify(id)}`);
+  }
+}
+
+function errorCode(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "code" in err
+    ? String((err as { code: unknown }).code)
+    : undefined;
+}
 
 export function grantPath(workspaceDir: string, journeyId: string, sessionId: string): string {
+  assertSafeId("journey", journeyId);
+  assertSafeId("session", sessionId);
   return join(workspaceDir, ".aipe", "journeys", journeyId, "grants", sessionId);
 }
 
@@ -524,8 +540,22 @@ export async function issueGrant(
   sessionId: string,
   count: number,
 ): Promise<void> {
+  if (count < 0) throw new Error(`issueGrant: count must not be negative (got ${count})`);
   const dir = grantPath(workspaceDir, journeyId, sessionId);
-  await mkdir(dir, { recursive: true });
+  await mkdir(dirname(dir), { recursive: true });
+  // The NON-RECURSIVE mkdir *is* the exclusivity check: it fails with EEXIST if
+  // the directory exists. A read-then-write check would race — two concurrent
+  // callers both pass it and both write. Never silently widen or replace a
+  // grant: replacing would hand back units the specialist already spent.
+  try {
+    await mkdir(dir);
+  } catch (err) {
+    if (errorCode(err) === "EEXIST") {
+      throw new Error(`issueGrant: a grant already exists for ${journeyId}/${sessionId}`);
+    }
+    throw err;
+  }
+  // Plain "w" is safe here: the mkdir above guarantees we are the only writer.
   for (let i = 0; i < count; i++) {
     await writeFile(join(dir, `token-${i}`), "", "utf8");
   }
@@ -539,9 +569,19 @@ export async function consumeGrant(
   const dir = grantPath(workspaceDir, journeyId, sessionId);
   let tokens: string[];
   try {
-    tokens = (await readdir(dir)).filter((f) => f.startsWith("token-")).sort();
-  } catch {
-    return false;
+    tokens = (await readdir(dir))
+      // `!endsWith(".spent")` matters: `token-0.spent` also startsWith "token-",
+      // so without it a spent marker is re-listed as a claimable token and the
+      // quota silently grows by one on every subsequent call.
+      .filter((f) => f.startsWith("token-") && !f.endsWith(".spent"))
+      // Numeric, not lexicographic: at 10+ tokens `token-10` would sort before
+      // `token-2`, so claim order would stop matching issuance order.
+      .sort((a, b) => Number(a.slice(6)) - Number(b.slice(6)));
+  } catch (err) {
+    // Only a missing directory means "no grant issued". Anything else — EACCES,
+    // ENOSPC — is a real failure and must not read as "denied".
+    if (errorCode(err) === "ENOENT") return false;
+    throw err;
   }
   for (const token of tokens) {
     try {
@@ -549,8 +589,9 @@ export async function consumeGrant(
       // creates it first; everyone else gets EEXIST and moves to the next token.
       await writeFile(join(dir, `${token}.spent`), "", { encoding: "utf8", flag: "wx" });
       return true;
-    } catch {
-      continue;
+    } catch (err) {
+      if (errorCode(err) === "EEXIST") continue; // real contention
+      throw err;
     }
   }
   return false;
