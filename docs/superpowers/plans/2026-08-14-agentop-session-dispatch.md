@@ -292,16 +292,37 @@ test("a specialist may read and annotate sessions", () => {
 });
 
 test("unrelated commands are never the guard's business", () => {
-  for (const cmd of ["git status", "bun test", "echo agentop session claude"]) {
+  for (const cmd of ["git status", "bun test", "echo hello"]) {
     expect(decide({ command: cmd, role: "specialist" }).action).toBe("allow");
   }
 });
 
-test("a spawn hidden behind a shell operator is still caught", () => {
-  expect(decide({ command: "git status && agentop session claude -p x", role: "specialist" }).action)
-    .toBe("needs-grant");
-  expect(decide({ command: "true; agentop session batch --task t", role: "specialist" }).action)
-    .toBe("needs-grant");
+// The guard is deliberately CONSERVATIVE: it matches the token sequence
+// wherever it appears, and does not try to work out whether `agentop` sits in
+// command position. Every hiding place below is ordinary shell syntax.
+test("a spawn is caught wherever it hides", () => {
+  for (const cmd of [
+    "git status && agentop session claude -p x",
+    "true; agentop session batch --task t",
+    "sleep 1 & agentop session claude",
+    "if true; then agentop session claude; fi",
+    "for i in 1 2 3; do agentop session claude; done",
+    "{ agentop session claude; }",
+    "(agentop session claude)",
+    "sudo agentop session claude",
+    'FOO="bar baz" agentop session claude',
+    "echo $(agentop session claude)",
+    "echo agentop session claude",
+  ]) {
+    expect(decide({ command: cmd, role: "specialist" }).action).toBe("needs-grant");
+  }
+});
+
+test("kill wins over a spawn appearing in the same command", () => {
+  expect(decide({ command: "agentop session claude -p x; agentop session kill abc", role: "specialist" }))
+    .toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+  expect(decide({ command: '{ REASON="a b" agentop session kill abc; }', role: "specialist" }).action)
+    .toBe("deny");
 });
 ```
 
@@ -317,6 +338,16 @@ Create `src/session/guard.ts`:
 ```ts
 // The single decision every harness's containment hook consults. Pure: no I/O,
 // no env reads — the caller supplies the role, so this stays trivially testable.
+//
+// DELIBERATELY CONSERVATIVE. An earlier design tried to decide whether
+// `agentop` sat in *command position*, so that `echo agentop session claude`
+// could be waved through. Shell syntax defeated it repeatedly — brace groups,
+// subshells, quoted env assignments, `$(...)`, `then`/`do` after `;` — and each
+// hole silently disabled containment, one of them defeating the unconditional
+// kill-deny. For a guard, a false positive is an annoyance and a false negative
+// is the whole feature not existing. So: match the token sequence WHEREVER it
+// appears, and accept that writing the string into an `echo` gets denied too.
+// No shell parsing, no denylist of keywords, no arms race.
 
 export interface GuardInput {
   command: string;
@@ -332,30 +363,26 @@ export type GuardDecision =
 // or annotate, they never create or destroy.
 const READ_ONLY = new Set(["list", "attach", "note", "rename"]);
 
-// Split on shell separators so `git status && agentop session claude` is seen.
-function segments(command: string): string[] {
-  return command.split(/&&|\|\||[;|\n]/);
-}
-
-// Matches an *invocation* of `agentop session <verb>`; the leading anchor keeps
-// `echo agentop session claude` from tripping it.
-const INVOCATION = /(?:^|\s)(?:\S*\/)?agentop\s+session\s+(\S+)/;
+const INVOCATION = /agentop\s+session\s+([A-Za-z][\w-]*)/g;
 
 export function decide(input: GuardInput): GuardDecision {
   if (input.role !== "specialist") return { action: "allow" };
 
-  for (const segment of segments(input.command)) {
-    const m = segment.trim().match(INVOCATION);
-    if (!m) continue;
-    const verb = m[1]!;
+  let sawSpawn = false;
+  // Scan every occurrence: `kill` outranks a spawn appearing in the same
+  // command, so a compound that does both is denied outright, not granted.
+  for (const m of input.command.matchAll(INVOCATION)) {
+    const verb = m[1]!.toLowerCase();
     if (verb === "kill") {
       return { action: "deny", reason: "a specialist must not kill sessions" };
     }
     if (READ_ONLY.has(verb)) continue;
     // Anything else under `session` creates one: a harness name, or `batch`.
-    return { action: "needs-grant", reason: "specialist-session-spawn" };
+    sawSpawn = true;
   }
-  return { action: "allow" };
+  return sawSpawn
+    ? { action: "needs-grant", reason: "specialist-session-spawn" }
+    : { action: "allow" };
 }
 ```
 
