@@ -35,6 +35,13 @@ one of your actions. Your **only** allowed actions as coordinator are:
   never write to a repo);
 - **escalate** cross-repo matters to the PE.
 
+**Opening sessions is yours alone.** A dispatched specialist is forbidden from
+opening an agentop session — a containment hook denies it, and the persona is
+told so up front. If a specialist genuinely needs sub-work, it asks you; you
+either do it, dispatch it as its own unit, or issue an explicit grant. A
+specialist that could spawn specialists is an unbounded token fork-bomb with no
+ledger entry for any of it.
+
 ### Table of non-exceptions (forbidden rationalizations)
 
 None of these EVER justify skipping dispatch and editing a repo yourself:
@@ -140,8 +147,25 @@ digraph operate {
    **Cross-package contracts** (from `graph.yaml` — who consumes/imports what, what
    lands first), a **Per-package scope + acceptance** per unit, the **Sequencing**
    (waves), and **Out of scope**. Keep it cross-package — implementation detail is
-   each specialist's own SDD, not this. Validate the structure, then present it to
-   the PE and **wait for approval**:
+   each specialist's own SDD, not this.
+
+   **Per-unit dispatch envelope (the PE approves this too).** Each unit's scope
+   section carries three fields:
+
+   - `mode: subagent | session` — `subagent` (default) is in-process and returns
+     its evidence directly. `session` is a real detached session with its own
+     full context window; choose it when the unit is large enough that a shared
+     context would starve it, or when it needs `ultracode`.
+   - `intensity: normal | ultracode` — `ultracode` makes the specialist
+     orchestrate multi-agent workflows. It multiplies token spend, so it is the
+     PE's call, never yours.
+   - `harness: claude-code` — the only containable harness today. A harness whose
+     adapter cannot install the containment hook is rejected by the law.
+
+   Never raise `mode` or `intensity` on your own judgement after approval. If a
+   unit turns out heavier than the spec assumed, go back to the PE.
+
+   Validate the structure, then present it to the PE and **wait for approval**:
    ```bash
    aipe journey spec --journey <id> --check --units <fqid,...> --workspace <workspace>
    # PE approves →
@@ -196,6 +220,74 @@ digraph operate {
    TDD; before claiming done run `/verify-before-done` and gather evidence; push
    `<branch>`, open a PR, and return the structured result."* Dispatch all entries
    in a wave in parallel (one subagent each).
+
+   **If the unit's `mode` is `session`:** do not start a subagent. Record the
+   dispatch with its envelope, then start the whole wave with one command:
+
+   ```bash
+   aipe journey record --journey <id> --repo <repo> [--package <pkg>] \
+     --specialist <persona> --branch <branch> --worktree <path> \
+     --status dispatched --mode session --intensity <normal|ultracode> \
+     --harness claude-code --workspace <workspace>
+
+   aipe session dispatch --journey <id> --workspace <workspace>
+   ```
+
+   `aipe session dispatch` composes each specialist's prompt from its persona,
+   its slice of the approved spec, and the return contract; writes it to
+   `.aipe/journeys/<id>/prompts/` (kept, as the audit trail of what each
+   specialist was told); and starts them all under the task `aipe/<id>`.
+
+   Watch its output for two error lines that need action before you move on,
+   not just a glance:
+   - `ERROR ledger: session <id> for <fqid> is running but could not be
+     recorded (…) — record it manually: aipe journey record …` — the session
+     is already live and burning tokens with **no** ledger entry. Run the
+     printed recovery command now, don't wait for `collect` to notice — a
+     session with no recorded id is invisible to it.
+   - `ERROR session: agentop reported no session for <fqid>` (or `asked
+     agentop for N sessions, it started M`) — that unit never actually
+     started. Treat it like any other dispatch failure: investigate and
+     re-dispatch it; nothing is running for it anywhere.
+
+   Then wait for the wave:
+
+   ```bash
+   aipe session collect --journey <id> --timeout <seconds> --workspace <workspace>
+   ```
+
+   It prints one line per unit, then exits:
+   - `0` — every unit `LANDED`. Proceed to the QA gate exactly as with a
+     subagent delivery.
+   - `1` — a precondition failed (bad `--timeout`, no ledger for the journey,
+     or no session-mode units to collect). Fix the invocation, not the wave.
+   - `2` — the wave needs your eyes: at least one unit came back `RUNNING` or
+     `DEAD-SILENT`. Read the per-unit lines and act on each below.
+
+   Per-unit lines:
+   - `LANDED <fqid>` — the specialist recorded its delivery with evidence.
+   - `RUNNING <fqid> session <id>` — still working past the timeout, **or**
+     `collect` could not confirm the session's state at all (agentop's session
+     list was unreadable or untrustworthy) and fails open rather than call it
+     dead. Either way, `RUNNING` is not proof of life — never treat it as
+     confirmation the specialist is still working. Report it to the PE with
+     the session id and let **them** decide whether to keep waiting or
+     `agentop session kill`. Killing a specialist is never your call.
+   - `DEAD-SILENT <fqid> branch <b>` — the session ended without recording.
+     **Read the branch first, read-only** (`git log`, `git diff`) — never
+     re-dispatch blind. If there is real work on the branch, prefer
+     re-dispatching with a brief that says *continue from what is on the
+     branch* over starting the unit over; if the branch is empty or the state
+     is unclear, escalate to the PE instead. The ledger law that forbids
+     re-dispatching merged work applies here too.
+
+   If the wave times out with units still `RUNNING`, don't keep looping
+   `collect` on your own judgement — report the standing wave to the PE
+   (which units, which session ids) and let them decide.
+
+   If your session ends while a wave is in flight, the sessions keep running —
+   they are detached. On your next turn, read the ledger and run
+   `aipe session collect` again; it reconciles from the `aipe/<id>` task.
 
    **Verify the brief before you dispatch (MUST).** A dispatched subagent gets no
    second question from the PE — the brief is its whole world, so a thin brief is a
