@@ -244,8 +244,20 @@ export async function dispatchCommand(
       await recordDispatch(opts.workspace, opts.journeyId, { ...d, sessionId: session.id });
       lines.push(`OK ${fqid} → ${session.id}`);
     } catch (err) {
+      const recordCmd = [
+        "aipe journey record",
+        `--journey ${opts.journeyId}`,
+        `--workspace ${opts.workspace}`,
+        `--repo ${d.repo}`,
+        ...(d.package ? [`--package ${d.package}`] : []),
+        `--specialist ${d.specialist}`,
+        `--branch ${d.branch}`,
+        `--worktree ${d.worktree}`,
+        "--mode session",
+        `--session-id ${session.id}`,
+      ].join(" ");
       lines.push(
-        `ERROR ledger: session ${session.id} for ${fqid} is running but could not be recorded (${err instanceof Error ? err.message : String(err)}) — record it manually`,
+        `ERROR ledger: session ${session.id} for ${fqid} is running but could not be recorded (${err instanceof Error ? err.message : String(err)}) — record it manually: ${recordCmd}`,
       );
     }
   }
