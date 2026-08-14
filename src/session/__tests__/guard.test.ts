@@ -39,54 +39,35 @@ test("a specialist may read and annotate sessions", () => {
 });
 
 test("unrelated commands are never the guard's business", () => {
-  for (const cmd of ["git status", "bun test", "echo agentop session claude"]) {
+  for (const cmd of ["git status", "bun test", "echo hello"]) {
     expect(decide({ command: cmd, role: "specialist" }).action).toBe("allow");
   }
 });
 
-test("a spawn hidden behind a shell operator is still caught", () => {
-  expect(decide({ command: "git status && agentop session claude -p x", role: "specialist" }).action)
-    .toBe("needs-grant");
-  expect(decide({ command: "true; agentop session batch --task t", role: "specialist" }).action)
-    .toBe("needs-grant");
+// The guard is deliberately CONSERVATIVE: it matches the token sequence
+// wherever it appears, and does not try to work out whether `agentop` sits in
+// command position. Every hiding place below is ordinary shell syntax.
+test("a spawn is caught wherever it hides", () => {
+  for (const cmd of [
+    "git status && agentop session claude -p x",
+    "true; agentop session batch --task t",
+    "sleep 1 & agentop session claude",
+    "if true; then agentop session claude; fi",
+    "for i in 1 2 3; do agentop session claude; done",
+    "{ agentop session claude; }",
+    "(agentop session claude)",
+    "sudo agentop session claude",
+    'FOO="bar baz" agentop session claude',
+    "echo $(agentop session claude)",
+    "echo agentop session claude",
+  ]) {
+    expect(decide({ command: cmd, role: "specialist" }).action).toBe("needs-grant");
+  }
 });
 
-// Regression: a segment can legitimately open with a shell keyword, which used
-// to push `agentop` off the `^` anchor and fall through to `allow`. These are
-// the two reproductions from the review finding, verbatim.
-test("a spawn behind a shell keyword is still caught", () => {
-  expect(decide({ command: "if true; then agentop session claude; fi", role: "specialist" })).toEqual({
-    action: "needs-grant",
-    reason: "specialist-session-spawn",
-  });
-  expect(
-    decide({ command: "for i in 1 2 3; do agentop session claude; done", role: "specialist" }),
-  ).toEqual({
-    action: "needs-grant",
-    reason: "specialist-session-spawn",
-  });
-});
-
-test("a spawn backgrounded with a bare & is still caught", () => {
-  expect(decide({ command: "sleep 1 & agentop session claude", role: "specialist" })).toEqual({
-    action: "needs-grant",
-    reason: "specialist-session-spawn",
-  });
-});
-
-test("a spawn via sudo or an env-var prefix is still caught", () => {
-  expect(decide({ command: "sudo agentop session claude", role: "specialist" })).toEqual({
-    action: "needs-grant",
-    reason: "specialist-session-spawn",
-  });
-  expect(decide({ command: "FOO=1 agentop session claude", role: "specialist" })).toEqual({
-    action: "needs-grant",
-    reason: "specialist-session-spawn",
-  });
-});
-
-// Documents the boundary the anchor exists to protect: `agentop` as a mere
-// *argument* to an ordinary command must never trip the guard.
-test("agentop as an argument to an ordinary command does not trip the guard", () => {
-  expect(decide({ command: "echo agentop session claude", role: "specialist" }).action).toBe("allow");
+test("kill wins over a spawn appearing in the same command", () => {
+  expect(decide({ command: "agentop session claude -p x; agentop session kill abc", role: "specialist" }))
+    .toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+  expect(decide({ command: '{ REASON="a b" agentop session kill abc; }', role: "specialist" }).action)
+    .toBe("deny");
 });
