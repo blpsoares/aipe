@@ -9,8 +9,9 @@ import { resolveAdapter } from "../harness/registry";
 import { personaSlug } from "../hire-specialists/render";
 import { startBatch, type BatchUnit } from "./batch";
 import { composePrompt } from "./prompt";
+import { classify, pollOnce } from "./poll";
 import { probe, realRunner } from "./runner";
-import type { AgentopRunner } from "./types";
+import type { AgentopRunner, UnitState } from "./types";
 import { decide } from "./guard";
 import { consumeGrant } from "./grants";
 
@@ -342,6 +343,100 @@ export async function dispatchCommand(
   return { code, lines };
 }
 
+export interface CollectOptions {
+  workspace: string;
+  journeyId: string;
+  runner: AgentopRunner;
+  timeoutMs: number;
+  intervalMs: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+// The coordinator's active wait on a dispatched session-mode wave: poll the
+// ledger cross-referenced against `agentop session list` (pollOnce, poll.ts)
+// until every unit has landed or the deadline passes, then report what was
+// seen. Never kills anything and never re-dispatches on its own — a
+// dead-silent or still-running unit is reported for the PE to look at.
+//
+// pollOnce fails OPEN by design: when `agentop session list` cannot be read
+// or trusted, it presumes every sessionId the ledger is still waiting on is
+// alive rather than declaring the wave dead. This loop inherits that, and
+// extends it one layer further: pollOnce can also THROW outright (the
+// runner itself rejecting — agentop missing entirely, a spawn failure — not
+// just returning untrustworthy stdout, which pollOnce already absorbs
+// internally). A bare catch that fell back to an empty state list would be
+// "vacuously landed" (`[].every(...)` is `true` for any predicate on an
+// empty array), turning an infrastructure hiccup into a false all-clear. So
+// a thrown pollOnce falls back to the same fail-open classification pollOnce
+// itself uses on a failed/untrustworthy `session list` call: every
+// session-mode unit that has a recorded sessionId is presumed still
+// running; only a unit with no sessionId at all — genuinely never
+// dispatched — is dead-silent. That fallback is recomputed from the same
+// ledger snapshot read once at the top, not re-read per throw: good enough
+// for a path that only exists to avoid mislabeling live work as dead.
+export async function collectCommand(
+  opts: CollectOptions,
+): Promise<{ code: number; lines: string[]; states: UnitState[] }> {
+  if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs <= 0) {
+    return {
+      code: 1,
+      lines: [`ERROR timeout: --timeout must be a positive number, got ${opts.timeoutMs}`],
+      states: [],
+    };
+  }
+
+  const ledger = await readLedger(opts.workspace, opts.journeyId);
+  if (!ledger) {
+    return { code: 1, lines: [`ERROR journey: no ledger for ${opts.journeyId}`], states: [] };
+  }
+  const sessionUnits = ledger.dispatches.filter((d) => d.mode === "session");
+  if (sessionUnits.length === 0) {
+    return {
+      code: 1,
+      lines: [`ERROR journey: ${opts.journeyId} has no session-mode units to collect`],
+      states: [],
+    };
+  }
+
+  const now = opts.now ?? (() => Date.now());
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const deadline = now() + opts.timeoutMs;
+
+  const outstanding = new Set<string>();
+  for (const d of sessionUnits) if (d.sessionId) outstanding.add(d.sessionId);
+  const fallback = () => classify(ledger, outstanding);
+
+  let states: UnitState[] = fallback();
+  for (;;) {
+    try {
+      states = await pollOnce(opts.workspace, opts.journeyId, opts.runner);
+    } catch {
+      states = fallback();
+    }
+    const settled = states.every((s) => s.phase !== "running");
+    if (settled || now() >= deadline) break;
+    await sleep(opts.intervalMs);
+  }
+
+  const lines: string[] = [];
+  for (const s of states) {
+    if (s.phase === "landed") {
+      lines.push(`LANDED ${s.fqid}`);
+    } else if (s.phase === "running") {
+      lines.push(
+        `RUNNING ${s.fqid} session ${s.sessionId} — still working past the timeout; the PE decides whether to wait or kill it`,
+      );
+    } else {
+      lines.push(
+        `DEAD-SILENT ${s.fqid} branch ${s.branch} worktree ${s.worktree} — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind`,
+      );
+    }
+  }
+  const clean = states.every((s) => s.phase === "landed");
+  return { code: clean ? 0 : 2, lines, states };
+}
+
 const HELP = [
   "aipe session — dispatch specialists as real agentop sessions",
   "",
@@ -366,6 +461,33 @@ export async function run(args: string[]): Promise<number> {
       const { code, lines } = await dispatchCommand({ workspace, journeyId, runner: realRunner });
       for (const line of lines) console.log(line);
       return code;
+    }
+    case "collect": {
+      const workspace = getFlag(rest, "--workspace") ?? process.cwd();
+      const journeyId = getFlag(rest, "--journey");
+      if (!journeyId) {
+        console.log("ERROR journey: --journey <id> is required");
+        return 1;
+      }
+      const timeoutS = Number(getFlag(rest, "--timeout") ?? "1800");
+      const { code, lines } = await collectCommand({
+        workspace, journeyId, runner: realRunner,
+        timeoutMs: timeoutS * 1000, intervalMs: 15_000,
+      });
+      for (const line of lines) console.log(line);
+      return code;
+    }
+    case "doctor": {
+      const probed = await probe(realRunner);
+      if (probed.ok) {
+        console.log(`OK agentop ${probed.version}`);
+        return 0;
+      }
+      console.log(`ERROR agentop: ${probed.reason ?? "unavailable"}`);
+      console.log("Session-mode dispatch needs agentop >= 1.9.0 (agentistics).");
+      console.log("It is NOT the npm package named `agentop` — that is an unrelated project.");
+      console.log("Install it, then re-run `aipe session doctor`. Subagent-mode dispatch works without it.");
+      return 1;
     }
     default:
       console.log(HELP);
