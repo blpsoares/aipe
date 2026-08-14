@@ -3,7 +3,7 @@
 // file exists, so exactly one concurrent caller can claim each token. Counting
 // an integer in a file would race — two readers see "2" and both write "1".
 import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /** Reads `code` off an unknown thrown value, e.g. Node's `NodeJS.ErrnoException`. */
 function errorCode(err: unknown): string | undefined {
@@ -14,7 +14,7 @@ function errorCode(err: unknown): string | undefined {
   return undefined;
 }
 
-/** Rejects ids that are empty, contain a path separator, or a `..` segment. */
+/** Rejects ids that are empty, contain a path separator, or are `.`/`..`. */
 function assertSafeId(label: string, id: string): void {
   if (id.length === 0) {
     throw new Error(`${label} must not be empty`);
@@ -22,8 +22,11 @@ function assertSafeId(label: string, id: string): void {
   if (id.includes("/") || id.includes("\\")) {
     throw new Error(`${label} must not contain a path separator: ${id}`);
   }
-  if (id.split(/[/\\]/).includes("..")) {
-    throw new Error(`${label} must not contain a ".." segment: ${id}`);
+  // The separator check above already rejects every id containing "/" or "\",
+  // so the only remaining ways an id can resolve to the parent/self directory
+  // are the literal segments "." and ".." — check those directly.
+  if (id === "." || id === "..") {
+    throw new Error(`${label} must not be "." or "..": ${id}`);
   }
 }
 
@@ -43,21 +46,27 @@ export async function issueGrant(
     throw new Error(`grant count must not be negative: ${count}`);
   }
   const dir = grantPath(workspaceDir, journeyId, sessionId);
-  let existing: string[];
+  // Ensure the parent chain exists, then create the per-session directory
+  // non-recursively: `mkdir` without `recursive` fails with EEXIST if the
+  // directory is already there, which makes the existence check itself the
+  // atomic operation — exactly analogous to the `wx` flag used for token
+  // claims below. This closes the TOCTOU window a separate readdir-then-mkdir
+  // check would leave between two concurrent issueGrant calls for the same
+  // (journey, session) pair.
+  await mkdir(dirname(dir), { recursive: true });
   try {
-    existing = (await readdir(dir)).filter((f) => f.startsWith("token-") && !f.endsWith(".spent"));
+    await mkdir(dir);
   } catch (err) {
-    if (errorCode(err) !== "ENOENT") {
+    if (errorCode(err) !== "EEXIST") {
       throw err;
     }
-    existing = [];
-  }
-  if (existing.length > 0) {
     throw new Error(
       `a grant already exists for journey "${journeyId}", session "${sessionId}" — issueGrant must not be called twice for the same (journey, session) pair`,
     );
   }
-  await mkdir(dir, { recursive: true });
+  // The mkdir above is the exclusive claim on `dir`: whichever concurrent
+  // caller wins it is guaranteed to be the sole writer here, so writing token
+  // files with the default "w" flag (rather than "wx") is safe.
   for (let i = 0; i < count; i++) {
     await writeFile(join(dir, `token-${i}`), "", "utf8");
   }

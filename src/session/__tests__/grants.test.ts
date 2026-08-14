@@ -54,19 +54,54 @@ test("a different session in the same journey still succeeds", async () => {
 
 test("a negative count throws", async () => {
   const dir = await ws();
-  await expect(issueGrant(dir, "j1", "s1", -1)).rejects.toThrow();
+  await expect(issueGrant(dir, "j1", "s1", -1)).rejects.toThrow(/must not be negative/);
 });
 
 test("an id containing a path separator throws", async () => {
   const dir = await ws();
-  await expect(issueGrant(dir, "j1/../evil", "s1", 1)).rejects.toThrow();
-  await expect(issueGrant(dir, "j1", "s1/evil", 1)).rejects.toThrow();
+  await expect(issueGrant(dir, "j1/../evil", "s1", 1)).rejects.toThrow(/path separator/);
+  await expect(issueGrant(dir, "j1", "s1/evil", 1)).rejects.toThrow(/path separator/);
 });
 
 test("an id containing a .. segment throws", async () => {
   const dir = await ws();
   await expect(issueGrant(dir, "..", "s1", 1)).rejects.toThrow();
   await expect(issueGrant(dir, "j1", "..", 1)).rejects.toThrow();
+});
+
+test("a lone \".\" journey id throws", async () => {
+  const dir = await ws();
+  await expect(issueGrant(dir, ".", "s1", 1)).rejects.toThrow(/journeyId/);
+});
+
+test("a lone \".\" session id throws", async () => {
+  const dir = await ws();
+  await expect(issueGrant(dir, "j1", ".", 1)).rejects.toThrow(/sessionId/);
+});
+
+test("two concurrent issueGrant calls for the same pair: exactly one fulfils", async () => {
+  const dir = await ws();
+  const results = await Promise.allSettled([
+    issueGrant(dir, "j1", "s1", 3),
+    issueGrant(dir, "j1", "s1", 5),
+  ]);
+  const fulfilled = results.filter((r) => r.status === "fulfilled");
+  const rejected = results.filter((r) => r.status === "rejected");
+  expect(fulfilled.length).toBe(1);
+  expect(rejected.length).toBe(1);
+  if (rejected[0]?.status === "rejected") {
+    expect(rejected[0].reason).toBeInstanceOf(Error);
+    expect((rejected[0].reason as Error).message).toMatch(/j1/);
+    expect((rejected[0].reason as Error).message).toMatch(/s1/);
+  }
+
+  // The surviving quota must equal the winner's count, not the sum of both.
+  const winnerCount = results[0]?.status === "fulfilled" ? 3 : 5;
+  let consumed = 0;
+  while (await consumeGrant(dir, "j1", "s1")) {
+    consumed++;
+  }
+  expect(consumed).toBe(winnerCount);
 });
 
 test("a 12-token grant is consumed in numeric order", async () => {
