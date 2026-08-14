@@ -421,16 +421,32 @@ export async function collectCommand(
 
   const lines: string[] = [];
   for (const s of states) {
-    if (s.phase === "landed") {
-      lines.push(`LANDED ${s.fqid}`);
-    } else if (s.phase === "running") {
-      lines.push(
-        `RUNNING ${s.fqid} session ${s.sessionId} — still working past the timeout; the PE decides whether to wait or kill it`,
-      );
-    } else {
-      lines.push(
-        `DEAD-SILENT ${s.fqid} branch ${s.branch} worktree ${s.worktree} — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind`,
-      );
+    // Exhaustive switch, not if/else-if/else: `UnitPhase` has exactly three
+    // members today, but a later task adds a fourth (`redirected`, for a
+    // unit whose direction the human changed mid-flight). An if/else chain
+    // would let that new phase fall silently into the DEAD-SILENT branch,
+    // and the coordinator would re-dispatch work that was deliberately
+    // redirected. The `default` branch below assigns to a `never`-typed
+    // variable so an unhandled UnitPhase member fails `bunx tsc --noEmit`
+    // instead of compiling clean.
+    switch (s.phase) {
+      case "landed":
+        lines.push(`LANDED ${s.fqid}`);
+        break;
+      case "running":
+        lines.push(
+          `RUNNING ${s.fqid} session ${s.sessionId} — still working past the timeout; the PE decides whether to wait or kill it`,
+        );
+        break;
+      case "dead-silent":
+        lines.push(
+          `DEAD-SILENT ${s.fqid} branch ${s.branch} worktree ${s.worktree} — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind`,
+        );
+        break;
+      default: {
+        const unhandled: never = s.phase;
+        throw new Error(`collectCommand: unhandled UnitPhase ${unhandled}`);
+      }
     }
   }
   const clean = states.every((s) => s.phase === "landed");

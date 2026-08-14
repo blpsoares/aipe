@@ -29,17 +29,16 @@ test("a landed wave exits 0", async () => {
   const dir = await ledgerWith("delivered");
   const r = await collectCommand({ workspace: dir, journeyId: "j1", runner: gone, timeoutMs: 1000, intervalMs: 10, sleep: async () => {} });
   expect(r.code).toBe(0);
-  expect(r.lines.join("\n")).toContain("LANDED embark");
+  expect(r.lines).toEqual(["LANDED embark"]);
 });
 
 test("a dead-silent unit exits 2 and names its branch", async () => {
   const dir = await ledgerWith("dispatched");
   const r = await collectCommand({ workspace: dir, journeyId: "j1", runner: gone, timeoutMs: 1000, intervalMs: 10, sleep: async () => {} });
   expect(r.code).toBe(2);
-  const out = r.lines.join("\n");
-  expect(out).toContain("DEAD-SILENT embark");
-  expect(out).toContain("branch b");
-  expect(out).toContain("never re-dispatch blind");
+  expect(r.lines).toEqual([
+    "DEAD-SILENT embark branch b worktree w — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind",
+  ]);
 });
 
 test("a still-running unit at timeout exits 2 without killing anything", async () => {
@@ -52,8 +51,9 @@ test("a still-running unit at timeout exits 2 without killing anything", async (
     sleep: async () => {},
   });
   expect(r.code).toBe(2);
-  expect(r.lines.join("\n")).toContain("RUNNING embark");
-  expect(r.lines.join("\n")).toContain("s-1");
+  expect(r.lines).toEqual([
+    "RUNNING embark session s-1 — still working past the timeout; the PE decides whether to wait or kill it",
+  ]);
 });
 
 test("exit code is exactly 0 with two units only when BOTH landed", async () => {
@@ -72,9 +72,10 @@ test("exit code is exactly 0 with two units only when BOTH landed", async () => 
   // One unit landed, the other is dead-silent: the wave as a whole is NOT
   // clean, so the exit code must be exactly 2, not 0.
   expect(r.code).toBe(2);
-  const out = r.lines.join("\n");
-  expect(out).toContain("LANDED embark");
-  expect(out).toContain("DEAD-SILENT kart");
+  expect(r.lines).toEqual([
+    "LANDED embark",
+    "DEAD-SILENT kart branch b2 worktree w2 — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind",
+  ]);
 });
 
 test("--timeout of NaN (a non-numeric flag) is rejected before any poll", async () => {
@@ -149,11 +150,9 @@ test("pollOnce throwing (runner rejects outright) fails open to RUNNING, not a f
   // sessionId, so the fail-open fallback must report it RUNNING and exit 2
   // — asking the PE to look, never re-dispatching over possibly-live work.
   expect(r.code).toBe(2);
-  const out = r.lines.join("\n");
-  expect(out).toContain("RUNNING embark");
-  expect(out).toContain("s-1");
-  expect(out).not.toContain("DEAD-SILENT");
-  expect(out).not.toContain("LANDED");
+  expect(r.lines).toEqual([
+    "RUNNING embark session s-1 — still working past the timeout; the PE decides whether to wait or kill it",
+  ]);
 });
 
 test("pollOnce throwing on a unit with no recorded sessionId still reports dead-silent, not a false landed", async () => {
@@ -171,9 +170,9 @@ test("pollOnce throwing on a unit with no recorded sessionId still reports dead-
     sleep: async () => {},
   });
   expect(r.code).toBe(2);
-  const out = r.lines.join("\n");
-  expect(out).toContain("DEAD-SILENT embark");
-  expect(out).not.toContain("LANDED");
+  expect(r.lines).toEqual([
+    "DEAD-SILENT embark branch b worktree w — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind",
+  ]);
 });
 
 test("the wave never settling terminates the loop at the deadline instead of spinning forever", async () => {
@@ -184,14 +183,35 @@ test("the wave never settling terminates the loop at the deadline instead of spi
     return { code: 0, stdout: JSON.stringify({ sessions: [{ id: "s-1" }] }), stderr: "" };
   };
   let ticks = 0;
+  const timeoutMs = 100;
+  const intervalMs = 10;
   const now = () => (ticks += 10); // advances by intervalMs each call
+  // A correctly-terminating loop sleeps at most ceil(timeoutMs / intervalMs)
+  // times before `now() >= deadline` breaks it. Double that as headroom so a
+  // real pass never trips this, but a loop that never terminates (e.g.
+  // `settled || now() >= deadline` mutated to `settled && now() >= deadline`,
+  // which can never become true here since `settled` is always false) fails
+  // fast with a named error instead of spinning silently until Bun's 5s
+  // per-test timeout kills it. `await sleep(...)` inside collectCommand is
+  // NOT wrapped in pollOnce's try/catch, so this rejection propagates
+  // straight out of collectCommand.
+  const maxSleeps = Math.ceil(timeoutMs / intervalMs) * 2;
+  let sleepCalls = 0;
+  const sleep = async () => {
+    sleepCalls += 1;
+    if (sleepCalls > maxSleeps) {
+      throw new Error(`collect loop exceeded ${maxSleeps} sleeps without terminating`);
+    }
+  };
   const r = await collectCommand({
     workspace: dir, journeyId: "j1", runner: stillLive,
-    timeoutMs: 100, intervalMs: 10,
-    now, sleep: async () => {},
+    timeoutMs, intervalMs,
+    now, sleep,
   });
   expect(r.code).toBe(2);
-  expect(r.lines.join("\n")).toContain("RUNNING embark");
+  expect(r.lines).toEqual([
+    "RUNNING embark session s-1 — still working past the timeout; the PE decides whether to wait or kill it",
+  ]);
   // deadline = now()@call1 (10) + 100 = 110. now() is also called once per
   // iteration for the deadline check, so ticks climbs by 20 per loop pass.
   // The loop must stop at a bounded number of polls, not run indefinitely.
