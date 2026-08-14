@@ -21,9 +21,15 @@
 
 ## Scope boundary
 
-This plan delivers session-mode dispatch **on the `claude-code` harness**, plus the `containmentHook()` interface and the eligibility rule that gates every other harness.
+This plan delivers session-mode dispatch across **four harnesses** — Claude Code, Codex, Gemini and Copilot — each with a `containmentHook()`, plus the eligibility rule that rejects any harness without one (`antigravity`, `kimi`).
 
-Full `HarnessAdapter` implementations for Codex, Gemini and Copilot — which need `personaTarget`, `wrapPersona`, `flowSkillTarget`, `mcpConfigPath` and `resolveModel`, not just containment — are an **independent subsystem and get their own spec and plan**. Until they exist, `validateBatch` rejects those harnesses with `harness-not-containable`, which is the designed behaviour, not a gap.
+Tasks 15–17 build the three new adapters. Each begins by **re-verifying that harness's file conventions against current docs**, because a persona written to a path the harness does not read is a specialist that never receives its brief, and these CLIs move fast. Starting points, from the spec's verified table:
+
+| Harness | Containment config | Personas / skills | Always-on context |
+| --- | --- | --- | --- |
+| Codex CLI | `~/.codex/hooks.json` | `.codex/skills/<slug>/SKILL.md` | `AGENTS.md` |
+| Gemini CLI | `.gemini/settings.json` | `.gemini/commands/*.toml` | `GEMINI.md` |
+| Copilot CLI | `.github/hooks/` | `.github/agents/<slug>.agent.md` | `AGENTS.md` |
 
 ## File Structure
 
@@ -2418,6 +2424,444 @@ git commit -m "docs(operate): coordenador aprende a despachar e coletar em modo 
 
 ---
 
+---
+
+### Task 15: session naming, and `redirected` as a first-class status
+
+**Files:**
+- Modify: `src/session/batch.ts` (`BatchUnit` gains `name`)
+- Modify: `src/session/cli.ts` (`dispatchCommand` supplies it; `collectCommand` surfaces the new phase)
+- Modify: `src/session/poll.ts` (`classify` recognises `redirected`)
+- Modify: `src/session/types.ts` (`UnitPhase` gains `"redirected"`)
+- Modify: `src/journey/types.ts` (`DispatchStatus` gains `"redirected"`)
+- Modify: `src/session/prompt.ts` (the MUST in the contract)
+- Test: `src/session/__tests__/redirect.test.ts`
+
+**Interfaces:**
+- Consumes: everything from Tasks 8–12.
+- Produces: `BatchUnit` gains `name: string`; `UnitPhase` becomes `"landed" | "running" | "dead-silent" | "redirected"`; `DispatchStatus` gains `"redirected"`.
+
+Why `redirected` exists: the PE can now `agentop session attach` a live specialist and change its direction. When that happens the approved Orientation Spec stops describing what is being built, and the QA gate would validate against acceptance criteria nobody is following. The status makes that divergence loud instead of silent.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/session/__tests__/redirect.test.ts`:
+
+```ts
+import { expect, test } from "bun:test";
+import { buildBatchArgs } from "../batch";
+import { classify } from "../poll";
+import { composePrompt } from "../prompt";
+import type { JourneyLedger } from "../../journey/types";
+
+test("each session is named <repo>/<persona> so the cockpit is legible", () => {
+  const args = buildBatchArgs("aipe/j1", [
+    { harness: "claude", cwd: "/w/wt", promptFile: "/p.md", name: "embark/joaquim" },
+  ]);
+  expect(args).toContain("--name");
+  expect(args).toContain("embark/joaquim");
+});
+
+test("a redirected unit is its own phase, never mistaken for progress", () => {
+  const ledger: JourneyLedger = {
+    id: "j1",
+    dispatches: [
+      { repo: "embark", specialist: "J", branch: "b", worktree: "w", status: "redirected", mode: "session", sessionId: "s-1" },
+    ],
+  };
+  expect(classify(ledger, new Set(["s-1"]))[0]!.phase).toBe("redirected");
+});
+
+test("a redirected unit stays redirected even after its session ends", () => {
+  const ledger: JourneyLedger = {
+    id: "j1",
+    dispatches: [
+      { repo: "embark", specialist: "J", branch: "b", worktree: "w", status: "redirected", mode: "session", sessionId: "s-1" },
+    ],
+  };
+  expect(classify(ledger, new Set())[0]!.phase).toBe("redirected");
+});
+
+test("the prompt carries the redirect MUST, with the exact command", () => {
+  const p = composePrompt({
+    personaBody: "You are Joaquim.", specSlice: "Fix it.", worktree: "/w/wt",
+    packagePath: null, branch: "b", journeyId: "j1", workspace: "/w",
+    fqid: "embark", intensity: "normal",
+  });
+  expect(p).toContain("--status redirected");
+  expect(p).toContain("before acting on it");
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `bun test src/session/__tests__/redirect.test.ts`
+Expected: FAIL — `name` is not on `BatchUnit`, `redirected` is not a `DispatchStatus`
+
+- [ ] **Step 3: Add the status and the phase**
+
+In `src/journey/types.ts`, add `"redirected"` to the `DispatchStatus` union and to the `DISPATCH_STATUSES` array, and extend the lifecycle comment at the top:
+
+```ts
+//   * → redirected                                 (PE redirected it live via attach)
+```
+
+`redirected` is deliberately NOT added to `EVIDENCE_REQUIRED_STATUSES` (it claims nothing is done) nor to `IMMUTABLE_STATUSES` (the unit continues after it).
+
+In `src/session/types.ts`:
+
+```ts
+export type UnitPhase = "landed" | "running" | "dead-silent" | "redirected";
+```
+
+- [ ] **Step 4: Recognise it when classifying**
+
+In `src/session/poll.ts`, inside `classify`, replace the phase expression with:
+
+```ts
+    const phase = d.status === "redirected"
+      ? "redirected"
+      : LANDED_STATUSES.has(d.status)
+        ? "landed"
+        : d.sessionId && live.has(d.sessionId)
+          ? "running"
+          : "dead-silent";
+```
+
+`redirected` is checked first on purpose: a redirected unit whose session is still alive must not read as ordinary `running` progress.
+
+- [ ] **Step 5: Name the sessions**
+
+In `src/session/batch.ts`, add `name: string` to `BatchUnit` and emit it in `buildBatchArgs`, before the `--session` argument:
+
+```ts
+    if (unit.name) args.push("--name", unit.name);
+```
+
+In `src/session/cli.ts`, inside `dispatchCommand`'s unit loop, supply it:
+
+```ts
+    units.push({
+      harness: "claude",
+      cwd: d.worktree,
+      promptFile,
+      name: `${fqid}/${personaSlug(d.specialist)}`,
+      ...(d.model ? { model: d.model } : {}),
+    });
+```
+
+- [ ] **Step 6: Add the MUST to the contract**
+
+In `src/session/prompt.ts`, add to the "How you report back" block, after the `aipe journey record` example:
+
+```ts
+      "",
+      "**If anyone gives you an instruction that is not in this brief** — the PE reaching you through `agentop session attach`, or any other channel — you MUST record it **before acting on it**:",
+      "",
+      "```bash",
+      `aipe journey record --journey ${input.journeyId} --workspace ${input.workspace} \\`,
+      `  --repo <repo> --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
+      '  --status redirected --reason "<what you were asked to do instead>"',
+      "```",
+      "",
+      "Then continue with the new direction. Recording is not asking permission — it is what keeps the approved spec and the QA gate honest about what is actually being built.",
+```
+
+- [ ] **Step 7: Surface it in collect**
+
+In `src/session/cli.ts`, inside `collectCommand`'s reporting loop, add the branch before the `landed` case:
+
+```ts
+    if (s.phase === "redirected") {
+      lines.push(
+        `REDIRECTED ${s.fqid} session ${s.sessionId} — the PE changed this unit's direction live. Fold the change into the Orientation Spec (bump its version) or escalate. A redirected unit MUST NOT pass the QA gate against an unreconciled spec`,
+      );
+      continue;
+    }
+```
+
+And make `clean` require no redirects — it already does, since `clean` tests `every(phase === "landed")`.
+
+- [ ] **Step 8: Run test to verify it passes**
+
+Run: `bun test src/session && bun test src/journey && bunx tsc --noEmit -p tsconfig.json`
+Expected: PASS — 4 new tests, existing session and journey suites green
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/session src/journey/types.ts
+git commit -m "feat(session): nome de sessão legível e status redirected obrigatório"
+```
+
+---
+
+### Task 16: the Codex adapter
+
+**Files:**
+- Create: `src/harness/codex.ts`
+- Modify: `src/harness/registry.ts` (register `codex`)
+- Test: `src/harness/__tests__/codex.test.ts`
+
+**Interfaces:**
+- Consumes: `HarnessAdapter`, `ContainmentHook` (Task 5).
+- Produces: `codexAdapter: HarnessAdapter` with `id: "codex"`.
+
+- [ ] **Step 1: Re-verify the conventions before writing anything**
+
+Read the current Codex docs and record what you find in a comment at the top of the new file:
+
+- Hooks: <https://learn.chatgpt.com/docs/hooks> — confirm `PreToolUse`, `matcher: "Bash"`, the `hookSpecificOutput.permissionDecision` shape, and whether `[features] codex_hooks` gating applies to the installed version.
+- Skills/AGENTS.md conventions — confirm whether project skills live at `.codex/skills/<slug>/SKILL.md` or `.agents/skills/<slug>/SKILL.md`; sources disagree, so pick what the official docs say **today** and write the URL and date into the file.
+
+If a convention differs from the table in this plan, follow the docs and note the difference — the plan's table is a starting point, not the authority.
+
+- [ ] **Step 2: Write the failing test**
+
+Create `src/harness/__tests__/codex.test.ts`:
+
+```ts
+import { expect, test } from "bun:test";
+import { codexAdapter } from "../codex";
+import { getAdapter, hasAdapter } from "../registry";
+import { isContainable } from "../types";
+
+test("codex is registered and containable", () => {
+  expect(hasAdapter("codex")).toBe(true);
+  expect(getAdapter("codex").id).toBe("codex");
+  expect(isContainable(codexAdapter)).toBe(true);
+});
+
+test("its containment hook targets a PreToolUse Bash matcher running the guard", () => {
+  const hook = codexAdapter.containmentHook()!;
+  const merged = JSON.stringify(hook.merge({}));
+  expect(merged).toContain("PreToolUse");
+  expect(merged).toContain("Bash");
+  expect(merged).toContain("aipe session guard");
+});
+
+test("merging is idempotent and preserves foreign keys", () => {
+  const hook = codexAdapter.containmentHook()!;
+  const once = hook.merge({ someOtherSetting: 1 });
+  expect(hook.merge(once)).toEqual(once);
+  expect((once as any).someOtherSetting).toBe(1);
+});
+
+test("a persona is wrapped with frontmatter the harness reads", () => {
+  const wrapped = codexAdapter.wrapPersona("You are Joaquim.", {
+    slug: "joaquim", role: "dev-fullstack", repo: "embark", package: null, stack: ["ts"],
+  });
+  expect(wrapped.startsWith("---\n")).toBe(true);
+  expect(wrapped).toContain("name: joaquim");
+  expect(wrapped).toContain("You are Joaquim.");
+});
+
+test("model tiers resolve to real codex model ids", () => {
+  expect(codexAdapter.resolveModel("standard")).not.toBeNull();
+  expect(codexAdapter.resolveModel("nonsense")).toBeNull();
+});
+```
+
+- [ ] **Step 3: Run it to verify it fails**
+
+Run: `bun test src/harness/__tests__/codex.test.ts`
+Expected: FAIL — `Cannot find module '../codex'`
+
+- [ ] **Step 4: Implement the adapter**
+
+Create `src/harness/codex.ts`, modelled on `src/harness/claude-code.ts` — same structure, Codex's paths. Implement every `HarnessAdapter` member: `id`, `label`, `installIntegration`, `startupDelivery`, `containmentHook`, `personaTarget`, `flowSkillTarget`, `wrapPersona`, `mcpConfigPath`, `resolveModel`.
+
+Constraints that are not negotiable:
+- `containmentHook()` returns a real hook whose command is exactly `aipe session guard` — the same guard every harness calls.
+- `startupDelivery` returns `{ mode: "file", path: "AGENTS.md", content: awareness }` if Codex has no session-start hook equivalent; return the hook form only if the docs show one.
+- `resolveModel` maps the four tiers (`fast`, `standard`, `reasoning`, `frontier`) to model ids you verified in the docs. Do not invent ids.
+
+- [ ] **Step 5: Register it**
+
+In `src/harness/registry.ts`, add the import and the `ADAPTERS` entry:
+
+```ts
+import { codexAdapter } from "./codex";
+// …
+  codex: codexAdapter,
+```
+
+Then in `src/dispatch/cli.ts`, add `"codex"` to `KNOWN_HARNESSES`.
+
+- [ ] **Step 6: Run test to verify it passes**
+
+Run: `bun test src/harness && bun test src/dispatch && bunx tsc --noEmit -p tsconfig.json`
+Expected: PASS — 5 new tests; `buildSessionContext` now reports `["claude-code", "codex"]`, so update that assertion in `src/dispatch/__tests__/session-mode.test.ts`
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/harness/codex.ts src/harness/registry.ts src/harness/__tests__/codex.test.ts src/dispatch
+git commit -m "feat(harness): adapter do Codex CLI com contenção"
+```
+
+---
+
+### Task 17: the Gemini and Copilot adapters
+
+**Files:**
+- Create: `src/harness/gemini.ts`, `src/harness/copilot.ts`
+- Modify: `src/harness/registry.ts`, `src/dispatch/cli.ts` (`KNOWN_HARNESSES`)
+- Test: `src/harness/__tests__/gemini.test.ts`, `src/harness/__tests__/copilot.test.ts`
+
+**Interfaces:**
+- Consumes: same as Task 16.
+- Produces: `geminiAdapter` (`id: "gemini"`), `copilotAdapter` (`id: "copilot"`).
+
+- [ ] **Step 1: Re-verify both harnesses' conventions**
+
+- Gemini: <https://geminicli.com/docs/hooks/> and <https://geminicli.com/docs/reference/configuration/> — confirm the `BeforeTool` event name, the matcher syntax, the `type: "command"` shape, and that the hook script must print **only** JSON on stdout (this differs from Claude Code and Codex, and `aipe session guard` already satisfies it: it prints the decision or nothing at all). Confirm `.gemini/settings.json` is where project hooks live.
+- Copilot: <https://docs.github.com/en/copilot/reference/hooks-reference> and the CLI config-dir reference — confirm `preToolUse`, the repo-level `.github/hooks/` location, and the `hooks` key shape in settings.
+
+Record each URL and the verification date in a comment at the top of each file.
+
+- [ ] **Step 2: Write the failing tests**
+
+Create `src/harness/__tests__/gemini.test.ts` and `src/harness/__tests__/copilot.test.ts`, each mirroring the five tests from Task 16 with that harness's id, containment shape and model tiers. Repeat the test bodies rather than sharing a helper — each harness's expected containment output is different, and a shared helper would hide exactly the difference these tests exist to pin down.
+
+Gemini's containment test additionally asserts the event name is `BeforeTool`, not `PreToolUse`:
+
+```ts
+test("gemini's hook uses its own event name", () => {
+  const merged = JSON.stringify(geminiAdapter.containmentHook()!.merge({}));
+  expect(merged).toContain("BeforeTool");
+  expect(merged).not.toContain("PreToolUse");
+  expect(merged).toContain("aipe session guard");
+});
+```
+
+Copilot's asserts the lowercase event name:
+
+```ts
+test("copilot's hook uses its own event name", () => {
+  const merged = JSON.stringify(copilotAdapter.containmentHook()!.merge({}));
+  expect(merged).toContain("preToolUse");
+  expect(merged).toContain("aipe session guard");
+});
+```
+
+- [ ] **Step 3: Run them to verify they fail**
+
+Run: `bun test src/harness/__tests__/gemini.test.ts src/harness/__tests__/copilot.test.ts`
+Expected: FAIL — modules not found
+
+- [ ] **Step 4: Implement both adapters**
+
+Same structure and the same non-negotiables as Task 16: the containment command is exactly `aipe session guard`; model ids come from the docs, never from memory; every `HarnessAdapter` member is implemented.
+
+- [ ] **Step 5: Register both**
+
+In `src/harness/registry.ts` add `gemini: geminiAdapter` and `copilot: copilotAdapter`; in `src/dispatch/cli.ts` extend `KNOWN_HARNESSES` to `["claude-code", "generic", "codex", "gemini", "copilot"]`.
+
+- [ ] **Step 6: Verify the eligibility rule end to end**
+
+Add to `src/dispatch/__tests__/session-mode.test.ts`:
+
+```ts
+test("every containable harness is eligible, and kimi still is not", async () => {
+  const ctx = await buildSessionContext(async () => ({ code: 0, stdout: "agentop v1.9.0", stderr: "" }));
+  expect(ctx.containableHarnesses.sort()).toEqual(["claude-code", "codex", "copilot", "gemini"]);
+  const v = validateBatch(
+    [{ repo: "embark", specialist: "Joaquim", mode: "session", harness: "kimi" }],
+    repos, roster, ctx,
+  );
+  expect(v.ok === false && v.rejects).toContain("harness-not-containable kimi");
+});
+```
+
+- [ ] **Step 7: Run the full suite**
+
+Run: `bun test && bunx tsc --noEmit -p tsconfig.json`
+Expected: PASS — everything green, `generic` still not containable
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/harness src/dispatch
+git commit -m "feat(harness): adapters do Gemini e do Copilot com contenção"
+```
+
+---
+
+### Task 18: teach the coordinator about attach, redirects and cross-model QA
+
+**Files:**
+- Modify: `skills/operate/SKILL.md`
+
+**Interfaces:** none — prose.
+
+- [ ] **Step 1: Add the redirect handling to the collect branch**
+
+In the `aipe session collect` output list added by Task 14, add a fourth bullet:
+
+```markdown
+   - `REDIRECTED <fqid> session <id>` — the PE talked to this specialist directly
+     and changed its direction. You **MUST** do one of two things before this
+     unit can proceed: fold the change into the Orientation Spec and bump its
+     version, or escalate to the PE that the change conflicts with the approved
+     scope. A redirected unit **MUST NOT** pass the QA gate while the spec still
+     describes something else — the QA would be validating against acceptance
+     criteria nobody is following.
+```
+
+- [ ] **Step 2: Document the PE's direct channel**
+
+Add a section after the dispatch-gate section:
+
+```markdown
+## The PE's direct line to a specialist
+
+Every session-mode dispatch is named `<repo>/<persona>` and filed under the task
+`aipe/<journey>`, and its `sessionId` is in the ledger. The PE can therefore open
+a live conversation with any specialist at any time:
+
+```bash
+agentop session list          # what is running, and what each has spent
+agentop session attach <id>   # talk to that specialist directly
+```
+
+This is the PE's channel, not yours — you neither need permission to be told
+about it nor authority to prevent it. What you **MUST** do is reconcile: any unit
+that comes back `REDIRECTED` had its direction changed outside your brief, and
+the spec is now stale until you update it or escalate.
+
+**You still never open a session you did not dispatch, and you never kill one.**
+Killing is the PE's call.
+```
+
+- [ ] **Step 3: Document cross-model QA**
+
+In the QA gate section (step 4e), add:
+
+```markdown
+   **Cross-model QA (recommended for high-risk units).** A QA persona dispatched
+   in session mode may run on a *different harness* from the dev — `codex`,
+   `gemini` or `copilot` instead of `claude-code`. A reviewer on a different
+   model does not inherit the dev's blind spots, which is what "independent
+   skeptic" was always supposed to mean. Set the QA unit's `harness` in the
+   Orientation Spec; the PE approves it with the rest of the envelope. The law
+   rejects any harness whose adapter cannot install the containment hook.
+```
+
+- [ ] **Step 4: Verify**
+
+Run: `bun test && bun run typecheck`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add skills/operate/SKILL.md
+git commit -m "docs(operate): canal direto do PE, reconciliação de redirect e QA cross-model"
+```
+
+---
+
 ## Deviations from the spec, and why
 
 - **The preflight lives at `aipe session doctor`, not `aipe doctor`.** The spec
@@ -2433,6 +2877,6 @@ git commit -m "docs(operate): coordenador aprende a despachar e coletar em modo 
 
 ## Follow-up, not in this plan
 
-- **Harness adapters for Codex, Gemini and Copilot.** Their containment mechanisms are verified (see the spec's References), but a working adapter also needs `personaTarget`, `wrapPersona`, `flowSkillTarget`, `mcpConfigPath` and `resolveModel`. That is its own spec. Until then `validateBatch` rejects them, which is the designed behaviour.
+- **Cost attribution for worktree sessions.** A session whose cwd is `<repo>/.worktrees/…` should be attributed to the parent repository, resolved via `git rev-parse --git-common-dir` rather than the worktree path. This is an agentop change, and fixing it there fixes attribution for every worktree-based tool.
 - **Two changes in agentop itself** (the agentistics repo, not this one): stamping `AGENTOP_SESSION_ID` into the session environment, which the grant counter needs — without it a grant simply never applies and the guard denies, which is the safe failure — and briefing every session it opens on what it may and may not do with agentop.
 - **A dedicated supervisor session per journey.** The coordinator waits actively instead, so the PE's session is occupied during a wave.

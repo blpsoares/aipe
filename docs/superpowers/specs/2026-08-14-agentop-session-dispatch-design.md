@@ -128,11 +128,13 @@ mechanisms across the harnesses agentop can start:
 
 | Harness | Mechanism | Decision shape |
 | --- | --- | --- |
-| Claude Code | `PreToolUse`, matcher `Bash`, external command | `permissionDecision: "deny"` |
-| Codex CLI | `PreToolUse`, matcher `Bash`, external command, in `~/.codex/hooks.json` or `config.toml`; **on by default** | `hookSpecificOutput.permissionDecision: "deny"`, or exit 2 + stderr |
-| Gemini CLI | `BeforeTool` hook, regex matcher, `type: command`; plus a policy engine with `commandPrefix`/`commandRegex` deny as a static second layer | JSON on stdout — and nothing else on stdout |
-| Copilot CLI | `preToolUse` hook, plus the `--deny-tool 'shell(...)'` flag | `permissionDecision: "deny"` / `behavior: "deny"` |
-| antigravity, kimi | **not verified** | — |
+| Harness | Mechanism | Config location | Decision shape |
+| --- | --- | --- | --- |
+| Claude Code | `PreToolUse`, matcher `Bash`, external command | `.claude/settings.json` | `permissionDecision: "deny"` |
+| Codex CLI | `PreToolUse`, matcher `Bash`, external command; **on by default** | `~/.codex/hooks.json` or `config.toml` | `hookSpecificOutput.permissionDecision: "deny"`, or exit 2 + stderr |
+| Gemini CLI | `BeforeTool` hook, regex matcher, `type: command`; plus a policy engine with `commandPrefix`/`commandRegex` deny as a static second layer | `.gemini/settings.json` | JSON on stdout — and nothing else on stdout |
+| Copilot CLI | `preToolUse` hook, plus the `--deny-tool 'shell(...)'` flag | `.github/hooks/` (repo) or `~/.copilot/settings.json` | `permissionDecision: "deny"` / `behavior: "deny"` |
+| antigravity, kimi | **not verified** | — | — |
 
 Codex's is near-identical to Claude Code's; Gemini and Copilot differ in event
 name and output shape but do the same job. So the cost is not "does a
@@ -154,12 +156,27 @@ script, and never duplicated per harness.
 > A harness is eligible for `mode: session` **if and only if** its adapter
 > implements containment.
 
-Claude Code, Codex, Gemini and Copilot qualify. `antigravity` and `kimi` do not,
-until someone verifies their mechanism and implements the adapter method —
-`validateBatch` rejects them with `harness-not-containable`. This unlocks the
-thing that was actually worth having: a QA specialist running on a **different
-model** from the dev that wrote the code, which is real independence rather than
-a second persona sharing the first one's blind spots.
+Claude Code, Codex, Gemini and Copilot qualify, and **all four adapters are in
+scope**. `antigravity` and `kimi` do not, until someone verifies their mechanism
+and implements the adapter method — `validateBatch` rejects them with
+`harness-not-containable`.
+
+This unlocks the thing that was actually worth having: a QA specialist running
+on a **different model** from the dev that wrote the code, which is real
+independence rather than a second persona sharing the first one's blind spots.
+
+Verified per-harness conventions the three new adapters target:
+
+| Harness | Personas / skills | Always-on context | MCP config |
+| --- | --- | --- | --- |
+| Codex CLI | `.codex/skills/<slug>/SKILL.md` | `AGENTS.md` | `config.toml` |
+| Gemini CLI | `.gemini/commands/*.toml` | `GEMINI.md` | `.gemini/mcp/servers.json` |
+| Copilot CLI | `.github/agents/<slug>.agent.md` | `AGENTS.md` | `~/.copilot/settings.json` |
+
+These are the starting points, not gospel: each adapter's implementation begins
+by re-verifying them against current docs, because these CLIs move fast and a
+persona written to a path the harness does not read is a specialist that never
+receives its brief.
 
 Rules the guard applies, identically on every harness:
 
@@ -175,6 +192,68 @@ environment by the coordinator at dispatch time. The guard decrements it
 against an on-disk counter in the journey directory, using the same lock
 mechanism as `aipe dispatch claim` (`src/dispatch/lock.ts`) — without an
 atomic counter, a grant of 1 becomes unbounded spawning.
+
+### Session identity, cost attribution, and talking to a specialist
+
+A dispatched session must be legible in the agentop cockpit and reachable by the
+PE. Three things make that true:
+
+**Naming.** Every session is started with `--name "<repo>/<persona>"` and filed
+under `--task aipe/<journey>`, so the cockpit groups a wave together and each row
+says who is working on what.
+
+**Where it runs — the worktree, and that is not a compromise.** The cwd stays
+`<repo>/.worktrees/<journey>-<persona>`, which is **already inside the repo**
+(`createWorktree`, `src/worktree/run.ts:65`; `ensureExcluded` keeps it out of the
+PE's `git status`). Running at the repo root instead would cost:
+
+- **parallelism inside a monorepo** — the law serializes by *package*
+  (`packageFqid`, `law.ts:20`) and deliberately allows two packages of one repo
+  to run at once. One working tree means one HEAD and one index; they would
+  `checkout` over each other;
+- **the QA gate** — QA reviews the dev's branch in its own tree, concurrently.
+  Sharing a tree turns an independent skeptic into a queue;
+- **the PE's own checkout** — it would become the agent's workbench;
+- **physical isolation** — `dispatch claim` would go from belt-and-suspenders to
+  the only thing preventing corruption. A lock is an agreement; a worktree is
+  physics.
+
+The coordinator loses no *authority* either way — decompose, dispatch, gate,
+escalate are unchanged. What the repo-root variant would cost is *guarantees*.
+So: keep the worktree, and get the observability another way.
+
+**Cost attribution is an agentop concern, not a cwd concern.** A session whose
+cwd is a worktree should be attributed to the parent repository, resolved via
+`git rev-parse --git-common-dir`, not to the worktree path. Fixing it there fixes
+attribution for every worktree-based tool, not only AIPe.
+
+**Attach is first-class.** `agentop session attach <id>` already works regardless
+of cwd — the PE can open a live conversation with any specialist mid-flight, and
+the ledger carries the `sessionId` needed to find it. Nothing in AIPe needs to
+change to enable this. What it needs is a rule.
+
+### MUST: a redirect through attach is recorded before it is obeyed
+
+When the PE talks to a specialist directly and changes its direction, the
+approved Orientation Spec and the ledger stop describing what is being built —
+and the QA gate would then validate against acceptance criteria nobody is
+following any more. That is a silent divergence, the most expensive kind.
+
+So, as a hard rule carried in every dispatched persona:
+
+> **A specialist that receives any instruction from outside its brief MUST record
+> it before acting on it:**
+> `aipe journey record --journey <id> … --status redirected --reason "<what the PE asked for>"`
+> **and only then continue.**
+
+`redirected` joins the ledger's status set. `aipe session collect` surfaces it as
+its own phase, and the coordinator MUST, on seeing one, either fold the change
+into the Orientation Spec (bumping its version) or escalate to the PE. A
+delivery whose unit was redirected and whose spec was never reconciled MUST NOT
+pass the QA gate.
+
+This is the exchange that makes direct conversation safe: the PE gains a live
+channel to every specialist, and pays for it with one recorded line.
 
 ### Awareness: the rule is told, not just enforced
 
@@ -337,6 +416,9 @@ agentop enters through an injectable runner; no test executes the binary.
 - Session-mode dispatch on `antigravity` and `kimi` — their blocking mechanisms
   were not verified, so their adapters cannot implement containment and
   `validateBatch` rejects them.
+- Running a specialist session at the repo root instead of its worktree — the
+  costs are enumerated under "Session identity"; the observability it was meant
+  to buy is obtained through naming, attach, and agentop-side attribution.
 - A dedicated supervisor session per journey (the coordinator waits actively
   instead, so the PE's session is occupied during a wave).
 - Any change to worktree lifecycle, the relations graph, the QA gate, or the
