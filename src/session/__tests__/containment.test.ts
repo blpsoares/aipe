@@ -38,12 +38,24 @@ test("the generic adapter is not containable", () => {
   expect(isContainable(claudeCodeAdapter)).toBe(true);
 });
 
-test("installIntegration writes the containment hook to disk", async () => {
+// Finding C (whole-branch review): `installIntegration` used to ALSO merge
+// the containment (PreToolUse) hook into the workspace/repo root, on every
+// `aipe start`/`hire-specialists`/`rehydrate` — including workspaces that
+// never use session mode. That hook was dead weight: `decide()` always
+// allows a role-less guard invocation, so it never contained anything, only
+// added a subprocess to every Bash call in the PE's own sessions. Real
+// containment is installed per unit, with the specialist role baked in,
+// directly into that unit's worktree by dispatchCommand — see
+// dispatch-containment.test.ts. installIntegration must write the
+// SessionStart hook and MUST NOT write any PreToolUse hook.
+test("installIntegration writes the SessionStart hook but no containment hook at the workspace root", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-containment-"));
   await claudeCodeAdapter.installIntegration(dir);
   const settings = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf8"));
-  expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe("aipe session guard");
-  expect(JSON.stringify(settings.hooks.SessionStart)).toContain("aipe session-context");
+  expect(settings.hooks.PreToolUse).toBeUndefined();
+  expect(settings.hooks.SessionStart).toEqual([
+    { matcher: "startup|resume|clear|compact", hooks: [{ type: "command", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' }] },
+  ]);
 });
 
 test("preserves user's own unrelated PreToolUse entry and appends containment", () => {

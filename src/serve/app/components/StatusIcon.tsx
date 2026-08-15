@@ -35,6 +35,15 @@ const P: Record<string, JSX.Element> = {
   ),
   // raised to the PE — chevrons up
   escalated: <path d="m6 13 6-6 6 6M6 18l6-6 6 6" />,
+  // the PE talked to this specialist mid-flight and changed its direction —
+  // a redo/redirect arrow, distinct from `available`'s plain ring so it never
+  // reads as idle.
+  redirected: (
+    <>
+      <path d="M4 12a8 8 0 0 1 8-8 8 8 0 0 1 6.93 4" />
+      <path d="M20 4v4h-4" />
+    </>
+  ),
   // integrated — git-merge (branch folding back)
   merged: (
     <>

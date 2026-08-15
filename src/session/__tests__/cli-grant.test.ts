@@ -29,7 +29,10 @@ test("a successful grant is consumable exactly `count` times", async () => {
     workspace: dir, journeyId: "j1", sessionId: "s1", count: 3,
   });
   expect(code).toBe(0);
-  expect(lines).toEqual(["OK grant journey=j1 session=s1 count=3"]);
+  expect(lines).toEqual([
+    "OK grant journey=j1 session=s1 count=3",
+    "NOTE grant: cannot take effect yet — agentop does not stamp AGENTOP_SESSION_ID into the specialist's environment, so this quota cannot be consumed until that lands. Do not treat this OK as the specialist being authorised.",
+  ]);
 
   expect(await consumeGrant(dir, "j1", "s1")).toBe(true);
   expect(await consumeGrant(dir, "j1", "s1")).toBe(true);
@@ -112,7 +115,10 @@ test("`aipe session grant` end to end via run() issues a working grant", async (
     "grant", "--journey", "j1", "--session-id", "s1", "--count", "1", "--workspace", dir,
   ]);
   expect(code).toBe(0);
-  expect(out).toEqual(["OK grant journey=j1 session=s1 count=1"]);
+  expect(out).toEqual([
+    "OK grant journey=j1 session=s1 count=1",
+    "NOTE grant: cannot take effect yet — agentop does not stamp AGENTOP_SESSION_ID into the specialist's environment, so this quota cannot be consumed until that lands. Do not treat this OK as the specialist being authorised.",
+  ]);
   expect(await consumeGrant(dir, "j1", "s1")).toBe(true);
 });
 

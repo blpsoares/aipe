@@ -210,7 +210,11 @@ export interface GuardedRecordResult {
 
 function unitStatus(ledger: JourneyLedger, repo: string, pkg: string | null): JourneyDispatch | undefined {
   // The most advanced record for this unit (any specialist), to judge transitions.
-  const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, delivered: 3, verified: 4, merged: 5 };
+  // Kept in lockstep with the identical table in journey/verify.ts (see its
+  // comment): `redirected` ranks with `failed`/`escalated` — a live redirect
+  // must outrank a stale `dispatched` record from another specialist on the
+  // same unit when judging the unit's most-advanced state.
+  const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, redirected: 2, delivered: 3, verified: 4, merged: 5 };
   return ledger.dispatches
     .filter((d) => d.repo === repo && (d.package ?? null) === pkg)
     .sort((a, b) => (rank[b.status] ?? 0) - (rank[a.status] ?? 0))[0];

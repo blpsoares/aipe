@@ -160,7 +160,9 @@ async function showCommand(args: string[]): Promise<number> {
     const ev = d.evidence ? " +evidence" : d.status === "delivered" || d.status === "verified" ? " !NO-EVIDENCE" : "";
     console.log(`DISPATCH ${unit} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}${ev}${done ? " " + done : ""}`);
   }
-  const open = ledger.dispatches.filter((d) => d.status === "dispatched" || d.status === "failed" || d.status === "escalated").length;
+  const open = ledger.dispatches.filter(
+    (d) => d.status === "dispatched" || d.status === "failed" || d.status === "escalated" || d.status === "redirected",
+  ).length;
   const done = ledger.dispatches.filter((d) => d.status === "merged" || d.status === "verified").length;
   console.log(`STATE journey=${id} dispatches=${ledger.dispatches.length} open=${open} done=${done}`);
   return 0;

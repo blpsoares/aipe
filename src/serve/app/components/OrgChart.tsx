@@ -346,7 +346,7 @@ export function OrgChart() {
                       openWorkerName.value = row.w.name;
                     }}
                     tone={orgColor(row.w.status)}
-                    pulse={row.w.status === "active"}
+                    pulse={row.w.status === "active" || row.w.status === "redirected"}
                   />
                 ),
               )}

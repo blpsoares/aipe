@@ -153,28 +153,36 @@ test("model tiers resolve to real gemini model ids, and an unknown tier returns 
   expect(geminiAdapter.resolveModel("nonsense")).toBeNull();
 });
 
-test("installIntegration writes the hooks file + skills, and is idempotent", async () => {
+// Finding C (whole-branch review): `installIntegration`/`ensureGeminiHooks`
+// used to ALSO merge the containment (BeforeTool) hook into the
+// workspace/repo root — dead weight, since `decide()` always allows a
+// role-less guard invocation, so it never contained anything and only added
+// a subprocess to every shell call in the PE's own sessions. Real
+// containment is installed per unit, with the specialist role baked in,
+// directly into that unit's worktree by dispatchCommand. These tests now
+// assert the opposite of what they used to: SessionStart is written, no
+// BeforeTool hook is ever written at the root.
+test("installIntegration writes the SessionStart hook + skills, no containment hook, and is idempotent", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-gemini-"));
   try {
     await geminiAdapter.installIntegration(dir);
     const config = JSON.parse(await readFile(join(dir, ".gemini", "settings.json"), "utf8"));
-    expect(config.hooks.BeforeTool[0].hooks[0].command).toBe("aipe session guard");
-    expect(config.hooks.BeforeTool[0].matcher).toBe("run_shell_command");
+    expect(config.hooks.BeforeTool).toBeUndefined();
     expect(config.hooks.SessionStart[0].hooks[0].command).toBe("aipe session-context");
     const skill = await readFile(join(dir, ".agents", "skills", "operate", "SKILL.md"), "utf8");
     expect(skill).toContain("name:");
 
-    // Idempotent: installing twice must not duplicate either hook entry.
+    // Idempotent: installing twice must not duplicate the SessionStart entry.
     await geminiAdapter.installIntegration(dir);
     const again = JSON.parse(await readFile(join(dir, ".gemini", "settings.json"), "utf8"));
-    expect(again.hooks.BeforeTool).toHaveLength(1);
+    expect(again.hooks.BeforeTool).toBeUndefined();
     expect(again.hooks.SessionStart).toHaveLength(1);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("ensureGeminiHooks preserves a foreign settings.json entry the user already had", async () => {
+test("ensureGeminiHooks leaves a foreign BeforeTool entry the user already had completely untouched", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-gemini-"));
   try {
     await mkdir(join(dir, ".gemini"), { recursive: true });
@@ -185,9 +193,8 @@ test("ensureGeminiHooks preserves a foreign settings.json entry the user already
     );
     await ensureGeminiHooks(dir);
     const config = JSON.parse(await readFile(join(dir, ".gemini", "settings.json"), "utf8"));
-    expect(config.hooks.BeforeTool).toHaveLength(2);
-    expect(config.hooks.BeforeTool[0].hooks[0].command).toBe("my-linter");
-    expect(config.hooks.BeforeTool[1].hooks[0].command).toBe("aipe session guard");
+    expect(config.hooks.BeforeTool).toEqual([{ matcher: "write_file", hooks: [{ type: "command", command: "my-linter" }] }]);
+    expect(config.hooks.SessionStart[0].hooks[0].command).toBe("aipe session-context");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -206,7 +213,8 @@ test("ensureGeminiHooks tolerates an absent, empty, or malformed settings.json",
       }
       await ensureGeminiHooks(dir);
       const config = JSON.parse(await readFile(join(dir, ".gemini", "settings.json"), "utf8"));
-      expect(config.hooks.BeforeTool[0].hooks[0].command).toBe("aipe session guard");
+      expect(config.hooks.BeforeTool).toBeUndefined();
+      expect(config.hooks.SessionStart[0].hooks[0].command).toBe("aipe session-context");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -220,7 +228,7 @@ test("ensureGeminiHooks tolerates hooks: null in an existing file", async () => 
     await writeFile(join(dir, ".gemini", "settings.json"), JSON.stringify({ hooks: null }), "utf8");
     await ensureGeminiHooks(dir);
     const config = JSON.parse(await readFile(join(dir, ".gemini", "settings.json"), "utf8"));
-    expect(config.hooks.BeforeTool[0].hooks[0].command).toBe("aipe session guard");
+    expect(config.hooks.BeforeTool).toBeUndefined();
     expect(config.hooks.SessionStart[0].hooks[0].command).toBe("aipe session-context");
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -228,14 +236,14 @@ test("ensureGeminiHooks tolerates hooks: null in an existing file", async () => 
 });
 
 // Installing twice (a second ensureGeminiHooks call against an already-merged
-// file) must not duplicate either hook entry.
+// file) must not duplicate the SessionStart entry.
 test("installing twice does not duplicate hooks", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-gemini-"));
   try {
     await ensureGeminiHooks(dir);
     await ensureGeminiHooks(dir);
     const config = JSON.parse(await readFile(join(dir, ".gemini", "settings.json"), "utf8"));
-    expect(config.hooks.BeforeTool).toHaveLength(1);
+    expect(config.hooks.BeforeTool).toBeUndefined();
     expect(config.hooks.SessionStart).toHaveLength(1);
   } finally {
     await rm(dir, { recursive: true, force: true });

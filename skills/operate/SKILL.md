@@ -43,6 +43,12 @@ either do it, dispatch it as its own unit, or issue an explicit quota with
 specialist that could spawn specialists is an unbounded token fork-bomb with no
 ledger entry for any of it.
 
+**A grant cannot take effect yet.** `aipe session grant` writes the quota, but
+consuming it requires `AGENTOP_SESSION_ID` in the specialist's own environment
+— agentop does not stamp that yet (a known, recorded agentop-side follow-up).
+The CLI issues the grant and says so plainly; do not read a successful `OK` as
+"the specialist is now authorised" — it isn't, until agentop ships that.
+
 ### Table of non-exceptions (forbidden rationalizations)
 
 None of these EVER justify skipping dispatch and editing a repo yourself:

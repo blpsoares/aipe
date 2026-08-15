@@ -49,6 +49,24 @@ function hasAipeHook(list: unknown[]): boolean {
   return list.some((entry) => JSON.stringify(entry).includes("aipe session-context"));
 }
 
+// Writes ONLY the SessionStart hook (→ `aipe session-context`) — never the
+// PreToolUse containment hook. This used to also merge
+// `claudeCodeAdapter.containmentHook()!.merge(settings)` in here, which wrote
+// a role-LESS `aipe session guard` PreToolUse hook into the workspace/repo
+// root on every `aipe start` / `hire-specialists` / `rehydrate`, including
+// workspaces that never use session mode. That hook is genuinely inert:
+// `decide()` (src/session/guard.ts) short-circuits to `{ action: "allow" }`
+// for any role other than "specialist", and a role-less command is exactly
+// what this call site rendered — so it never denied anything, only added a
+// `bun`/`aipe` subprocess to every Bash tool call in the PE's OWN sessions.
+// The containment that actually matters is installed separately, per unit,
+// WITH the specialist role baked in, directly into that unit's own worktree
+// by `installWorktreeContainmentHook` in src/session/cli.ts (a different
+// file entirely — a worktree is a separate git checkout, so nothing written
+// here ever reached it anyway). Removing the merge here changes no
+// specialist's containment; it only stops paying for a hook that always said
+// yes. `containmentHook()` itself is unchanged and still used directly by
+// dispatchCommand for the worktree install.
 export async function ensureSessionStartHook(targetDir: string): Promise<void> {
   const claudeDir = join(targetDir, ".claude");
   const settingsPath = join(claudeDir, "settings.json");
@@ -60,8 +78,7 @@ export async function ensureSessionStartHook(targetDir: string): Promise<void> {
   if (!hasAipeHook(sessionStart)) sessionStart.push(SESSION_START_HOOK);
   settings.hooks.SessionStart = sessionStart;
 
-  const merged = claudeCodeAdapter.containmentHook()!.merge(settings);
-  await writeFile(settingsPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+  await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
 }
 
 // The Claude Code adapter: a project-scoped SessionStart hook + skills under
@@ -87,8 +104,10 @@ export const claudeCodeAdapter: HarnessAdapter = {
       files: [".claude/settings.json", `.claude/skills/ (${Object.keys(FLOW_SKILLS).length} skills)`],
       notes: [
         "SessionStart hook → aipe session-context",
-        "PreToolUse hook → aipe session guard (containment)",
         `${Object.keys(FLOW_SKILLS).length} AIPe skills installed`,
+        // Containment (PreToolUse → aipe session guard) is installed per unit,
+        // WITH the specialist role, directly into that unit's worktree at
+        // `aipe session dispatch` time — never here (see ensureSessionStartHook).
       ],
     };
   },

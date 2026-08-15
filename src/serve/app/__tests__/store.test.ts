@@ -24,8 +24,13 @@ test("deriveRepos monta packages não-implicit e group undefined quando igual", 
 });
 
 test("deriveCounts renomeia available→idle e conta journeys/repos", () => {
-  const s = { counts: { hired: 5, active: 3, delivered: 2, escalated: 1, available: 4 }, journeys: [{}, {}], repos: ["a", "b", "c"] };
-  expect(deriveCounts(s)).toEqual({ hired: 5, active: 3, delivered: 2, escalated: 1, idle: 4, journeys: 2, repos: 3 });
+  const s = { counts: { hired: 5, active: 3, delivered: 2, escalated: 1, available: 4, redirected: 2 }, journeys: [{}, {}], repos: ["a", "b", "c"] };
+  expect(deriveCounts(s)).toEqual({ hired: 5, active: 3, delivered: 2, escalated: 1, redirected: 2, idle: 4, journeys: 2, repos: 3 });
+});
+
+test("deriveCounts: redirected ausente no snapshot bruto vira 0, nunca undefined", () => {
+  const s = { counts: { hired: 1, active: 0, delivered: 0, escalated: 0, available: 1 }, journeys: [], repos: [] };
+  expect(deriveCounts(s).redirected).toBe(0);
 });
 
 test("fqidOf e dkey", () => {
@@ -37,6 +42,16 @@ test("fqidOf e dkey", () => {
 test("evMsg formata por status", () => {
   expect(evMsg({ status: "dispatched", repo: "app", package: "core", journey: "j1" }, idT)).toContain("dispatched to app/core");
   expect(evMsg({ status: "paused", journey: "j1" }, idT)).toContain("paused");
+});
+
+// Finding A (whole-branch review): `evMsg` had no case for "redirected" at
+// all, so the activity feed fell back to the raw `${status}${journey}` line
+// — technically visible, but with none of the "this needs a look" framing
+// every other off-track status gets.
+test("evMsg: redirected gets its own explicit, exact activity line", () => {
+  expect(evMsg({ status: "redirected", repo: "app", package: "core", journey: "j1" }, idT)).toBe(
+    "redirected — direction changed, spec needs reconciling · j1",
+  );
 });
 
 test("diffActivity: primeiro snapshot popula em ordem reversa sem 'changed'", () => {

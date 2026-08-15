@@ -203,6 +203,14 @@ function hasAipeSessionContextHook(list: unknown[]): boolean {
   return list.some((entry) => JSON.stringify(entry).includes(SESSION_CONTEXT_COMMAND));
 }
 
+// Writes ONLY the SessionStart hook — see the identical decision (and its
+// full reasoning) on ensureSessionStartHook in claude-code.ts: the
+// BeforeTool containment merge that used to happen here installed a
+// role-less `aipe session guard` at the workspace/repo root, which
+// `decide()` always allows regardless of command, so it never contained
+// anything — only added a subprocess to every shell call in the PE's own
+// sessions. Real containment is installed per unit, with the specialist role
+// baked in, directly into that unit's worktree by dispatchCommand.
 export async function ensureGeminiHooks(workspaceDir: string): Promise<void> {
   const geminiDir = join(workspaceDir, ".gemini");
   const settingsPath = join(geminiDir, "settings.json");
@@ -214,8 +222,7 @@ export async function ensureGeminiHooks(workspaceDir: string): Promise<void> {
   if (!hasAipeSessionContextHook(sessionStart)) sessionStart.push(SESSION_START_HOOK);
   settings.hooks.SessionStart = sessionStart;
 
-  const merged = geminiAdapter.containmentHook()!.merge(settings);
-  await writeFile(settingsPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+  await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
 }
 
 export const geminiAdapter: HarnessAdapter = {
@@ -240,8 +247,10 @@ export const geminiAdapter: HarnessAdapter = {
       files: [".gemini/settings.json", `.agents/skills/ (${Object.keys(FLOW_SKILLS).length} skills)`],
       notes: [
         "SessionStart hook → aipe session-context",
-        "BeforeTool hook (matcher: run_shell_command) → aipe session guard (containment)",
         `${Object.keys(FLOW_SKILLS).length} AIPe skills installed`,
+        // Containment (BeforeTool → aipe session guard) is installed per unit,
+        // WITH the specialist role, directly into that unit's worktree at
+        // `aipe session dispatch` time — never here (see ensureGeminiHooks).
       ],
     };
   },

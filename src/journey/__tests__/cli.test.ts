@@ -42,6 +42,29 @@ test("journey record rejects an invalid --mode", async () => {
   expect(output).toContain("ERROR mode: --mode must be one of subagent|session");
 });
 
+// Finding A (whole-branch review): `journey show`'s open/done tally counted
+// neither dispatched/failed/escalated NOR redirected — the whole point of
+// `redirected` is to be loud that work is still open and needs the
+// coordinator's reconciliation before it ships, so it must count as open.
+test("journey show counts a redirected unit as open, not neither open nor done", async () => {
+  const dir = await ws();
+  await run(["start", "--workspace", dir, "--id", "j1"]);
+  await run([
+    "record", "--workspace", dir, "--journey", "j1",
+    "--repo", "embark", "--specialist", "Joaquim", "--branch", "b", "--worktree", "w",
+  ]);
+  await run([
+    "record", "--workspace", dir, "--journey", "j1",
+    "--repo", "embark", "--specialist", "Joaquim", "--branch", "b", "--worktree", "w",
+    "--status", "redirected", "--reason", "PE changed direction mid-flight",
+  ]);
+  const { code, output } = await capture(() => run(["show", "--workspace", dir, "--journey", "j1"]));
+  expect(code).toBe(0);
+  const lines = output.split("\n");
+  expect(lines[0]).toBe("DISPATCH embark Joaquim redirected b -");
+  expect(lines[1]).toBe("STATE journey=j1 dispatches=1 open=1 done=0");
+});
+
 test("journey record rejects an invalid --intensity", async () => {
   const dir = await ws();
   await run(["start", "--workspace", dir, "--id", "j1"]);

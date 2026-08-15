@@ -501,7 +501,27 @@ export async function dispatchCommand(
     // still need their ids recorded, or they become invisible to `collect`
     // (a dead-silent false report) despite being alive. Report and continue.
     try {
-      await recordDispatch(opts.workspace, opts.journeyId, { ...d, sessionId: session.id });
+      // `d` is a snapshot read at the TOP of dispatchCommand, before
+      // `startBatch` — and every session in this wave is already running by
+      // the time this loop reaches even its FIRST unit. A fast specialist
+      // can race ahead and call `aipe journey record` (delivered, redirected,
+      // whatever) before we get here. `recordDispatch` merges, but only
+      // STICKY_DISPATCH_FIELDS (tier/model/mode/intensity/harness/sessionId)
+      // survive a write that omits them — `status`/`evidence`/`pr`/the reason
+      // fields are a plain REPLACE (src/journey/ledger.ts). Spreading the
+      // stale `d` would therefore stomp a real, fresher write (e.g. a
+      // just-recorded "redirected" + its reason) back to "dispatched" with no
+      // evidence. The ONLY field this call is actually meant to add is
+      // `sessionId` — so read the unit's CURRENT record fresh, right before
+      // writing, and layer just that onto it. `current` falls back to the
+      // stale `d` only in the (should-be-impossible) case the unit vanished
+      // from the ledger between the top-of-command read and now.
+      const freshLedger = await readLedger(opts.workspace, opts.journeyId);
+      const current =
+        freshLedger?.dispatches.find(
+          (x) => x.repo === d.repo && (x.package ?? null) === (d.package ?? null) && x.specialist === d.specialist,
+        ) ?? d;
+      await recordDispatch(opts.workspace, opts.journeyId, { ...current, sessionId: session.id });
       lines.push(`OK ${fqid} → ${session.id}`);
     } catch (err) {
       const recordCmd = recoveryRecordCommand(opts.journeyId, opts.workspace, d, session.id);
@@ -697,7 +717,19 @@ export async function grantCommand(
   }
   return {
     code: 0,
-    lines: [`OK grant journey=${opts.journeyId} session=${opts.sessionId} count=${opts.count}`],
+    lines: [
+      `OK grant journey=${opts.journeyId} session=${opts.sessionId} count=${opts.count}`,
+      // The grant machinery (issueGrant/consumeGrant) is correct and tested —
+      // but consuming a grant requires AGENTOP_SESSION_ID in the specialist's
+      // own environment, and agentop does not stamp that yet (a known,
+      // recorded agentop-side follow-up). Printing a bare "OK" here would
+      // read as "the specialist is now authorised", which is false: the
+      // quota is written but cannot be redeemed until agentop ships that.
+      // This is a caveat on an otherwise-successful write, not a failure —
+      // exit code stays 0 — so it never blocks the coordinator from issuing
+      // the grant it's supposed to issue.
+      "NOTE grant: cannot take effect yet — agentop does not stamp AGENTOP_SESSION_ID into the specialist's environment, so this quota cannot be consumed until that lands. Do not treat this OK as the specialist being authorised.",
+    ],
   };
 }
 

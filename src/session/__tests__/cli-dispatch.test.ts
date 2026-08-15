@@ -61,6 +61,51 @@ test("it writes a prompt file per unit and records the session id", async () => 
   expect(ledger!.dispatches[0]!.sessionId).toBe("s-1");
 });
 
+// Finding D (whole-branch review): dispatchCommand's post-batch write used to
+// replay the WHOLE dispatch entry read at the top of the function, before
+// `startBatch` — but every session in the wave is already running by the
+// time that write happens, so a fast specialist can race ahead and record
+// its own status change first. `recordDispatch` merges, but only
+// tier/model/mode/intensity/harness/sessionId are sticky; `status` and the
+// reason fields are a plain replace — so replaying the stale snapshot would
+// stomp a real "redirected" (with its reason) back to "dispatched" with no
+// evidence of either the redirect or its reason ever having happened. This
+// proves the fix: the runner records a redirect DURING the batch call
+// (simulating the specialist racing ahead of dispatchCommand's own
+// bookkeeping), and only `sessionId` must land on top of it.
+test("a unit that races ahead and records itself redirected before dispatchCommand's own write is not clobbered back to dispatched", async () => {
+  const dir = await fixture();
+  const racingRunner: AgentopRunner = async (args) => {
+    if (args[0] === "--version") return { code: 0, stdout: "agentop v1.9.0", stderr: "" };
+    // The session is already running by the time agentop's batch call
+    // returns. Simulate it racing ahead of dispatchCommand's own post-batch
+    // recording loop by writing a redirect to the SAME unit right here.
+    await recordDispatch(dir, "j1", {
+      repo: "embark", specialist: "Joaquim", branch: "aipe/j1/joaquim",
+      worktree: join(dir, ".worktrees", "j1-joaquim"), status: "redirected",
+      redirectReason: "PE asked for a different approach mid-flight",
+    });
+    const sessions = args
+      .filter((_, i) => args[i - 1] === "--session")
+      .map((flag, i) => {
+        const m = /^[^@]+@(.+): @.+$/.exec(flag);
+        if (!m) throw new Error(`racingRunner: could not parse --session flag: ${flag}`);
+        return { id: `s-${i + 1}`, harness: "claude", cwd: m[1] };
+      });
+    return { code: 0, stdout: JSON.stringify({ sessions }), stderr: "" };
+  };
+
+  const r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: racingRunner });
+  expect(r.code).toBe(0);
+
+  const ledger = await readLedger(dir, "j1");
+  expect(ledger!.dispatches).toHaveLength(1);
+  expect(ledger!.dispatches[0]!.status).toBe("redirected");
+  expect(ledger!.dispatches[0]!.redirectReason).toBe("PE asked for a different approach mid-flight");
+  // The only thing this call was actually meant to add.
+  expect(ledger!.dispatches[0]!.sessionId).toBe("s-1");
+});
+
 test("it refuses when agentop is unavailable, and records nothing", async () => {
   const dir = await fixture();
   const missing: AgentopRunner = async () => { throw new Error("ENOENT"); };
