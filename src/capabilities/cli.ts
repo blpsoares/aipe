@@ -56,7 +56,12 @@ export async function confirmCommand(
   const { capabilities: caps, dropped } = result;
   await writeCapabilities(workspaceDir, confirm(caps, now));
   const lines: string[] = [];
-  if (dropped > 0) lines.push(droppedWarning(dropped));
+  if (dropped > 0) {
+    lines.push(droppedWarning(dropped));
+    lines.push(
+      `NOTE: ${dropped} malformed entries have been permanently removed from the record. Confirmation applies only to the ${caps.harnesses.length} remaining entries.`,
+    );
+  }
   lines.push(`OK capabilities confirmed ${caps.harnesses.length} harnesses`);
   return { code: 0, lines };
 }
@@ -78,7 +83,6 @@ export async function showCommand(
       (h) => `${h.present ? "OK" : "--"} ${h.id} ${h.bin} ${h.version ?? "unversioned"} (${h.source} ${h.checkedAt})`,
     ),
   );
-  if (!caps.confirmed) lines.push(UNCONFIRMED_NOTE);
 
   const fresh = await probeAll(runner);
   const driftedBins = drift(caps, fresh);
@@ -97,6 +101,8 @@ export async function showCommand(
           : `DRIFT ${bin} — recorded absent, now present. Re-run \`aipe capabilities probe\`.`,
     );
   }
+
+  if (!caps.confirmed) lines.push(UNCONFIRMED_NOTE);
   return { code: driftedBins.length > 0 ? 2 : 0, lines };
 }
 
