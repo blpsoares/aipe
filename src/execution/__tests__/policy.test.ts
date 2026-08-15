@@ -46,3 +46,20 @@ test("a nonsensical value is ignored rather than accepted", async () => {
   const p = await readExecutionPolicy(await ws("maxCostIndexPerWave: -5\n"));
   expect(p.maxCostIndexPerWave).toBe(24);
 });
+
+test("a gateAboveSessions at or above maxSessionsPerWave would never fire, so it is clamped down", async () => {
+  const p = await readExecutionPolicy(await ws("gateAboveSessions: 999\n"));
+  expect(p.maxSessionsPerWave).toBe(4);
+  expect(p.gateAboveSessions).toBe(3);
+});
+
+test("the clamp tracks an overridden maxSessionsPerWave, not just the default", async () => {
+  const p = await readExecutionPolicy(await ws("maxSessionsPerWave: 2\ngateAboveSessions: 999\n"));
+  expect(p.maxSessionsPerWave).toBe(2);
+  expect(p.gateAboveSessions).toBe(1);
+});
+
+test("a top-level YAML array is rejected explicitly, not by accident of property access", async () => {
+  const p = await readExecutionPolicy(await ws("- maxSessionsPerWave: 1\n- gateAboveSessions: 1\n"));
+  expect(p).toEqual(defaultExecutionPolicy());
+});

@@ -27,7 +27,11 @@ export async function readExecutionPolicy(workspaceDir: string): Promise<Executi
   } catch {
     return base;
   }
-  if (!parsed || typeof parsed !== "object") return base;
+  // Explicit, not accidental: a top-level array is `typeof === "object"` too,
+  // so without this check every field below would fall through to the
+  // default via property access on an array (e.g. `[].maxSessionsPerWave`
+  // is `undefined`) — correct behaviour arrived at by luck, not by design.
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return base;
   const p = parsed as Record<string, unknown>;
   const merged: ExecutionPolicy = { ...base };
 
@@ -52,5 +56,16 @@ export async function readExecutionPolicy(workspaceDir: string): Promise<Executi
     );
     if (list.length > 0) merged.gatedIntensities = list;
   }
+
+  // A wave can never exceed maxSessionsPerWave, so a gate at or above that
+  // ceiling can never fire -- it reads as a limit but permits every wave
+  // through, the same "dead field" defect one level up. The safe direction
+  // for a field whose job is "this needs a signature" is to gate MORE, never
+  // less, so a nonsensical (too-high) value is clamped down, not ignored and
+  // not left to silently disable the gate.
+  if (merged.gateAboveSessions >= merged.maxSessionsPerWave) {
+    merged.gateAboveSessions = Math.max(0, merged.maxSessionsPerWave - 1);
+  }
+
   return merged;
 }
