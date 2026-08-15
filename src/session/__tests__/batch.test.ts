@@ -8,19 +8,19 @@ const units = [
 ];
 
 test("the argv files every session under one task and asks for json", () => {
-  const args = buildBatchArgs("aipe/j1", units);
+  const args = buildBatchArgs("aipe/j1", undefined, units);
   expect(args.slice(0, 4)).toEqual(["session", "batch", "--task", "aipe/j1"]);
   expect(args).toContain("--json");
   expect(args.filter((a) => a === "--session")).toHaveLength(2);
 });
 
 test("each session is addressed as harness@cwd with a prompt FILE", () => {
-  const args = buildBatchArgs("aipe/j1", units);
+  const args = buildBatchArgs("aipe/j1", undefined, units);
   expect(args).toContain("claude@/w/.worktrees/j1-joaquim: @/w/.aipe/journeys/j1/prompts/embark.md");
 });
 
 test("no brief content ever reaches argv", () => {
-  const args = buildBatchArgs("aipe/j1", [
+  const args = buildBatchArgs("aipe/j1", undefined, [
     { harness: "claude", cwd: "/w/wt", promptFile: "/w/.aipe/journeys/j1/prompts/embark.md" },
   ]);
   for (const arg of args) {
@@ -37,7 +37,7 @@ test("no brief content ever reaches argv", () => {
 // implausibly long for a path/flag — the shape a 40-line inlined brief could
 // never fit.
 test("every --session value is exactly harness@cwd with an @-prefixed path, nothing more", () => {
-  const args = buildBatchArgs("aipe/j1", units);
+  const args = buildBatchArgs("aipe/j1", undefined, units);
   const sessionValues = args.filter((_, i) => args[i - 1] === "--session");
   expect(sessionValues).toEqual([
     "claude@/w/.worktrees/j1-joaquim: @/w/.aipe/journeys/j1/prompts/embark.md",
@@ -55,18 +55,39 @@ test("every --session value is exactly harness@cwd with an @-prefixed path, noth
 });
 
 test("no argv element anywhere is long enough to be inlined prompt content", () => {
-  const args = buildBatchArgs("aipe/j1", units);
+  const args = buildBatchArgs("aipe/j1", undefined, units);
   for (const arg of args) {
     expect(arg.length).toBeLessThan(300);
   }
 });
 
-test("a per-unit model is passed through", () => {
-  const args = buildBatchArgs("aipe/j1", [
-    { harness: "claude", cwd: "/w/wt", promptFile: "/p.md", model: "claude-opus-4-8" },
+// `--model` is a WHOLE-BATCH flag on the real agentop binary (verified
+// against v1.13.7's own usage text — see the comment on buildBatchArgs in
+// ../batch.ts): given once, before the --session flags, applying to every
+// session in that one call. There is no per-session override for it.
+test("a whole-batch model is emitted once, before the --session flags", () => {
+  const args = buildBatchArgs("aipe/j1", "claude-opus-4-8", [
+    { harness: "claude", cwd: "/w/wt", promptFile: "/p.md" },
   ]);
-  expect(args).toContain("--model");
-  expect(args).toContain("claude-opus-4-8");
+  expect(args).toEqual([
+    "session", "batch", "--task", "aipe/j1", "--model", "claude-opus-4-8", "--json",
+    "--session", "claude@/w/wt: @/p.md",
+  ]);
+});
+
+test("no model at all emits no --model flag", () => {
+  const args = buildBatchArgs("aipe/j1", undefined, units);
+  expect(args).not.toContain("--model");
+});
+
+// `--name` does not exist on `batch` in any form — confirmed live against the
+// real binary: `agentop session batch --task probe-x --name foo --json
+// --session "claude@/tmp: hi"` printed "--name is not accepted by batch —
+// use --session for each one." and exited 1. buildBatchArgs must never emit
+// it, and BatchUnit carries no field for it any more.
+test("the argv never contains --name — batch has no way to name a session", () => {
+  const args = buildBatchArgs("aipe/j1", undefined, units);
+  expect(args).not.toContain("--name");
 });
 
 test("json output is parsed into started sessions", () => {
@@ -252,4 +273,35 @@ test("startBatch surfaces malformed entries to the caller alongside the usable s
 test("startBatch throws when agentop exits 0 but prints unparseable stdout", async () => {
   const garbled: AgentopRunner = async () => ({ code: 0, stdout: "{not json", stderr: "" });
   await expect(startBatch("aipe/j1", units, garbled)).rejects.toThrow(/unparseable/);
+});
+
+// `--model` cannot bind per unit on the real `batch` command (see the
+// comment on buildBatchArgs) — a wave whose session-mode units genuinely
+// disagree on model cannot be expressed as one `batch` call. startBatch must
+// refuse loudly, and — the part that matters — do it WITHOUT ever invoking
+// the runner, so nothing is started under the wrong model and there is
+// nothing to orphan.
+test("startBatch refuses a mixed-model wave without ever invoking the runner", async () => {
+  let called = false;
+  const runner: AgentopRunner = async () => {
+    called = true;
+    return { code: 0, stdout: "[]", stderr: "" };
+  };
+  const mixed = [
+    { harness: "claude", cwd: "/w/a", promptFile: "/a.md", model: "claude-opus-4-8" },
+    { harness: "gemini", cwd: "/w/b", promptFile: "/b.md", model: "gemini-2.5-pro" },
+  ];
+  await expect(startBatch("aipe/j1", mixed, runner)).rejects.toThrow(/disagree on model/);
+  expect(called).toBe(false);
+});
+
+test("startBatch accepts a wave where every model-bearing unit agrees, mixed with model-less units", async () => {
+  const capturing: AgentopRunner = async (args) => ({ code: 0, stdout: "[]", stderr: "" });
+  const uniform = [
+    { harness: "claude", cwd: "/w/a", promptFile: "/a.md", model: "claude-opus-4-8" },
+    { harness: "claude", cwd: "/w/b", promptFile: "/b.md" },
+    { harness: "claude", cwd: "/w/c", promptFile: "/c.md", model: "claude-opus-4-8" },
+  ];
+  const result = await startBatch("aipe/j1", uniform, capturing);
+  expect(result).toEqual({ sessions: [], malformed: 0 });
 });

@@ -12,12 +12,16 @@ import { run as journeyRun } from "../../journey/cli";
 import type { JourneyLedger } from "../../journey/types";
 import type { AgentopRunner } from "../types";
 
-test("each session is named <repo>/<persona> so the cockpit is legible", () => {
-  const args = buildBatchArgs("aipe/j1", [
-    { harness: "claude", cwd: "/w/wt", promptFile: "/p.md", name: "embark/joaquim" },
+// `agentop session batch` REJECTS `--name` outright (verified against the
+// real v1.13.7 binary: "--name is not accepted by batch — use --session for
+// each one.", exit 1) — naming was wanted so a wave is legible in the
+// cockpit, but batch has no way to do it, in any form. buildBatchArgs must
+// never emit it.
+test("no --name is ever emitted — batch rejects it outright", () => {
+  const args = buildBatchArgs("aipe/j1", undefined, [
+    { harness: "claude", cwd: "/w/wt", promptFile: "/p.md" },
   ]);
-  expect(args).toContain("--name");
-  expect(args).toContain("embark/joaquim");
+  expect(args).not.toContain("--name");
 });
 
 test("a redirected unit is its own phase, never mistaken for progress", () => {

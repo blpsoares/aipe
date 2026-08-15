@@ -175,12 +175,16 @@ function shQuote(value: string): string {
 
 // Builds the `aipe journey record` command printed as the operator's recovery
 // path when a ledger write fails for a session that is already running (see
-// the ERROR ledger: branch below). `recordDispatch` does a full REPLACE of the
-// matching entry, not a merge, so this command must forward every field that
-// is actually present on the record being recovered — a flag silently
-// omitted here means that field gets wiped the moment the printed command is
-// run verbatim. Flag names are taken from `recordCommand` in
-// src/journey/cli.ts, not guessed.
+// the ERROR ledger: branch below). `recordDispatch` merges onto the matching
+// entry (see mergeDispatch in src/journey/ledger.ts): `tier`/`model`/`mode`/
+// `intensity`/`harness`/`sessionId` survive a write that omits them, but
+// `pr` and the two reason fields do NOT — an omitted `--pr` here would still
+// wipe it the moment this command is run verbatim. This still forwards every
+// field present on the record being recovered regardless of which ones are
+// sticky: it is meant to be run standalone by an operator, possibly against a
+// ledger state that no longer matches what dispatchCommand saw, so relying on
+// stickiness to fill in a gap here would be fragile. Flag names are taken
+// from `recordCommand` in src/journey/cli.ts, not guessed.
 //
 // FIELD_FLAGS is typed via `satisfies Record<..., string>` over
 // `keyof JourneyDispatch` minus the four fields handled outside this table
@@ -356,7 +360,13 @@ export async function dispatchCommand(
       harness: agentopHarness,
       cwd: d.worktree,
       promptFile,
-      name: `${fqid}/${personaSlug(d.specialist)}`,
+      // No `name` here: `agentop session batch` REJECTS `--name` outright
+      // ("--name is not accepted by batch — use --session for each one."),
+      // verified against the real v1.13.7 binary, and the `--session
+      // "<harness>[@<cwd>]: <prompt>"` string has no field for a label
+      // either. So a session started via `batch` cannot be named at dispatch
+      // time in any form — the cockpit shows it by task (`aipe/<journeyId>`)
+      // and cwd instead. See the comment on buildBatchArgs in ./batch.ts.
       ...(d.model ? { model: d.model } : {}),
     });
   }
