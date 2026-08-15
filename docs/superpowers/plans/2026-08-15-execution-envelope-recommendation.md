@@ -1733,6 +1733,40 @@ git commit -m "docs(operate): coordenador propõe o envelope em vez de entregá-
 
 ---
 
+## AMENDMENT — resolving the `groupIntoWaves` orphan (found after Task 7)
+
+`groupIntoWaves` shipped in Task 7 with **no consumer**, in production or in any
+remaining task. That is the "built but not wired" class that produced the
+predecessor branch's two worst defects, and per-task reviews structurally cannot
+see it — none of them looks across tasks.
+
+**The root cause is a modelling error in this plan, not a missing wire.**
+`groupIntoWaves` takes *chosen* units (`{fqid, envelope, model}`). `proposeForUnit`
+takes `(fqid, caps, policy, opts)` and deliberately **never chooses** — it
+enumerates and prices. So at propose time no chosen set exists, and Task 8's CLI
+could not have consumed grouping however it was written.
+
+**Resolution: grouping belongs AFTER the human approves, not before.** The
+journey ledger already stores the chosen envelope per unit — `mode`, `intensity`,
+`harness`, `tier`, `model` (added by the predecessor branch). So:
+
+- `aipe execution propose --journey <id>` stays exactly as specified: pre-choice,
+  enumerate and price, never choose.
+- **`aipe execution plan --journey <id>` is added** to the same module: post-choice,
+  it reads each unit's recorded envelope from the ledger, calls `groupIntoWaves`,
+  and prints the waves with their cost index, their gate reasons, and the
+  "this costs an extra wave" notes. That is the only path by which the wave-level
+  policy limits Task 7 made real — `gateAboveSessions` and `maxCostIndexPerWave` —
+  ever reach the human.
+
+Without `plan`, Task 7's two newly-enforced policy fields are unreachable in
+production: enforced in a function nothing calls.
+
+Task 8 therefore delivers **two** subcommands. Its tests must include one
+asserting that a wave whose recorded envelopes exceed a policy limit is reported
+as gated through the real CLI path — not only through `groupIntoWaves` in
+isolation, which is what let the orphan ship.
+
 ## Deviations from the spec, and why
 
 - **`aipe capabilities` is its own top-level command**, not a subcommand of `execution`. The spec described the module but not its CLI shape. Capabilities are a property of the machine, consulted by `execution` but also meaningful alone (`aipe capabilities show` answers "why is Gemini not being offered?"), so folding it under `execution` would hide it.
