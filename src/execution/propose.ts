@@ -37,6 +37,21 @@ export function proposeForUnit(
   const options: PricedEnvelope[] = [];
   const excluded: { harness: string; reason: string }[] = [];
 
+  // A genuinely empty `caps.harnesses` — zero entries, not "every entry
+  // present: false" — means there was nothing to enumerate in the first
+  // place: no probe ever ran, or `readCapabilities` dropped every entry as
+  // malformed. That calls for a different human action (re-probe this
+  // machine) than "recorded but none usable" does (install/authorize a
+  // harness), so it gets its own excluded entry instead of silently falling
+  // out of a loop that never runs. Without this, the proposal would come
+  // back completely empty and unexplained — indistinguishable from a bug.
+  if (caps.harnesses.length === 0) {
+    excluded.push({
+      harness: "(none)",
+      reason: "no harnesses recorded for this machine — capabilities were never probed, or every recorded entry was dropped as invalid; re-probe before proposing",
+    });
+  }
+
   for (const cap of caps.harnesses) {
     if (opts.harnesses && !opts.harnesses.includes(cap.id)) continue;
 

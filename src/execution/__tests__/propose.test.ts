@@ -82,6 +82,19 @@ test("with no harness present at all, every excluded entry says why", () => {
   ]);
 });
 
+test("a genuinely empty harnesses array (zero entries, not all present:false) is excluded with a reason distinct from 'not present', pointing at re-probing rather than installing", () => {
+  const emptyCaps: Capabilities = { confirmed: true, harnesses: [] };
+  const p = proposeForUnit("embark", emptyCaps, defaultExecutionPolicy(), {});
+  expect(p.options).toEqual([]);
+  expect(p.excluded).toEqual([
+    {
+      harness: "(none)",
+      reason:
+        "no harnesses recorded for this machine — capabilities were never probed, or every recorded entry was dropped as invalid; re-probe before proposing",
+    },
+  ]);
+});
+
 test("an unrecognized harness id yields no options at all, not even subagent", () => {
   const unknownCaps: Capabilities = {
     confirmed: true,
