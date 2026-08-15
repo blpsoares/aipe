@@ -25,26 +25,50 @@ function getFlag(args: string[], name: string): string | undefined {
 
 function denyJson(reason: string): string {
   return JSON.stringify({
-    // Claude Code / Codex shape: both read hookSpecificOutput.permissionDecision.
+    // Claude Code AND Codex both read hookSpecificOutput.permissionDecision,
+    // and both document its accepted deny value as exactly "deny" (Claude
+    // Code: docs.claude.com/en/docs/claude-code/hooks; Codex, matching it
+    // verbatim: learn.chatgpt.com/docs/hooks — "hookSpecificOutput": {
+    // "hookEventName": "PreToolUse", "permissionDecision": "deny"|"allow",
+    // "permissionDecisionReason": "…" }", see src/harness/codex.ts's header).
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason: reason,
     },
-    // Gemini CLI's BeforeTool hook reads a TOP-LEVEL `decision`/`reason` pair,
-    // never `hookSpecificOutput.permissionDecision` — confirmed 2026-08-14
-    // against geminicli.com/docs/hooks/reference/, where "permissionDecision"
-    // appears zero times and the documented deny shape is exactly
-    // `{"decision":"deny","reason":"..."}`. `aipe session guard` always exits
-    // 0 (see below), and Gemini's own docs say exit-code-0 + JSON `decision`
-    // is "preferred for all logic" — so without this field a Gemini BeforeTool
-    // hook pointed at this command would parse the JSON fine (satisfying
-    // "stdout must be JSON-only") but find no recognized decision and fail
-    // OPEN: a hook that looks installed and denies nothing. See
-    // src/harness/gemini.ts's header comment for the full citation. Both
-    // shapes coexist harmlessly — each harness reads only the keys it
-    // recognizes.
-    decision: "deny",
+    // The top-level `decision`/`reason` pair is read by TWO harnesses, each
+    // for a different reason, and both document "block" (not "deny") as an
+    // accepted value for it — confirmed 2026-08-14, live:
+    //  - Gemini CLI's BeforeTool hook reads this pair and NEVER
+    //    hookSpecificOutput.permissionDecision — that key appears zero times
+    //    in Gemini's hooks docs (geminicli.com/docs/hooks/reference/), whose
+    //    own text is: `"decision": Set to "deny" (or "block") to prevent the
+    //    tool from executing.` — "deny" and "block" are documented as
+    //    equivalent, so "block" satisfies Gemini exactly as "deny" would.
+    //    `aipe session guard` always exits 0 (see below), and Gemini's docs
+    //    say exit-code-0 + JSON `decision` is "preferred for all logic" — so
+    //    without this field a Gemini BeforeTool hook pointed at this command
+    //    would parse the JSON fine (satisfying "stdout must be JSON-only")
+    //    but find no recognized decision and fail OPEN: a hook that looks
+    //    installed and denies nothing. See src/harness/gemini.ts's header
+    //    comment for the full citation.
+    //  - Codex's hooks docs (learn.chatgpt.com/docs/hooks) separately
+    //    document a LEGACY top-level shape it also still accepts, verbatim:
+    //    `{ "decision": "block", "reason": "Destructive command blocked by
+    //    hook." }` — value "block", not "deny". Codex is inert today
+    //    (codexAdapter.containmentHook() returns null — see
+    //    src/harness/codex.ts — nothing dispatches to it yet), but this
+    //    field must not ship a value ("deny") that Codex's own docs never
+    //    list for its legacy shape, on the chance Codex containment is
+    //    revisited later. Using "block" satisfies both readers of this key
+    //    with one literal value, each per its own docs, rather than a value
+    //    chosen for one and merely hoped to be harmless for the other.
+    // Precedence between hookSpecificOutput and this top-level pair, when
+    // both are present in one payload, is NOT documented by either harness —
+    // untested here because nothing containable currently reads both keys
+    // from the same payload (Claude Code/Codex read only
+    // hookSpecificOutput; Gemini reads only the top-level pair).
+    decision: "block",
     reason,
   });
 }

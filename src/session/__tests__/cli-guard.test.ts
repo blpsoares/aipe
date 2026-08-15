@@ -28,13 +28,20 @@ test("a specialist without a grant is denied, with a reason", async () => {
 // `hookSpecificOutput.permissionDecision` (see src/harness/gemini.ts's header
 // comment). Both shapes must be present in the SAME payload so one guard
 // binary contains every harness it's wired into, exit code 0 throughout.
-test("a deny also carries Gemini's top-level decision/reason shape, alongside Claude/Codex's", async () => {
+// The top-level value is "block", not "deny": Gemini's docs accept "deny" OR
+// "block" interchangeably, but Codex's documented LEGACY top-level shape
+// (learn.chatgpt.com/docs/hooks) only lists "block" — so "block" is the one
+// value both readers of this key can point to in their own docs. Pinning it
+// here means a slip back to "deny" fails this test, not just a live Codex
+// integration nobody would notice broke (see denyJson()'s comment in
+// src/session/cli.ts).
+test("a deny also carries the shared top-level decision/reason shape (Gemini + Codex's legacy shape), alongside Claude/Codex's hookSpecificOutput", async () => {
   const r = await guardCommand(payload("agentop session claude -p x"), {
     AIPE_ROLE: "specialist",
   });
   expect(r.code).toBe(0);
   const out = JSON.parse(r.stdout);
-  expect(out.decision).toBe("deny");
+  expect(out.decision).toBe("block");
   expect(out.reason).toContain("not permitted");
 });
 

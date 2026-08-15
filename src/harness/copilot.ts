@@ -121,6 +121,23 @@
 //    model, such as a GPT Codex model" for demanding/complex-reasoning work
 //    (`gpt-5.3-codex`, listed as an example `--model` value on the same
 //    page) → `reasoning`.
+//    CONFLICT, re-checked 2026-08-14: `cli-best-practices` — the OTHER GitHub
+//    page cited just above for the frontier/standard tiers — lists "GPT-5.2
+//    Codex" (not 5.3) for the identical "difficult debugging, nuanced
+//    refactoring"-class reasoning use case. GitHub's own two pages disagree
+//    with each other on the version number for this exact tier: one worked
+//    example says `gpt-5.3-codex`, one best-practices list says "GPT-5.2
+//    Codex". Kept `gpt-5.3-codex` here because `cli-programmatic-reference`
+//    gives it as a literal, copy-pasteable `--model` flag value — the exact
+//    string this field needs to be valid input for the CLI — while
+//    `cli-best-practices` names "GPT-5.2 Codex" only as prose in a
+//    human-readable guidance list, with no accompanying flag-value spelling
+//    to confirm whether it means `gpt-5.2-codex` or is itself a stale label
+//    for the same underlying model line. A working, documented literal
+//    outranks an undated prose mention when the field's contract is "must be
+//    a value the CLI accepts." Not silently resolved: this is the version
+//    conflict this task's Finding 2 asked to be flagged, not adjudicated
+//    away as a settled fact.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FLOW_SKILLS } from "./skills";

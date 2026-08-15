@@ -47,19 +47,38 @@
 //       stdout-purity rule: `docs/hooks/reference.md`'s exit-code table says
 //       "`0`: Success. stdout is parsed as JSON. Preferred for all logic,"
 //       and the documented BeforeTool deny payload is a TOP-LEVEL
-//       `{"decision":"deny","reason":"..."}` — the string "permissionDecision"
-//       appears ZERO times anywhere in Gemini's hooks docs. `aipe session
-//       guard` always exits 0 (see `guardCommand` in src/session/cli.ts), so
-//       exit-code-2 blocking is not in play either. Before this file existed,
-//       `denyJson()` in src/session/cli.ts emitted ONLY the
-//       `hookSpecificOutput.permissionDecision` shape — valid JSON, so it
-//       would have satisfied the stdout-purity rule while containing no
-//       field Gemini recognizes as a denial, i.e. silently failing open.
+//       `decision`/`reason` pair — the string "permissionDecision" appears
+//       ZERO times anywhere in Gemini's hooks docs. The accepted VALUE for
+//       `decision` is, verbatim from `docs/hooks/reference/`: `"decision":
+//       Set to "deny" (or "block") to prevent the tool from executing.` —
+//       "deny" and "block" are documented as equivalent for Gemini. `aipe
+//       session guard` always exits 0 (see `guardCommand` in
+//       src/session/cli.ts), so exit-code-2 blocking is not in play either.
+//       Before this file existed, `denyJson()` in src/session/cli.ts emitted
+//       ONLY the `hookSpecificOutput.permissionDecision` shape — valid JSON,
+//       so it would have satisfied the stdout-purity rule while containing
+//       no field Gemini recognizes as a denial, i.e. silently failing open.
 //       Fixed as part of landing this adapter: `denyJson()` now also emits
-//       the top-level `decision`/`reason` pair Gemini reads, alongside the
+//       a top-level `decision`/`reason` pair Gemini reads, alongside the
 //       original shape (harmless to Claude Code/Codex, which only look at
-//       `hookSpecificOutput`). See src/session/cli.ts and
-//       src/session/__tests__/cli-guard.test.ts.
+//       `hookSpecificOutput`). That top-level value is "block", not "deny":
+//       Codex's hooks docs separately document a LEGACY top-level shape,
+//       `{"decision":"block","reason":"..."}` — value "block", not "deny" —
+//       so "block" is the one literal both readers of this key can point to
+//       in their own docs (Codex is inert today, `containmentHook()` returns
+//       `null`, see src/harness/codex.ts, but the shared field shouldn't
+//       ship a value undocumented for either reader). See src/session/cli.ts
+//       and src/session/__tests__/cli-guard.test.ts.
+//     - What an EMPTY stdout on exit 0 means is not stated anywhere in
+//       Gemini's hooks docs — only the deny/allow JSON shapes are documented,
+//       not the zero-bytes case. The allow path here (`guardCommand` returns
+//       `stdout: ""` — see src/session/cli.ts) relies on the reasonable but
+//       UNCONFIRMED assumption that empty stdout on exit 0 behaves like "no
+//       opinion" / implicit allow, matching Claude Code's and Codex's
+//       documented behavior for the same case. Recorded as a documented
+//       unknown, not silently assumed: Gemini is a brand-new containable
+//       harness with no track record here, unlike Claude Code/Codex where
+//       this exact shape has been running in production.
 //  - Folder trust <https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/trusted-folders.md>
 //    (the geminicli.com mirror momentarily disagreed with itself on the
 //    default — the GitHub source is authoritative): "The Trusted Folders
@@ -110,6 +129,27 @@
 //    codex.ts); gemini-3-flash-preview is the "Pro-grade coding, low-latency,
 //    lower cost for high-frequency dev tasks" balanced tier → `standard`;
 //    gemini-2.5-flash-lite is the cheapest/fastest tier documented → `fast`.
+//    Re-checked 2026-08-14: the configuration-reference page ALSO lists
+//    `gemini-3.1-pro-preview` ("tier":"pro","family":"gemini-3",
+//    "isPreview":true) and `gemini-3.5-flash` ("tier":"flash","family":
+//    "gemini-3","isPreview":false — i.e. production, not preview) — both
+//    newer than the ids mapped above, and NOT accounted for here. Kept the
+//    ids above anyway, deliberately, because the get-started page — the one
+//    page that actually states the FALLBACK HIERARCHY these tiers are
+//    modeling, not just a model list — still names "Gemini 3 Pro" (i.e.
+//    gemini-3-pro-preview) as the router's flagship and "Gemini 2.5 Flash"
+//    as its simple-prompt fallback; it mentions gemini-3.1-pro-preview only
+//    as "rolling out" (gated behind `/model` access, not yet the router's
+//    default) and never mentions gemini-3.5-flash at all. So the two
+//    Gemini docs pages disagree with each other on which ids currently sit
+//    at the top of each rung: the config reference's raw model list is
+//    ahead of the get-started page's stated routing/fallback logic. Until
+//    the get-started page's own hierarchy text is updated to name the newer
+//    ids, this mapping follows the page that actually describes the
+//    hierarchy rather than the page that merely enumerates models — same
+//    "trust the page that states the rule, not the page that lists
+//    ingredients" judgment codex.ts's Models note applies. Flagged rather
+//    than silently resolved, per this task's Finding 2.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FLOW_SKILLS } from "./skills";
