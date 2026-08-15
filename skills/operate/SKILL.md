@@ -61,6 +61,30 @@ to execute inline — an explicit human user-instruction outranks skills. A casu
 mention, vague pressure, or an inference of intent does **not** count; when in
 doubt, dispatch.
 
+## The PE's direct line to a specialist
+
+Every session-mode dispatch is named `<fqid>/<persona-slug>` (`<fqid>` is the
+repo, or `repo/package` for a monorepo unit) and filed under the task
+`aipe/<journey>`, and its `sessionId` is recorded in the ledger. The PE can
+therefore open a live conversation with any specialist at any time:
+
+```bash
+agentop session list          # what is running, and what each has spent
+agentop session attach <id>   # talk to that specialist directly
+```
+
+This is the PE's channel, not yours — you neither need permission to be told
+about it nor authority to prevent it. What you **MUST** do is reconcile: any
+unit that comes back `REDIRECTED` from `aipe session collect` had its
+direction changed outside your brief, and the spec is now stale until you
+fold the change into the Orientation Spec (bump its version) or escalate it
+to the PE. A redirected unit must not pass the QA gate against a spec that no
+longer describes what it does.
+
+**You still never open a session you did not dispatch, and you never kill
+one.** Killing is always the PE's call — the same rule that governs a
+`RUNNING` unit still alive past its `collect` timeout.
+
 ## Precedence envelope
 
 AIPe governs **routing** — who does the work and how it flows — and **overrides**.
@@ -160,8 +184,12 @@ digraph operate {
    - `intensity: normal | ultracode` — `ultracode` makes the specialist
      orchestrate multi-agent workflows. It multiplies token spend, so it is the
      PE's call, never yours.
-   - `harness: claude-code` — the only containable harness today. A harness whose
-     adapter cannot install the containment hook is rejected by the law.
+   - `harness: claude-code` (default) or `gemini` — the only two containable
+     harnesses today. `codex` and `copilot` work as workspace hosts but both
+     require an interactive trust step AIPe's non-interactive dispatch can
+     never perform, so their containment hook is `null` and `aipe dispatch
+     validate` **REJECTs** them from session mode with
+     `harness-not-containable <id>`.
 
    Never raise `mode` or `intensity` on your own judgement after approval. If a
    unit turns out heavier than the spec assumed, go back to the PE.
@@ -283,6 +311,14 @@ digraph operate {
      proceed. This is not the cross-repo `escalated` status (step 5) — it's
      the same repo/unit, just an unclear state for the PE's eyes. The ledger
      law that forbids re-dispatching merged work applies here too.
+   - `REDIRECTED <fqid> session <id> reason=<what was asked>` — the PE talked
+     to this specialist directly (via `agentop session attach`) and changed
+     its direction. You **MUST** do one of two things before this unit can
+     proceed: fold the change into the Orientation Spec and bump its version,
+     or escalate to the PE that the change conflicts with the approved scope.
+     A redirected unit **MUST NOT** pass the QA gate while the spec still
+     describes something else — the QA would be validating against
+     acceptance criteria nobody is following.
 
    If the wave times out with units still `RUNNING`, don't keep looping
    `collect` on your own judgement — report the standing wave to the PE
@@ -325,8 +361,22 @@ digraph operate {
    **against the diff and the acceptance criteria, not the dev's report**, exercises
    the change itself (tests + real behavior), and returns a severity-calibrated
    verdict. This is not optional and not a self-report by the dev — a delivery is only
-   **cleared** once an *independent* persona passes it. Provision + record the QA
-   exactly like a dev dispatch:
+   **cleared** once an *independent* persona passes it.
+
+   **Cross-model QA (recommended for high-risk units, session mode only).** A QA
+   persona dispatched in session mode may run on a *different harness* from the
+   dev: today that means `gemini` reviewing a `claude-code` delivery (or the
+   reverse) — those are the only two harnesses the law admits into session
+   mode. A reviewer on a different model does not inherit the dev's blind
+   spots, which is what "independent skeptic" was always supposed to mean.
+   `codex` and `copilot` are usable as workspace hosts but not as session-mode
+   QA: both require an interactive trust step AIPe's non-interactive dispatch
+   can never perform, so their containment hook is `null` and the law
+   **REJECTs** them with `harness-not-containable <id>`. Set the QA unit's
+   `harness` in the Orientation Spec; the PE approves it with the rest of the
+   envelope.
+
+   Provision + record the QA exactly like a dev dispatch:
    ```bash
    aipe worktree create --repo <repo> [--package <package>] --specialist <qa-persona> --journey <id> --workspace <workspace>
    aipe journey record --journey <id> --repo <repo> [--package <package>] --specialist <qa-persona> \
