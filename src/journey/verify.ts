@@ -18,12 +18,19 @@ export interface VerifyFinding {
 }
 
 // Same ordering the ledger gate uses to judge a unit's "most advanced" state:
-// removed < dispatched < (failed = escalated) < delivered < verified < merged.
+// removed < dispatched < (failed = escalated = redirected) < delivered < verified < merged.
+// `redirected` sits with `failed`/`escalated` — none of the three represent
+// forward progress toward a delivery, they are all "something non-nominal
+// happened before this unit shipped" — so a `redirected` record correctly
+// outranks a stale `dispatched` one when judging a multi-specialist unit's
+// most-advanced state (a live redirect must never be shadowed by an older
+// plain-`dispatched` record from another specialist on the same unit).
 const RANK: Record<string, number> = {
   removed: 0,
   dispatched: 1,
   failed: 2,
   escalated: 2,
+  redirected: 2,
   delivered: 3,
   verified: 4,
   merged: 5,

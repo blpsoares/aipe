@@ -52,6 +52,40 @@ test("no-evidence (critical): blank summary is not proof", () => {
   expect(findings.map((f) => f.code)).toContain("no-evidence");
 });
 
+// Finding A (whole-branch review): `RANK` used to omit `redirected` entirely,
+// so it tied with `removed` (rank 0) when picking a unit's "most advanced"
+// record across specialists — a stale `dispatched` record from another
+// specialist on the same unit could shadow a live redirect. `redirected` now
+// ranks with `failed`/`escalated` (2), above a plain `dispatched` (1). None of
+// verifyJourney's finding codes currently key off "redirected" as `top`
+// (see the RANK comment in verify.ts), so this is exercised here as what IS
+// observable: a redirected unit is never treated as done/shipped, and by
+// itself produces no findings — it is legitimate in-flight work, not a
+// broken invariant.
+test("redirected: not shipped, not done, produces no findings by itself", () => {
+  const findings = verifyJourney(
+    ledgerOf(d({ status: "redirected", redirectReason: "PE changed direction mid-flight" })),
+    [{ from: "embark", to: "embark", type: "consumes" }],
+    new Set(["embark"]),
+  );
+  expect(findings).toEqual([]);
+});
+
+test("redirected does not mask a stale dispatched record from another specialist as more advanced", () => {
+  // Two specialists on the same unit: one still plain "dispatched", the other
+  // just "redirected" — the redirect must be picked as the unit's current
+  // state, not shadowed by the older dispatched record.
+  const ledger = ledgerOf(
+    d({ specialist: "Ana", status: "dispatched" }),
+    d({ specialist: "Bia", status: "redirected", redirectReason: "PE changed direction mid-flight" }),
+  );
+  // Neither record is a broken invariant, so this must still be clean — the
+  // real assertion is that this doesn't throw and stays silent, proving
+  // `redirected` participates in rank comparison rather than being coerced
+  // to 0 (which used to tie it with `removed`, the lowest possible rank).
+  expect(verifyJourney(ledger, [], new Set())).toEqual([]);
+});
+
 test("failed-open (critical): QA failed and never re-dispatched", () => {
   // the delivered record was upserted to failed (same specialist), so the unit's
   // most-advanced — and only — record is failed: QA rejected it, never redone

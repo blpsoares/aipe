@@ -23,7 +23,10 @@ export const orgTransform: Signal<OrgTransform> = signal({ s: 1, x: 0, y: 0 });
 export function orgColor(status: string | undefined): string {
   if (status === "active") return "var(--sky)";
   if (status === "delivered" || status === "verified") return "var(--accent)";
-  if (status === "escalated" || status === "failed") return "var(--amber)";
+  // `redirected` gets the same "needs a look" amber as escalated/failed — never
+  // the `slate` default, which reads as idle and is the opposite of a
+  // specialist whose work just diverged mid-flight.
+  if (status === "escalated" || status === "failed" || status === "redirected") return "var(--amber)";
   return "var(--slate)";
 }
 

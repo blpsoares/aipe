@@ -51,6 +51,7 @@ export interface Counts {
   active: number;
   delivered: number;
   escalated: number;
+  redirected: number;
   idle: number;
   journeys: number;
   repos: number;
@@ -87,7 +88,7 @@ export interface RawSnapshot {
   worktreeRows?: unknown[];
   journeys?: { id: string; dispatches?: Dispatch[] }[];
   personaCVs?: unknown[];
-  counts?: { hired?: number; active?: number; delivered?: number; escalated?: number; available?: number };
+  counts?: { hired?: number; active?: number; delivered?: number; escalated?: number; available?: number; redirected?: number };
   attention?: AttentionItem[];
   [key: string]: unknown;
 }
@@ -155,6 +156,7 @@ export function deriveCounts(s: { counts?: RawSnapshot["counts"]; journeys?: unk
     active: s.counts?.active || 0,
     delivered: s.counts?.delivered || 0,
     escalated: s.counts?.escalated || 0,
+    redirected: s.counts?.redirected || 0,
     idle: s.counts?.available || 0,
     journeys: (s.journeys || []).length,
     repos: (s.repos || []).length,
@@ -172,6 +174,7 @@ function deriveDispatches(s: Pick<RawSnapshot, "journeys">): Dispatch[] {
 export function evMsg(d: Dispatch, t: Translator): string {
   const j = d.journey ? " · " + d.journey : "";
   if (d.status === "dispatched") return `dispatched to ${fqidOf(d)}${j}`;
+  if (d.status === "redirected") return `redirected — direction changed, spec needs reconciling${j}`;
   if (d.status === "delivered") return `delivered${d.pr ? " · PR" : ""}${j}`;
   if (d.status === "verified") return `verified by QA${j}`;
   if (d.status === "failed") return `QA failed — sent back${j}`;
@@ -254,7 +257,7 @@ const EMPTY_SNAPSHOT: Snapshot = {
 
 export const snapshot: Signal<Snapshot> = signal(EMPTY_SNAPSHOT);
 export const dispatches: Signal<Dispatch[]> = signal([]);
-export const counts: Signal<Counts> = signal({ hired: 0, active: 0, delivered: 0, escalated: 0, idle: 0, journeys: 0, repos: 0 });
+export const counts: Signal<Counts> = signal({ hired: 0, active: 0, delivered: 0, escalated: 0, redirected: 0, idle: 0, journeys: 0, repos: 0 });
 export const activity: Signal<ActivityEvent[]> = signal([]);
 export const conn: Signal<"wait" | "live" | "down"> = signal("wait");
 

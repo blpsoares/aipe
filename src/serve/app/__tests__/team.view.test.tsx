@@ -1,6 +1,6 @@
 import "./setup";
 import { test, expect, afterEach } from "bun:test";
-import { render, cleanup } from "@testing-library/preact";
+import { render, cleanup, fireEvent } from "@testing-library/preact";
 import { route } from "../views/team.view";
 import { snapshot, counts, dispatches, openWorkerName } from "../runtime/store";
 import { setLang } from "../runtime/i18n";
@@ -64,6 +64,25 @@ test("cvname/cvtitle: falls back to role when persona CV has no title", () => {
   expect(diego.querySelector(".cvtitle")!.textContent).toBe("dev");
   const ana = cards.find((c) => c.querySelector(".cvname")!.textContent === "Ana")!;
   expect(ana.querySelector(".cvtitle")!.textContent).toBe("Frontend Developer");
+});
+
+// Finding A (whole-branch review): the "group by Activity" section order had
+// no entry for "redirected" — it fell through the `?? 99` default, sorting
+// it dead LAST, even after "available". `redirected` now ties `escalated`
+// for the top attention tier.
+test("group by activity: redirected sorts in the top attention tier, ahead of active/delivered/available", () => {
+  loadFixture();
+  snapshot.value = {
+    ...snapshot.value,
+    workers: [...snapshot.value.workers, { name: "Elis", role: "dev", repo: "web", package: null, status: "redirected" }],
+  };
+  const { container, getByText } = render(<TeamView />);
+  fireEvent.click(getByText("Activity"));
+  const labels = [...container.querySelectorAll(".team-group .eyebrow")].map((e) => e.textContent);
+  expect(labels.indexOf("redirected")).toBeGreaterThanOrEqual(0);
+  expect(labels.indexOf("redirected")).toBeLessThan(labels.indexOf("active"));
+  expect(labels.indexOf("redirected")).toBeLessThan(labels.indexOf("delivered"));
+  expect(labels.indexOf("redirected")).toBeLessThan(labels.indexOf("available"));
 });
 
 test("Chip renders the worker's status", () => {

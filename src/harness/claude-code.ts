@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FLOW_SKILLS } from "./skills";
-import type { HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDelivery } from "./types";
+import type { ContainmentHook, HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDelivery } from "./types";
+import { CONTAINMENT_COMMAND } from "./types";
 
 const ROLE_LABEL: Record<PersonaRole, string> = {
   "dev-fullstack": "Fullstack specialist",
@@ -21,8 +22,15 @@ const SESSION_START_HOOK = {
   hooks: [{ type: "command", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' }],
 };
 
+// Builds the PreToolUse hook entry. `command` already carries `--role <role>`
+// baked in when one applies — see the `role` note on `containmentHook()` in
+// ./types.ts.
+function preToolUseHook(command: string) {
+  return { matcher: "Bash", hooks: [{ type: "command", command }] };
+}
+
 interface Settings {
-  hooks?: { SessionStart?: unknown[]; [k: string]: unknown };
+  hooks?: { SessionStart?: unknown[]; PreToolUse?: unknown[]; [k: string]: unknown };
   [k: string]: unknown;
 }
 
@@ -41,6 +49,24 @@ function hasAipeHook(list: unknown[]): boolean {
   return list.some((entry) => JSON.stringify(entry).includes("aipe session-context"));
 }
 
+// Writes ONLY the SessionStart hook (→ `aipe session-context`) — never the
+// PreToolUse containment hook. This used to also merge
+// `claudeCodeAdapter.containmentHook()!.merge(settings)` in here, which wrote
+// a role-LESS `aipe session guard` PreToolUse hook into the workspace/repo
+// root on every `aipe start` / `hire-specialists` / `rehydrate`, including
+// workspaces that never use session mode. That hook is genuinely inert:
+// `decide()` (src/session/guard.ts) short-circuits to `{ action: "allow" }`
+// for any role other than "specialist", and a role-less command is exactly
+// what this call site rendered — so it never denied anything, only added a
+// `bun`/`aipe` subprocess to every Bash tool call in the PE's OWN sessions.
+// The containment that actually matters is installed separately, per unit,
+// WITH the specialist role baked in, directly into that unit's own worktree
+// by `installWorktreeContainmentHook` in src/session/cli.ts (a different
+// file entirely — a worktree is a separate git checkout, so nothing written
+// here ever reached it anyway). Removing the merge here changes no
+// specialist's containment; it only stops paying for a hook that always said
+// yes. `containmentHook()` itself is unchanged and still used directly by
+// dispatchCommand for the worktree install.
 export async function ensureSessionStartHook(targetDir: string): Promise<void> {
   const claudeDir = join(targetDir, ".claude");
   const settingsPath = join(claudeDir, "settings.json");
@@ -51,6 +77,7 @@ export async function ensureSessionStartHook(targetDir: string): Promise<void> {
   const sessionStart = Array.isArray(settings.hooks.SessionStart) ? settings.hooks.SessionStart : [];
   if (!hasAipeHook(sessionStart)) sessionStart.push(SESSION_START_HOOK);
   settings.hooks.SessionStart = sessionStart;
+
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
 }
 
@@ -59,6 +86,7 @@ export async function ensureSessionStartHook(targetDir: string): Promise<void> {
 export const claudeCodeAdapter: HarnessAdapter = {
   id: "claude-code",
   label: "Claude Code",
+  agentopHarness: "claude",
 
   async installIntegration(workspaceDir: string): Promise<InstallReport> {
     // 1. merge the SessionStart hook into settings.json (idempotent)
@@ -77,6 +105,9 @@ export const claudeCodeAdapter: HarnessAdapter = {
       notes: [
         "SessionStart hook → aipe session-context",
         `${Object.keys(FLOW_SKILLS).length} AIPe skills installed`,
+        // Containment (PreToolUse → aipe session guard) is installed per unit,
+        // WITH the specialist role, directly into that unit's worktree at
+        // `aipe session dispatch` time — never here (see ensureSessionStartHook).
       ],
     };
   },
@@ -86,6 +117,26 @@ export const claudeCodeAdapter: HarnessAdapter = {
     // the awareness text is computed live by `aipe session-context`, so nothing
     // static is written here.
     return { mode: "hook", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' };
+  },
+
+  containmentHook(role?: string): ContainmentHook {
+    // See the `role` note on HarnessAdapter#containmentHook in ./types.ts:
+    // baked into the command literally, never delivered via env var.
+    const command = role ? `${CONTAINMENT_COMMAND} --role ${role}` : CONTAINMENT_COMMAND;
+    return {
+      relPath: join(".claude", "settings.json"),
+      merge(existing: unknown): unknown {
+        const settings: Settings =
+          existing && typeof existing === "object" ? { ...(existing as Settings) } : {};
+        const hooks = { ...(settings.hooks ?? {}) };
+        const list = Array.isArray(hooks.PreToolUse) ? [...hooks.PreToolUse] : [];
+        const already = list.some((e) => JSON.stringify(e).includes(command));
+        if (!already) list.push(preToolUseHook(command));
+        hooks.PreToolUse = list;
+        settings.hooks = hooks;
+        return settings;
+      },
+    };
   },
 
   personaTarget(slug: string): { relDir: string; filename: string } {

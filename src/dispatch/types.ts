@@ -12,6 +12,12 @@ export interface DispatchEntry {
   // Optional model tier the coordinator assigned by task complexity. Adjudicated
   // by the model-policy CLI (`aipe model`), then carried into the hiring brief.
   tier?: string;
+  // How this unit is dispatched. `subagent` (default) is an in-process subagent
+  // that returns evidence synchronously; `session` is a real, detached agentop
+  // session that records into the ledger instead of returning.
+  mode?: "subagent" | "session";
+  intensity?: "normal" | "ultracode";
+  harness?: string; // defaults to the workspace harness
 }
 
 export type Batch = DispatchEntry[];
@@ -22,3 +28,13 @@ export type Verdict = { ok: true } | { ok: false; rejects: string[] };
 // run in parallel, the same repo serializes, and no more than this many run at
 // once (the tool's real concurrency ceiling).
 export const MAX_CONCURRENT = 16;
+
+// Session mode's own, far lower ceiling. 16 was calibrated for subagents; 16
+// real sessions — each with its own context window, some fanning out under
+// ultracode — is a different order of cost entirely.
+export const SESSION_MAX_CONCURRENT = 4;
+
+export interface SessionContext {
+  agentopOk: boolean;
+  containableHarnesses: string[];
+}

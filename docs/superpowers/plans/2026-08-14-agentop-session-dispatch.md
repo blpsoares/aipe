@@ -27,9 +27,43 @@ Tasks 15–17 build the three new adapters. Each begins by **re-verifying that h
 
 | Harness | Containment config | Personas / skills | Always-on context |
 | --- | --- | --- | --- |
-| Codex CLI | `~/.codex/hooks.json` | `.codex/skills/<slug>/SKILL.md` | `AGENTS.md` |
+| Codex CLI | `.codex/hooks.json` (project-scoped — see below) | `.codex/skills/<slug>/SKILL.md` | `AGENTS.md` |
 | Gemini CLI | `.gemini/settings.json` | `.gemini/commands/*.toml` | `GEMINI.md` |
 | Copilot CLI | `.github/hooks/` | `.github/agents/<slug>.agent.md` | `AGENTS.md` |
+
+**`ContainmentHook.relPath` is workspace-relative, and that is a requirement, not
+a limitation.** A containment hook written to a harness's *global* config
+(`~/.codex/hooks.json`, `~/.copilot/settings.json`) would install AIPe's
+containment into every session that harness ever runs on that machine, including
+ones with nothing to do with this workspace — and would survive the workspace
+being deleted. Each adapter MUST therefore target its harness's **project-scoped**
+hook config. If a harness turns out to support only global hooks, it is not
+containable and `containmentHook()` returns `null`: it is then ineligible for
+session-mode dispatch, which is exactly what the eligibility rule is for. Verify
+project-scoped support as part of each adapter's Step 1.
+
+**Two namespaces, and the mapping between them is load-bearing — fix this in
+Task 16, before a second adapter exists.** AIPe identifies a harness by its
+*adapter id* (`claude-code`, and soon `codex`/`gemini`/`copilot`) — that is what
+the Orientation Spec approves and what the ledger's `harness` field stores.
+`agentop` identifies one by its *harness name* (`claude`, `codex`, `gemini`,
+`copilot`, `antigravity`, `kimi`). **`claude-code` is not `claude`.**
+
+`dispatchCommand` in `src/session/cli.ts` currently writes the literal
+`harness: "claude"` into every `BatchUnit`, ignoring the unit's recorded
+`harness`. That is correct only while `claude-code` is the only containable
+adapter. The moment a second one becomes eligible, a unit the PE approved for
+Codex silently starts a **Claude** session — destroying the cross-model
+independence that is the entire reason these adapters exist, with nothing
+failing and nothing logged.
+
+So `HarnessAdapter` gains an **`agentopHarness: string | null`** member naming
+the harness agentop knows, and `dispatchCommand` resolves it from the unit's
+recorded adapter id instead of using a literal. `null` means the adapter has no
+agentop equivalent, which makes it not session-dispatchable for the same reason
+a non-containable one is. Task 16 does this as its first step, and its tests
+must include a unit whose `harness` is not `claude-code` producing the right
+agentop harness name in the argv — a test the current hardcode would fail.
 
 ## File Structure
 
@@ -292,16 +326,60 @@ test("a specialist may read and annotate sessions", () => {
 });
 
 test("unrelated commands are never the guard's business", () => {
-  for (const cmd of ["git status", "bun test", "echo agentop session claude"]) {
+  for (const cmd of ["git status", "bun test", "echo hello"]) {
     expect(decide({ command: cmd, role: "specialist" }).action).toBe("allow");
   }
 });
 
-test("a spawn hidden behind a shell operator is still caught", () => {
-  expect(decide({ command: "git status && agentop session claude -p x", role: "specialist" }).action)
-    .toBe("needs-grant");
-  expect(decide({ command: "true; agentop session batch --task t", role: "specialist" }).action)
-    .toBe("needs-grant");
+// The guard is deliberately CONSERVATIVE: it matches the token sequence
+// wherever it appears, and does not try to work out whether `agentop` sits in
+// command position. Every hiding place below is ordinary shell syntax.
+test("a spawn is caught wherever it hides", () => {
+  for (const cmd of [
+    "git status && agentop session claude -p x",
+    "true; agentop session batch --task t",
+    "sleep 1 & agentop session claude",
+    "if true; then agentop session claude; fi",
+    "for i in 1 2 3; do agentop session claude; done",
+    "{ agentop session claude; }",
+    "(agentop session claude)",
+    "sudo agentop session claude",
+    'FOO="bar baz" agentop session claude',
+    "echo $(agentop session claude)",
+    "echo agentop session claude",
+  ]) {
+    expect(decide({ command: cmd, role: "specialist" }).action).toBe("needs-grant");
+  }
+});
+
+test("kill wins over a spawn appearing in the same command", () => {
+  expect(decide({ command: "agentop session claude -p x; agentop session kill abc", role: "specialist" }))
+    .toEqual({ action: "deny", reason: "a specialist must not kill sessions" });
+  expect(decide({ command: '{ REASON="a b" agentop session kill abc; }', role: "specialist" }).action)
+    .toBe("deny");
+});
+
+// Plain capitalization must never hide an invocation.
+test("matching is case-insensitive", () => {
+  expect(decide({ command: "AGENTOP SESSION KILL abc", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "AGENTOP SESSION CLAUDE", role: "specialist" }).action).toBe("needs-grant");
+  expect(decide({ command: "agentop session claude -p x; AGENTOP SESSION KILL abc", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "AGENTOP SESSION LIST", role: "specialist" }).action).toBe("allow");
+});
+
+// An unrecognised token after `session` must fall through to needs-grant, never allow.
+test("a flag-shaped token after session is not a free pass", () => {
+  expect(decide({ command: "agentop session --foo claude", role: "specialist" }).action).toBe("needs-grant");
+  expect(decide({ command: "agentop session -- claude", role: "specialist" }).action).toBe("needs-grant");
+});
+
+// Regression: consuming the verb let `agentop` be eaten as one match's verb and
+// so miss starting the next — hiding a real kill. The lookahead prevents it.
+test("a repeated token sequence cannot swallow a following kill", () => {
+  expect(decide({ command: "agentop session agentop session kill x", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "agentop session agentop session agentop session kill x", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "agentop session claude -p 'ask agentop session agentop session kill x'", role: "specialist" }).action).toBe("deny");
+  expect(decide({ command: "agentop session agentop session claude", role: "specialist" }).action).toBe("needs-grant");
 });
 ```
 
@@ -317,6 +395,16 @@ Create `src/session/guard.ts`:
 ```ts
 // The single decision every harness's containment hook consults. Pure: no I/O,
 // no env reads — the caller supplies the role, so this stays trivially testable.
+//
+// DELIBERATELY CONSERVATIVE. An earlier design tried to decide whether
+// `agentop` sat in *command position*, so that `echo agentop session claude`
+// could be waved through. Shell syntax defeated it repeatedly — brace groups,
+// subshells, quoted env assignments, `$(...)`, `then`/`do` after `;` — and each
+// hole silently disabled containment, one of them defeating the unconditional
+// kill-deny. For a guard, a false positive is an annoyance and a false negative
+// is the whole feature not existing. So: match the token sequence WHEREVER it
+// appears, and accept that writing the string into an `echo` gets denied too.
+// No shell parsing, no denylist of keywords, no arms race.
 
 export interface GuardInput {
   command: string;
@@ -332,37 +420,48 @@ export type GuardDecision =
 // or annotate, they never create or destroy.
 const READ_ONLY = new Set(["list", "attach", "note", "rename"]);
 
-// Split on shell separators so `git status && agentop session claude` is seen.
-function segments(command: string): string[] {
-  return command.split(/&&|\|\||[;|\n]/);
-}
-
-// Matches an *invocation* of `agentop session <verb>`; the leading anchor keeps
-// `echo agentop session claude` from tripping it.
-const INVOCATION = /(?:^|\s)(?:\S*\/)?agentop\s+session\s+(\S+)/;
+// `i`: plain capitalization must not hide an invocation (`AGENTOP SESSION KILL`).
+// `[\w-]+`: a flag-shaped token (`--foo`) is captured too — it will not be in
+//   READ_ONLY, so an unrecognised token after `session` falls through to
+//   needs-grant rather than silently allowing.
+// Lookahead: the verb is captured WITHOUT being consumed. Consuming it lets
+//   `agentop session agentop session kill x` eat the second `agentop` as a verb,
+//   hiding the real `kill` from the scan — a regex-engine artifact, not a boundary.
+const INVOCATION = /agentop\s+session\s+(?=([\w-]+))/gi;
 
 export function decide(input: GuardInput): GuardDecision {
   if (input.role !== "specialist") return { action: "allow" };
 
-  for (const segment of segments(input.command)) {
-    const m = segment.trim().match(INVOCATION);
-    if (!m) continue;
-    const verb = m[1]!;
+  let sawSpawn = false;
+  // A FRESH regex per call: the module-level one is only ever read via .source,
+  // so no `lastIndex` state can leak between calls. decide() stays re-entrant.
+  const re = new RegExp(INVOCATION.source, "gi");
+  let m: RegExpExecArray | null;
+  // Scan every occurrence: `kill` outranks a spawn appearing in the same
+  // command, so a compound that does both is denied outright, not granted.
+  while ((m = re.exec(input.command)) !== null) {
+    const verb = m[1]!.toLowerCase();
     if (verb === "kill") {
       return { action: "deny", reason: "a specialist must not kill sessions" };
     }
-    if (READ_ONLY.has(verb)) continue;
     // Anything else under `session` creates one: a harness name, or `batch`.
-    return { action: "needs-grant", reason: "specialist-session-spawn" };
+    if (!READ_ONLY.has(verb)) sawSpawn = true;
+    // Advance ONE character, so matches fully overlap and nothing is consumed.
+    // Consuming lets a token that is itself part of the trigger sequence hide
+    // the next match — `agentop session session session kill x` would lose its
+    // kill. Each match's start index strictly increases, so this terminates.
+    re.lastIndex = m.index + 1;
   }
-  return { action: "allow" };
+  return sawSpawn
+    ? { action: "needs-grant", reason: "specialist-session-spawn" }
+    : { action: "allow" };
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `bun test src/session/__tests__/guard.test.ts`
-Expected: PASS — 6 tests
+Expected: PASS — the full guard suite
 
 - [ ] **Step 5: Commit**
 
@@ -447,9 +546,25 @@ Create `src/session/grants.ts`:
 // file exists, so exactly one concurrent caller can claim each token. Counting
 // an integer in a file would race — two readers see "2" and both write "1".
 import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+
+// These ids become path segments, so a separator or a `.`/`..` would collapse
+// the per-(journey, session) isolation this module exists to provide.
+function assertSafeId(label: string, id: string): void {
+  if (id === "" || id === "." || id === ".." || id.includes("/") || id.includes("\\")) {
+    throw new Error(`grantPath: unsafe ${label} id ${JSON.stringify(id)}`);
+  }
+}
+
+function errorCode(err: unknown): string | undefined {
+  return typeof err === "object" && err !== null && "code" in err
+    ? String((err as { code: unknown }).code)
+    : undefined;
+}
 
 export function grantPath(workspaceDir: string, journeyId: string, sessionId: string): string {
+  assertSafeId("journey", journeyId);
+  assertSafeId("session", sessionId);
   return join(workspaceDir, ".aipe", "journeys", journeyId, "grants", sessionId);
 }
 
@@ -459,8 +574,22 @@ export async function issueGrant(
   sessionId: string,
   count: number,
 ): Promise<void> {
+  if (count < 0) throw new Error(`issueGrant: count must not be negative (got ${count})`);
   const dir = grantPath(workspaceDir, journeyId, sessionId);
-  await mkdir(dir, { recursive: true });
+  await mkdir(dirname(dir), { recursive: true });
+  // The NON-RECURSIVE mkdir *is* the exclusivity check: it fails with EEXIST if
+  // the directory exists. A read-then-write check would race — two concurrent
+  // callers both pass it and both write. Never silently widen or replace a
+  // grant: replacing would hand back units the specialist already spent.
+  try {
+    await mkdir(dir);
+  } catch (err) {
+    if (errorCode(err) === "EEXIST") {
+      throw new Error(`issueGrant: a grant already exists for ${journeyId}/${sessionId}`);
+    }
+    throw err;
+  }
+  // Plain "w" is safe here: the mkdir above guarantees we are the only writer.
   for (let i = 0; i < count; i++) {
     await writeFile(join(dir, `token-${i}`), "", "utf8");
   }
@@ -474,9 +603,19 @@ export async function consumeGrant(
   const dir = grantPath(workspaceDir, journeyId, sessionId);
   let tokens: string[];
   try {
-    tokens = (await readdir(dir)).filter((f) => f.startsWith("token-")).sort();
-  } catch {
-    return false;
+    tokens = (await readdir(dir))
+      // `!endsWith(".spent")` matters: `token-0.spent` also startsWith "token-",
+      // so without it a spent marker is re-listed as a claimable token and the
+      // quota silently grows by one on every subsequent call.
+      .filter((f) => f.startsWith("token-") && !f.endsWith(".spent"))
+      // Numeric, not lexicographic: at 10+ tokens `token-10` would sort before
+      // `token-2`, so claim order would stop matching issuance order.
+      .sort((a, b) => Number(a.slice(6)) - Number(b.slice(6)));
+  } catch (err) {
+    // Only a missing directory means "no grant issued". Anything else — EACCES,
+    // ENOSPC — is a real failure and must not read as "denied".
+    if (errorCode(err) === "ENOENT") return false;
+    throw err;
   }
   for (const token of tokens) {
     try {
@@ -484,8 +623,9 @@ export async function consumeGrant(
       // creates it first; everyone else gets EEXIST and moves to the next token.
       await writeFile(join(dir, `${token}.spent`), "", { encoding: "utf8", flag: "wx" });
       return true;
-    } catch {
-      continue;
+    } catch (err) {
+      if (errorCode(err) === "EEXIST") continue; // real contention
+      throw err;
     }
   }
   return false;
@@ -1812,7 +1952,7 @@ export async function pollOnce(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `bun test src/session/__tests__/poll.test.ts`
-Expected: PASS — 6 tests
+Expected: PASS — the full guard suite
 
 - [ ] **Step 5: Commit**
 
@@ -2012,20 +2152,40 @@ export async function dispatchCommand(
     units.push({ harness: "claude", cwd: d.worktree, promptFile, ...(d.model ? { model: d.model } : {}) });
   }
 
-  let started;
+  let result;
   try {
-    started = await startBatch(`aipe/${opts.journeyId}`, units, opts.runner);
+    result = await startBatch(`aipe/${opts.journeyId}`, units, opts.runner);
   } catch (err) {
     lines.push(`ERROR agentop: ${err instanceof Error ? err.message : String(err)}`);
     return { code: 1, lines };
   }
+  const started = result.sessions;
+  // `malformed` counts entries agentop returned that could not be used. It is
+  // NOT an error to abort on — the sessions it did start are already running,
+  // and throwing here would orphan them. Report it so the shortfall is visible.
+  if (result.malformed > 0) {
+    lines.push(`ERROR session: agentop returned ${result.malformed} unusable session record(s)`);
+  }
 
-  for (let i = 0; i < pending.length; i++) {
-    const d = pending[i]!;
-    const session = started[i];
-    if (!session) continue;
+  // Pair by cwd, NOT by position. `parseBatchOutput` returns agentop's list
+  // as-is: nothing guarantees it comes back in the order the --session flags
+  // went out, or that it is the same length. Zipping by index would write a
+  // session id onto the wrong unit, and `collect` would then report the wrong
+  // unit dead. Each unit's worktree is unique within a wave, so cwd is a key.
+  const byCwd = new Map(started.map((s) => [s.cwd, s]));
+  for (const d of pending) {
+    const fqid = packageFqid(d.repo, d.package);
+    const session = byCwd.get(d.worktree);
+    if (!session) {
+      lines.push(`ERROR session: agentop reported no session for ${fqid} (${d.worktree})`);
+      continue;
+    }
     await recordDispatch(opts.workspace, opts.journeyId, { ...d, sessionId: session.id });
-    lines.push(`OK ${packageFqid(d.repo, d.package)} → ${session.id}`);
+    lines.push(`OK ${fqid} → ${session.id}`);
+  }
+  if (started.length !== pending.length) {
+    lines.push(`ERROR session: asked agentop for ${pending.length} sessions, it started ${started.length}`);
+    return { code: 1, lines };
   }
 
   return { code: 0, lines };

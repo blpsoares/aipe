@@ -9,8 +9,13 @@ import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from 
 import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { DISPATCH_STATUSES } from "./types";
-import type { DispatchEvidence, DispatchStatus } from "./types";
+import type { DispatchEvidence, DispatchStatus, JourneyDispatch } from "./types";
 import { verifyJourney } from "./verify";
+
+type SessionMode = NonNullable<JourneyDispatch["mode"]>;
+type Intensity = NonNullable<JourneyDispatch["intensity"]>;
+const SESSION_MODES: SessionMode[] = ["subagent", "session"];
+const INTENSITIES: Intensity[] = ["normal", "ultracode"];
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -64,6 +69,26 @@ async function recordCommand(args: string[]): Promise<number> {
   const tier = getFlag(args, "--tier");
   const model = getFlag(args, "--model");
   const reason = getFlag(args, "--reason");
+
+  // Session-mode dispatch metadata (optional; absent ⇒ absent on the ledger,
+  // never present-and-undefined — legacy ledgers and subagent dispatches must
+  // round-trip untouched).
+  const modeFlag = getFlag(args, "--mode");
+  if (modeFlag !== undefined && !SESSION_MODES.includes(modeFlag as SessionMode)) {
+    console.log(`ERROR mode: --mode must be one of ${SESSION_MODES.join("|")}`);
+    return 1;
+  }
+  const mode = modeFlag as SessionMode | undefined;
+
+  const intensityFlag = getFlag(args, "--intensity");
+  if (intensityFlag !== undefined && !INTENSITIES.includes(intensityFlag as Intensity)) {
+    console.log(`ERROR intensity: --intensity must be one of ${INTENSITIES.join("|")}`);
+    return 1;
+  }
+  const intensity = intensityFlag as Intensity | undefined;
+
+  const harness = getFlag(args, "--harness");
+  const sessionId = getFlag(args, "--session-id");
   const statusFlag = getFlag(args, "--status");
   const status: DispatchStatus = DISPATCH_STATUSES.includes(statusFlag as DispatchStatus)
     ? (statusFlag as DispatchStatus)
@@ -97,6 +122,10 @@ async function recordCommand(args: string[]): Promise<number> {
       ...(pr ? { pr } : {}),
       ...(tier ? { tier } : {}),
       ...(model ? { model } : {}),
+      ...(mode ? { mode } : {}),
+      ...(intensity ? { intensity } : {}),
+      ...(harness ? { harness } : {}),
+      ...(sessionId ? { sessionId } : {}),
       ...(evidence ? { evidence } : {}),
       status,
     },
@@ -131,7 +160,9 @@ async function showCommand(args: string[]): Promise<number> {
     const ev = d.evidence ? " +evidence" : d.status === "delivered" || d.status === "verified" ? " !NO-EVIDENCE" : "";
     console.log(`DISPATCH ${unit} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}${ev}${done ? " " + done : ""}`);
   }
-  const open = ledger.dispatches.filter((d) => d.status === "dispatched" || d.status === "failed" || d.status === "escalated").length;
+  const open = ledger.dispatches.filter(
+    (d) => d.status === "dispatched" || d.status === "failed" || d.status === "escalated" || d.status === "redirected",
+  ).length;
   const done = ledger.dispatches.filter((d) => d.status === "merged" || d.status === "verified").length;
   console.log(`STATE journey=${id} dispatches=${ledger.dispatches.length} open=${open} done=${done}`);
   return 0;

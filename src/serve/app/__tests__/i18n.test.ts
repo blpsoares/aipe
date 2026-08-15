@@ -25,6 +25,15 @@ test("stt() prefixa st_ e traduz status", () => {
   expect(stt("active")).toBe("ativo");
 });
 
+// Finding A (whole-branch review): `st_redirected`/`sd_redirected` were
+// missing entirely, so `stt("redirected")` fell back to the raw key name
+// rather than a translated label.
+test("stt() traduz redirected em en e pt", () => {
+  expect(stt("redirected")).toBe("redirected");
+  setLang("pt");
+  expect(stt("redirected")).toBe("redirecionado");
+});
+
 test("STR.en e STR.pt têm exatamente as mesmas chaves", () => {
   const en = Object.keys(STR.en).sort();
   const pt = Object.keys(STR.pt).sort();

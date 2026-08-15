@@ -35,6 +35,20 @@ one of your actions. Your **only** allowed actions as coordinator are:
   never write to a repo);
 - **escalate** cross-repo matters to the PE.
 
+**Opening sessions is yours alone.** A dispatched specialist is forbidden from
+opening an agentop session — a containment hook denies it, and the persona is
+told so up front. If a specialist genuinely needs sub-work, it asks you; you
+either do it, dispatch it as its own unit, or issue an explicit quota with
+`aipe session grant --journey <id> --session-id <id> --count <n>`. A
+specialist that could spawn specialists is an unbounded token fork-bomb with no
+ledger entry for any of it.
+
+**A grant cannot take effect yet.** `aipe session grant` writes the quota, but
+consuming it requires `AGENTOP_SESSION_ID` in the specialist's own environment
+— agentop does not stamp that yet (a known, recorded agentop-side follow-up).
+The CLI issues the grant and says so plainly; do not read a successful `OK` as
+"the specialist is now authorised" — it isn't, until agentop ships that.
+
 ### Table of non-exceptions (forbidden rationalizations)
 
 None of these EVER justify skipping dispatch and editing a repo yourself:
@@ -52,6 +66,30 @@ The **only** legitimate way to run inline is the PE **EXPLICITLY** instructing y
 to execute inline — an explicit human user-instruction outranks skills. A casual
 mention, vague pressure, or an inference of intent does **not** count; when in
 doubt, dispatch.
+
+## The PE's direct line to a specialist
+
+Every session-mode dispatch is named `<fqid>/<persona-slug>` (`<fqid>` is the
+repo, or `repo/package` for a monorepo unit) and filed under the task
+`aipe/<journey>`, and its `sessionId` is recorded in the ledger. The PE can
+therefore open a live conversation with any specialist at any time:
+
+```bash
+agentop session list          # what is running, and what each has spent
+agentop session attach <id>   # talk to that specialist directly
+```
+
+This is the PE's channel, not yours — you neither need permission to be told
+about it nor authority to prevent it. What you **MUST** do is reconcile: any
+unit that comes back `REDIRECTED` from `aipe session collect` had its
+direction changed outside your brief, and the spec is now stale until you
+fold the change into the Orientation Spec (bump its version) or escalate it
+to the PE. A redirected unit must not pass the QA gate against a spec that no
+longer describes what it does.
+
+**You still never open a session you did not dispatch, and you never kill
+one.** Killing is always the PE's call — the same rule that governs a
+`RUNNING` unit still alive past its `collect` timeout.
 
 ## Precedence envelope
 
@@ -140,8 +178,29 @@ digraph operate {
    **Cross-package contracts** (from `graph.yaml` — who consumes/imports what, what
    lands first), a **Per-package scope + acceptance** per unit, the **Sequencing**
    (waves), and **Out of scope**. Keep it cross-package — implementation detail is
-   each specialist's own SDD, not this. Validate the structure, then present it to
-   the PE and **wait for approval**:
+   each specialist's own SDD, not this.
+
+   **Per-unit dispatch envelope (the PE approves this too).** Each unit's scope
+   section carries three fields:
+
+   - `mode: subagent | session` — `subagent` (default) is in-process and returns
+     its evidence directly. `session` is a real detached session with its own
+     full context window; choose it when the unit is large enough that a shared
+     context would starve it, or when it needs `ultracode`.
+   - `intensity: normal | ultracode` — `ultracode` makes the specialist
+     orchestrate multi-agent workflows. It multiplies token spend, so it is the
+     PE's call, never yours.
+   - `harness: claude-code` (default) or `gemini` — the only two containable
+     harnesses today. `codex` and `copilot` work as workspace hosts but both
+     require an interactive trust step AIPe's non-interactive dispatch can
+     never perform, so their containment hook is `null` and `aipe dispatch
+     validate` **REJECTs** them from session mode with
+     `harness-not-containable <id>`.
+
+   Never raise `mode` or `intensity` on your own judgement after approval. If a
+   unit turns out heavier than the spec assumed, go back to the PE.
+
+   Validate the structure, then present it to the PE and **wait for approval**:
    ```bash
    aipe journey spec --journey <id> --check --units <fqid,...> --workspace <workspace>
    # PE approves →
@@ -197,6 +256,84 @@ digraph operate {
    `<branch>`, open a PR, and return the structured result."* Dispatch all entries
    in a wave in parallel (one subagent each).
 
+   **If the unit's `mode` is `session`:** do not start a subagent. Record the
+   dispatch with its envelope, then start the whole wave with one command:
+
+   ```bash
+   aipe journey record --journey <id> --repo <repo> [--package <pkg>] \
+     --specialist <persona> --branch <branch> --worktree <path> \
+     --status dispatched --mode session --intensity <normal|ultracode> \
+     --harness claude-code --workspace <workspace>
+
+   aipe session dispatch --journey <id> --workspace <workspace>
+   ```
+
+   `aipe session dispatch` composes each specialist's prompt from its persona,
+   its slice of the approved spec, and the return contract; writes it to
+   `.aipe/journeys/<id>/prompts/` (kept, as the audit trail of what each
+   specialist was told); and starts them all under the task `aipe/<id>`.
+
+   Watch its output for two error lines that need action before you move on,
+   not just a glance:
+   - `ERROR ledger: session <id> for <fqid> is running but could not be
+     recorded (…) — record it manually: aipe journey record …` — the session
+     is already live and burning tokens with **no** ledger entry. Run the
+     printed recovery command now, don't wait for `collect` to notice — a
+     session with no recorded id is invisible to it.
+   - `ERROR session: agentop reported no session for <fqid>` (or `asked
+     agentop for N sessions, it started M`) — that unit never actually
+     started. Treat it like any other dispatch failure: investigate and
+     re-dispatch it; nothing is running for it anywhere.
+
+   Then wait for the wave:
+
+   ```bash
+   aipe session collect --journey <id> --timeout <seconds> --workspace <workspace>
+   ```
+
+   It prints one line per unit, then exits:
+   - `0` — every unit `LANDED`. Proceed to the QA gate exactly as with a
+     subagent delivery.
+   - `1` — a precondition failed (bad `--timeout`, no ledger for the journey,
+     or no session-mode units to collect). Fix the invocation, not the wave.
+   - `2` — the wave needs your eyes: at least one unit came back `RUNNING` or
+     `DEAD-SILENT`. Read the per-unit lines and act on each below.
+
+   Per-unit lines:
+   - `LANDED <fqid>` — the specialist recorded its delivery with evidence.
+   - `RUNNING <fqid> session <id>` — still working past the timeout, **or**
+     `collect` could not confirm the session's state at all (agentop's session
+     list was unreadable or untrustworthy) and fails open rather than call it
+     dead. Either way, `RUNNING` is not proof of life — never treat it as
+     confirmation the specialist is still working. Report it to the PE with
+     the session id and let **them** decide whether to keep waiting or
+     `agentop session kill`. Killing a specialist is never your call.
+   - `DEAD-SILENT <fqid> branch <b>` — the session ended without recording.
+     **Read the branch first, read-only** (`git log`, `git diff`) — never
+     re-dispatch blind. If there is real work on the branch, prefer
+     re-dispatching with a brief that says *continue from what is on the
+     branch* over starting the unit over; if the branch is empty or the state
+     is unclear, report it to the PE instead and let them decide how to
+     proceed. This is not the cross-repo `escalated` status (step 5) — it's
+     the same repo/unit, just an unclear state for the PE's eyes. The ledger
+     law that forbids re-dispatching merged work applies here too.
+   - `REDIRECTED <fqid> session <id> reason=<what was asked>` — the PE talked
+     to this specialist directly (via `agentop session attach`) and changed
+     its direction. You **MUST** do one of two things before this unit can
+     proceed: fold the change into the Orientation Spec and bump its version,
+     or escalate to the PE that the change conflicts with the approved scope.
+     A redirected unit **MUST NOT** pass the QA gate while the spec still
+     describes something else — the QA would be validating against
+     acceptance criteria nobody is following.
+
+   If the wave times out with units still `RUNNING`, don't keep looping
+   `collect` on your own judgement — report the standing wave to the PE
+   (which units, which session ids) and let them decide.
+
+   If your session ends while a wave is in flight, the sessions keep running —
+   they are detached. On your next turn, read the ledger and run
+   `aipe session collect` again; it reconciles from the `aipe/<id>` task.
+
    **Verify the brief before you dispatch (MUST).** A dispatched subagent gets no
    second question from the PE — the brief is its whole world, so a thin brief is a
    drifting specialist. Before sending, confirm the brief carries: the unit's
@@ -230,8 +367,22 @@ digraph operate {
    **against the diff and the acceptance criteria, not the dev's report**, exercises
    the change itself (tests + real behavior), and returns a severity-calibrated
    verdict. This is not optional and not a self-report by the dev — a delivery is only
-   **cleared** once an *independent* persona passes it. Provision + record the QA
-   exactly like a dev dispatch:
+   **cleared** once an *independent* persona passes it.
+
+   **Cross-model QA (recommended for high-risk units, session mode only).** A QA
+   persona dispatched in session mode may run on a *different harness* from the
+   dev: today that means `gemini` reviewing a `claude-code` delivery (or the
+   reverse) — those are the only two harnesses the law admits into session
+   mode. A reviewer on a different model does not inherit the dev's blind
+   spots, which is what "independent skeptic" was always supposed to mean.
+   `codex` and `copilot` are usable as workspace hosts but not as session-mode
+   QA: both require an interactive trust step AIPe's non-interactive dispatch
+   can never perform, so their containment hook is `null` and the law
+   **REJECTs** them with `harness-not-containable <id>`. Set the QA unit's
+   `harness` in the Orientation Spec; the PE approves it with the rest of the
+   envelope.
+
+   Provision + record the QA exactly like a dev dispatch:
    ```bash
    aipe worktree create --repo <repo> [--package <package>] --specialist <qa-persona> --journey <id> --workspace <workspace>
    aipe journey record --journey <id> --repo <repo> [--package <package>] --specialist <qa-persona> \

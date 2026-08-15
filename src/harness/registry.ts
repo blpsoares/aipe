@@ -1,11 +1,17 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { claudeCodeAdapter } from "./claude-code";
+import { codexAdapter } from "./codex";
+import { copilotAdapter } from "./copilot";
+import { geminiAdapter } from "./gemini";
 import { genericAdapter } from "./generic";
 import type { HarnessAdapter } from "./types";
 
 const ADAPTERS: Record<string, HarnessAdapter> = {
   "claude-code": claudeCodeAdapter,
+  codex: codexAdapter,
+  gemini: geminiAdapter,
+  copilot: copilotAdapter,
   generic: genericAdapter,
 };
 

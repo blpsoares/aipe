@@ -28,15 +28,70 @@ export interface InstallReport {
   notes: string[];
 }
 
+// The guard command that every harness adapter MUST use in its containment hook.
+// Do not repeat the literal string — import and use this constant to prevent typos
+// that silently produce a hook that denies nothing.
+export const CONTAINMENT_COMMAND = "aipe session guard";
+
+// How a harness is told to block a command before it runs. `relPath` is the
+// config file, relative to the workspace; `merge` folds the containment rule
+// into that file's existing contents, idempotently.
+//
+// A harness whose adapter returns null cannot be contained — and is therefore
+// NOT eligible for session-mode dispatch. That is the whole eligibility rule:
+// AIPe never starts a session it cannot govern.
+export interface ContainmentHook {
+  relPath: string;
+  merge: (existing: unknown) => unknown;
+}
+
 export interface HarnessAdapter {
   id: string;
   label: string;
+
+  // The name `agentop` (the session runner used for session-mode dispatch)
+  // knows this harness by — e.g. "claude", "codex", "gemini", "copilot",
+  // "antigravity", "kimi". This is a DIFFERENT namespace from `id` above:
+  // `id` is what AIPe and the PE-approved Orientation Spec call the adapter
+  // ("claude-code", "codex", "generic", …) and what the journey ledger's
+  // `harness` field stores. `claude-code` (the AIPe adapter id) is not
+  // `claude` (the agentop harness name) — conflating the two, or hardcoding
+  // one adapter's mapping as a literal everywhere agentop is invoked, means
+  // a unit approved for one harness can silently start a session on another.
+  // `null` means agentop has no equivalent for this harness, which makes it
+  // not session-dispatchable for the same reason a non-containable harness
+  // is (see `isContainable` below) — a caller resolving this MUST treat
+  // `null` as "cannot session-dispatch", never let it reach an argv.
+  agentopHarness: string | null;
 
   // A — write this harness's native integration into the workspace folder.
   installIntegration(workspaceDir: string): Promise<InstallReport>;
 
   // B — how the (portable) awareness text reaches a session.
   startupDelivery(awareness: string): StartupDelivery;
+
+  // How this harness is told to block a command before it runs. `null` means
+  // the harness cannot be contained, and is therefore not eligible for
+  // session-mode dispatch.
+  //
+  // `role`, when given, is baked LITERALLY into the rendered hook's guard
+  // invocation (`aipe session guard --role <role>`) — never delivered via an
+  // env var, because agentop's `session batch`/`session <harness>` has no
+  // flag to inject one into the session it starts (confirmed against the
+  // real v1.13.7 binary). Two call sites use this differently, on purpose:
+  //   - Installing into the PE's OWN workspace (installIntegration /
+  //     ensureSessionStartHook here, ensureGeminiHooks in gemini.ts) calls
+  //     this with NO role, so the coordinator's own PreToolUse/BeforeTool
+  //     hook never says `--role specialist` — the coordinator must keep
+  //     unrestricted `agentop session` access.
+  //   - Installing into a DISPATCHED unit's worktree (dispatchCommand, see
+  //     src/session/cli.ts) calls this with `"specialist"`, so that
+  //     worktree's hook — and only that worktree's hook — denies the
+  //     specialist role's session spawns/kills per `decide()` in
+  //     src/session/guard.ts.
+  // Omitting the argument MUST NOT default to "specialist" — that would hand
+  // the coordinator's own workspace the specialist's restrictions.
+  containmentHook(role?: string): ContainmentHook | null;
 
   // C — where a persona file lives inside its repo, and how it is wrapped so
   //     THIS harness auto-loads it. `personaTarget` is relative to the repo root.
@@ -57,4 +112,8 @@ export interface HarnessAdapter {
   //     null = no mapping (the coordinator falls back to the session default);
   //     the tier's policy gates (authorization/volume) still apply either way.
   resolveModel(tier: string): { id: string; label: string } | null;
+}
+
+export function isContainable(adapter: HarnessAdapter): boolean {
+  return adapter.containmentHook() !== null;
 }

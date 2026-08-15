@@ -18,7 +18,7 @@ const appRoutes = routes as Route[];
 afterEach(() => {
   cleanup();
   setLang("en");
-  counts.value = { hired: 0, active: 0, delivered: 0, escalated: 0, idle: 0, journeys: 0, repos: 0 };
+  counts.value = { hired: 0, active: 0, delivered: 0, escalated: 0, redirected: 0, idle: 0, journeys: 0, repos: 0 };
   navigate("/overview");
   document.documentElement.removeAttribute("data-theme");
   location.hash = "";

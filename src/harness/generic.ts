@@ -29,6 +29,10 @@ on-PATH \`aipe\` binary — never hand-edit the files it owns.
 export const genericAdapter: HarnessAdapter = {
   id: "generic",
   label: "Generic / AGENTS.md harness",
+  // A file-based harness has no session-runner identity agentop can address:
+  // it cannot be contained (see containmentHook below), so it is not
+  // session-dispatchable either way — null makes both facts consistent.
+  agentopHarness: null,
 
   async installIntegration(workspaceDir: string): Promise<InstallReport> {
     const flowsDir = join(workspaceDir, ".aipe", "flows");
@@ -58,6 +62,12 @@ export const genericAdapter: HarnessAdapter = {
     // File-based harnesses read a static file; embed the (live-computed) awareness.
     const content = `${AGENTS_HEADER.split("## Flows")[0]}\n---\n\n${awareness}\n`;
     return { mode: "file", path: "AGENTS.md", content };
+  },
+
+  // A harness AIPe drives only through files has no block-before-execute
+  // mechanism, so it can never be trusted to hold a specialist inside its lane.
+  containmentHook(_role?: string): null {
+    return null;
   },
 
   personaTarget(slug: string): { relDir: string; filename: string } {

@@ -58,8 +58,12 @@ function groupLabel(key: string, by: GroupBy): string {
   return by === "activity" ? stt(key) : key;
 }
 
-// Stable, intentional section order per dimension.
-const STATUS_RANK: Record<string, number> = { escalated: 0, active: 1, delivered: 2, available: 3 };
+// Stable, intentional section order per dimension. `redirected` ties
+// `escalated` for the top tier — both mean "this needs a look" — rather than
+// falling through the `?? 99` default, which would have sorted it dead LAST,
+// even after `available`: exactly backwards for a status whose entire point
+// is to be loud.
+const STATUS_RANK: Record<string, number> = { escalated: 0, redirected: 0, active: 1, delivered: 2, available: 3 };
 const ROLE_RANK: Record<string, number> = { "dev-fullstack": 0, dev: 0, qa: 1 };
 function sortGroups(entries: [string, Worker[]][], by: GroupBy): [string, Worker[]][] {
   const rank = by === "activity" ? STATUS_RANK : by === "specialty" ? ROLE_RANK : null;

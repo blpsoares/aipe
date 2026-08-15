@@ -21,7 +21,7 @@ import type { PersonaRegistryEntry } from "../hire-specialists/types";
 import type { JourneyLedger } from "../journey/types";
 import type { RelationType } from "../relationship/types";
 
-export type WorkerStatus = "active" | "delivered" | "escalated" | "available";
+export type WorkerStatus = "active" | "delivered" | "escalated" | "available" | "redirected";
 
 export interface WorkerView {
   name: string;
@@ -139,7 +139,7 @@ export interface Snapshot {
   workers: WorkerView[];
   journeys: JourneyView[];
   worktrees: number;
-  counts: { hired: number; active: number; delivered: number; escalated: number; available: number };
+  counts: { hired: number; active: number; delivered: number; escalated: number; available: number; redirected: number };
   skills: number;
   mcps: number;
   // web-console additions
@@ -160,12 +160,20 @@ function deriveStatus(
   journeys: JourneyLedger[],
 ): { status: WorkerStatus; journey?: string; pr?: string } {
   let best: { rank: number; status: WorkerStatus; journey?: string; pr?: string } = { rank: 0, status: "available" };
-  const rank: Record<string, number> = { available: 0, delivered: 1, escalated: 2, active: 3 };
+  // `redirected` outranks everything else: a human just talked to this
+  // specialist mid-flight and changed its direction, live — that is the
+  // single most time-sensitive thing the org chart can show about a worker,
+  // more so than a plain in-progress `active` dispatch and more so than
+  // `escalated` (which blocks on the PE but is at least already visible as a
+  // warning elsewhere). It must never be shown as `available` — "free again"
+  // is the opposite of what a redirect means.
+  const rank: Record<string, number> = { available: 0, delivered: 1, escalated: 2, active: 3, redirected: 4 };
   for (const j of journeys) {
     for (const d of j.dispatches) {
       if (d.repo !== repo || d.specialist.toLowerCase() !== name.toLowerCase()) continue;
       const status: WorkerStatus =
-        d.status === "dispatched" || d.status === "failed" ? "active" // failed → dev is back on it
+        d.status === "redirected" ? "redirected"
+        : d.status === "dispatched" || d.status === "failed" ? "active" // failed → dev is back on it
         : d.status === "escalated" ? "escalated"
         : d.status === "delivered" ? "delivered"
         : "available"; // verified/merged/removed → free again
@@ -194,7 +202,7 @@ function emptySnapshot(generatedAt: string): Snapshot {
     workers: [],
     journeys: [],
     worktrees: 0,
-    counts: { hired: 0, active: 0, delivered: 0, escalated: 0, available: 0 },
+    counts: { hired: 0, active: 0, delivered: 0, escalated: 0, available: 0, redirected: 0 },
     skills: 0,
     mcps: 0,
     repoInfos: [],
@@ -297,6 +305,7 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     delivered: specialists.filter((w) => w.status === "delivered").length,
     escalated: specialists.filter((w) => w.status === "escalated").length,
     available: specialists.filter((w) => w.status === "available").length,
+    redirected: specialists.filter((w) => w.status === "redirected").length,
   };
 
   const journeyViews: JourneyView[] = await Promise.all(

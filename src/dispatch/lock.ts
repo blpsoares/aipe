@@ -59,15 +59,21 @@ export function isPidAlive(pid: number): boolean {
   }
 }
 
-// Does some journey still consider this lock's unit dispatched? Matches on repo
-// (+ package, + journey when the lock names one) with status "dispatched".
+// Does some journey still consider this lock's unit LIVE — "dispatched" or
+// "redirected"? A redirect is a specialist's `dispatched` record replaced
+// in-place (recordDispatch upserts by repo+package+specialist) by a status
+// meaning "still working, direction just changed live" — it is not a release
+// of the unit. Treating it as anything other than dispatched here would make
+// the lock look orphaned the instant a redirect lands, letting a second
+// coordinator session claim and re-provision a worktree that a specialist is
+// actively (if newly-redirected) still working in.
 async function hasDispatchedDispatch(workspaceDir: string, lock: Lock): Promise<boolean> {
   const journeys = await listJourneys(workspaceDir);
   const pkg = lock.package ?? null;
   for (const j of journeys) {
     if (lock.journey && j.id !== lock.journey) continue;
     for (const d of j.dispatches) {
-      if (d.repo === lock.repo && (d.package ?? null) === pkg && d.status === "dispatched") return true;
+      if (d.repo === lock.repo && (d.package ?? null) === pkg && (d.status === "dispatched" || d.status === "redirected")) return true;
     }
   }
   return false;

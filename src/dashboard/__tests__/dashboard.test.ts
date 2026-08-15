@@ -51,6 +51,35 @@ test("buildSnapshot derives worker status from journey dispatches", async () => 
   }
 });
 
+// Finding A (whole-branch review): `redirected` used to map to "available"
+// ("specialist free again") — the exact opposite of what it means. A human
+// just talked to this specialist mid-flight and changed its direction; that
+// must render as busy/attention-needed, never as idle.
+test("a redirected dispatch renders as 'redirected', never as 'available', and is counted", async () => {
+  const dir = await ws();
+  try {
+    await writeFile(
+      join(dir, ".aipe", "journeys", "j1.yaml"),
+      stringify({
+        id: "j1",
+        dispatches: [{
+          repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w",
+          status: "redirected", redirectReason: "PE changed direction mid-flight",
+        }],
+      }),
+      "utf8",
+    );
+    const snap = await buildSnapshot(dir);
+    expect(snap.ok).toBe(true);
+    const joaquim = snap.workers.find((w) => w.name === "Joaquim");
+    expect(joaquim?.status).toBe("redirected");
+    expect(joaquim?.status).not.toBe("available");
+    expect(snap.counts).toMatchObject({ hired: 2, redirected: 1, active: 0, available: 1 });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("delivered dispatch surfaces the PR and status", async () => {
   const dir = await ws();
   try {
@@ -80,6 +109,29 @@ test("renderDashboard (no color) shows the sections and coordinator", async () =
     expect(frame).toContain("Joaquim");
     // no ANSI escapes when color is off
     expect(frame.includes("\x1b[")).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("renderDashboard shows a redirected worker with the redirected glyph, never the available one", async () => {
+  const dir = await ws();
+  try {
+    await writeFile(
+      join(dir, ".aipe", "journeys", "j1.yaml"),
+      stringify({
+        id: "j1",
+        dispatches: [{
+          repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w",
+          status: "redirected", redirectReason: "PE changed direction mid-flight",
+        }],
+      }),
+      "utf8",
+    );
+    const snap = await buildSnapshot(dir);
+    const frame = renderDashboard(snap, { color: false });
+    const workerLine = frame.split("\n").find((l) => l.includes("Joaquim"));
+    expect(workerLine).toBe("    ↻ Joaquim dev-fullstack (j1)");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -83,7 +83,61 @@ export async function startJourney(workspaceDir: string, id: string): Promise<st
   return id;
 }
 
-// Upserts a dispatch by (repo, specialist), preserving every other dispatch.
+// Fields that SURVIVE an update when this write doesn't repeat them — the
+// session envelope (Pilar: a specialist that follows its own prompt must not
+// erase its own dispatch record). `composePrompt`'s example commands (the
+// ONLY commands a session-mode specialist is ever told to run) never carry
+// `--mode`/`--intensity`/`--harness`/`--session-id` — `sessionId` in
+// particular is not reliably knowable to a specialist reporting on itself in
+// the general case, and the next field added to the envelope would silently
+// regress the same way if this were solved per-flag instead of per-class. So
+// a plain "record delivered" from inside the ordinary happy path (or the
+// redirect path) must not wipe them.
+//
+// `tier`/`model` are the same class of thing (coordinator-assigned policy,
+// not a per-call assertion) and get the same treatment.
+//
+// Everything else is intentionally NOT sticky — a normal REPLACE, exactly as
+// before this fix, cleared the instant a write omits it:
+//   - `pr`/`evidence` are proof/state of THIS specific call's claim, never
+//     inherited from an earlier one. (This also does no work for the
+//     evidence-required GATE below, which always reads the incoming record's
+//     own `evidence`, before any merge — so evidence can never be satisfied
+//     by a value left over from a previous record either way. This list only
+//     controls what survives onto the ledger AFTER the gate already passed.)
+//   - `redirectReason`/`redispatchReason` are per-transition annotations
+//     (why THIS write happened) — letting one leak into an unrelated later
+//     write would misattribute it (see "redirected does not collide with
+//     redispatchReason" in ledger-gate.test.ts).
+const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId"] as const;
+
+// Merges `incoming` onto `existing` field-by-field: a STICKY_DISPATCH_FIELDS
+// key that `incoming` genuinely omits (no own property at all — never merely
+// `undefined`-valued) is carried over from `existing`; every other key is
+// exactly what `incoming` says, including absent (cleared). A key present on
+// `incoming` with an explicit `undefined` value (used by the guarded
+// redispatch path below to deliberately reset a stale `sessionId`) is treated
+// as "clear it" — NOT as "inherit from existing" — and is dropped from the
+// result rather than written as a literal null.
+function mergeDispatch(existing: JourneyDispatch | undefined, incoming: JourneyDispatch): JourneyDispatch {
+  if (!existing) return incoming;
+  const merged: Record<string, unknown> = { ...incoming };
+  for (const field of STICKY_DISPATCH_FIELDS) {
+    if (!(field in merged) && existing[field] !== undefined) {
+      merged[field] = existing[field];
+    }
+  }
+  for (const key of Object.keys(merged)) {
+    if (merged[key] === undefined) delete merged[key];
+  }
+  return merged as unknown as JourneyDispatch;
+}
+
+// Upserts a dispatch by (repo, package, specialist): a field ABSENT from this
+// write is preserved from the existing record when it's one of
+// STICKY_DISPATCH_FIELDS (see above); every other field is a plain replace
+// (present in `dispatch` ⇒ written, absent ⇒ cleared), same as before. Every
+// other dispatch in the ledger is untouched either way.
 export async function recordDispatch(
   workspaceDir: string,
   id: string,
@@ -93,7 +147,7 @@ export async function recordDispatch(
   const idx = ledger.dispatches.findIndex(
     (d) => d.repo === dispatch.repo && (d.package ?? null) === (dispatch.package ?? null) && d.specialist === dispatch.specialist,
   );
-  if (idx >= 0) ledger.dispatches[idx] = dispatch;
+  if (idx >= 0) ledger.dispatches[idx] = mergeDispatch(ledger.dispatches[idx], dispatch);
   else ledger.dispatches.push(dispatch);
   return writeLedger(workspaceDir, ledger);
 }
@@ -132,10 +186,20 @@ export function grantedTiers(ledger: JourneyLedger | null): Set<string> {
 //   • no-silent-redispatch (Pilar 3): moving a unit that was already
 //     `delivered`/`verified` back to `dispatched` (a fix loop / redo) REQUIRES a
 //     reason, so re-dispatching finished work is always deliberate and audited.
+//   • no-reasonless-redirect: recording a unit `redirected` REQUIRES a reason
+//     (what the PE asked for, live). A `redirected` status without its reason
+//     tells the coordinator something changed but not what — exactly the gap
+//     the status exists to close (the approved spec is what gets reconciled
+//     against it next), so a redirect that carries no reason is rejected
+//     rather than silently recorded as noise.
 //
 // The guard keys on the UNIT (repo + package), not the specialist — a fix can
 // reuse or swap the specialist and the invariant still holds.
-export type LedgerGateCode = "evidence-required" | "unit-immutable" | "redispatch-needs-reason";
+export type LedgerGateCode =
+  | "evidence-required"
+  | "unit-immutable"
+  | "redispatch-needs-reason"
+  | "redirect-needs-reason";
 
 export interface GuardedRecordResult {
   ok: boolean;
@@ -146,7 +210,11 @@ export interface GuardedRecordResult {
 
 function unitStatus(ledger: JourneyLedger, repo: string, pkg: string | null): JourneyDispatch | undefined {
   // The most advanced record for this unit (any specialist), to judge transitions.
-  const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, delivered: 3, verified: 4, merged: 5 };
+  // Kept in lockstep with the identical table in journey/verify.ts (see its
+  // comment): `redirected` ranks with `failed`/`escalated` — a live redirect
+  // must outrank a stale `dispatched` record from another specialist on the
+  // same unit when judging the unit's most-advanced state.
+  const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, redirected: 2, delivered: 3, verified: 4, merged: 5 };
   return ledger.dispatches
     .filter((d) => d.repo === repo && (d.package ?? null) === pkg)
     .sort((a, b) => (rank[b.status] ?? 0) - (rank[a.status] ?? 0))[0];
@@ -193,7 +261,34 @@ export async function recordDispatchGuarded(
       message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} was already "${current!.status}" — re-dispatching it needs --reason (a fix loop or a deliberate redo), so finished work is never silently redone.`,
     };
   }
-  const toWrite: JourneyDispatch = reopening ? { ...dispatch, redispatchReason: opts.reason!.trim() } : dispatch;
+  // 4 — no-reasonless-redirect: the whole value of a `redirected` record is
+  // the reason — what the PE asked for, live — so the coordinator can
+  // reconcile the Orientation Spec against it. A redirect that records
+  // nothing useful is close to no record at all, so it is rejected the same
+  // way an undocumented re-dispatch is, rather than accepted as silent noise.
+  if (dispatch.status === "redirected" && !opts.reason?.trim()) {
+    return {
+      ok: false,
+      code: "redirect-needs-reason",
+      message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} is being recorded "redirected" — --reason is required (what the PE asked for, live), so the coordinator can reconcile the Orientation Spec instead of silently drifting from what is actually being built.`,
+    };
+  }
+
+  // Reopening a finished unit is a genuine restart of its work, not an update
+  // to it: `pr`/`evidence` are already dropped by mergeDispatch above (they
+  // are not sticky, and this write's `dispatch` never carries them for a
+  // plain `--status dispatched --reason "..."` redispatch). `sessionId` IS
+  // sticky, though — and a stale one left in place here would silently break
+  // the redispatch: `dispatchCommand`'s pending filter is
+  // `mode === "session" && status === "dispatched" && !sessionId`, so a unit
+  // still carrying its OLD session id would never be picked up for a NEW
+  // `aipe session dispatch` call. Force it out explicitly (present-but-
+  // `undefined` — mergeDispatch treats that as "clear", not "inherit").
+  const toWrite: JourneyDispatch = reopening
+    ? { ...dispatch, sessionId: undefined, redispatchReason: opts.reason!.trim() }
+    : dispatch.status === "redirected"
+      ? { ...dispatch, redirectReason: opts.reason!.trim() }
+      : dispatch;
 
   const path = await recordDispatch(workspaceDir, id, toWrite);
   return { ok: true, path };

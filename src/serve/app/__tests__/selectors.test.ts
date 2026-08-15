@@ -74,17 +74,22 @@ test("worktreeOf falls back to '—' rendering via unitLines when null", () => {
   expect(rows.find((r) => r.key === "worktree")?.value).toBe("—");
 });
 
-test("cvWork buckets delivered(+merged) and inprog(dispatched+escalated); removed is excluded from both", () => {
+test("cvWork buckets delivered(+merged) and inprog(dispatched+escalated+redirected); removed is excluded from both", () => {
   dispatches.value = [
     { repo: "app", specialist: "Ana", status: "delivered" },
     { repo: "app", specialist: "Ana", status: "merged" },
     { repo: "app", specialist: "Ana", status: "dispatched" },
     { repo: "app", specialist: "Ana", status: "escalated" },
+    { repo: "app", specialist: "Ana", status: "redirected" },
     { repo: "app", specialist: "Ana", status: "removed" },
   ];
   const work = cvWork("Ana");
   expect(work.delivered.length).toBe(2);
-  expect(work.inprog.length).toBe(2);
+  // Finding A (whole-branch review): `redirected` used to fall into neither
+  // bucket — a specialist whose work just diverged mid-flight would vanish
+  // from their own CV's "in progress" list.
+  expect(work.inprog.length).toBe(3);
+  expect(work.inprog.some((d) => d.status === "redirected")).toBe(true);
   expect(work.delivered.some((d) => d.status === "removed")).toBe(false);
   expect(work.inprog.some((d) => d.status === "removed")).toBe(false);
 });

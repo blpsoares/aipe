@@ -16,12 +16,14 @@ const STATUS_GLYPH: Record<WorkerStatus, string> = {
   delivered: "✓",
   escalated: "⚠",
   available: "○",
+  redirected: "↻",
 };
 const STATUS_COLOR: Record<WorkerStatus, string> = {
   active: C.cyan,
   delivered: C.green,
   escalated: C.yellow,
   available: C.gray,
+  redirected: C.magenta,
 };
 
 export interface RenderOpts {
@@ -55,6 +57,7 @@ export function renderDashboard(s: Snapshot, opts: RenderOpts = {}): string {
       paint(C.gray, `${c.available} available`),
       paint(C.green, `${c.delivered}`) + paint(C.gray, " delivered"),
       paint(C.yellow, `${c.escalated}`) + paint(C.gray, " escalated"),
+      paint(C.magenta, `${c.redirected}`) + paint(C.gray, " redirected"),
       paint(C.gray, `· ${s.worktrees} worktrees · ${s.skills} skills · ${s.mcps} mcps`),
     ].join("  "),
   );
@@ -92,7 +95,7 @@ export function renderDashboard(s: Snapshot, opts: RenderOpts = {}): string {
     for (const j of activeJourneys) {
       out.push(`  ${paint(C.bold, j.id)}`);
       for (const d of j.dispatches) {
-        const st = (["active", "delivered", "escalated", "available"] as const).includes(d.status as WorkerStatus)
+        const st = (["active", "delivered", "escalated", "available", "redirected"] as const).includes(d.status as WorkerStatus)
           ? (d.status as WorkerStatus)
           : d.status === "dispatched" ? "active" : "available";
         const glyph = paint(STATUS_COLOR[st], STATUS_GLYPH[st]);

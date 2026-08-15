@@ -20,6 +20,11 @@ const META: Record<string, StatusMeta> = {
   failed: { tone: "rose", labelKey: "st_failed", descKey: "sd_failed" },
   escalated: { tone: "amber", labelKey: "st_escalated", descKey: "sd_escalated" },
   escalate: { tone: "amber", labelKey: "st_escalated", descKey: "sd_escalated" },
+  // A human talked to this specialist mid-flight and changed its direction —
+  // amber (the same "needs a look" tone as escalated), never `slate`: `slate`
+  // reads as idle/off, which is the exact opposite of a specialist whose work
+  // just diverged and is still running.
+  redirected: { tone: "amber", labelKey: "st_redirected", descKey: "sd_redirected" },
   available: { tone: "slate", labelKey: "st_available", descKey: "sd_available" },
   idle: { tone: "slate", labelKey: "st_idle", descKey: "sd_idle" },
   removed: { tone: "slate", labelKey: "st_removed", descKey: "sd_removed" },
@@ -31,4 +36,4 @@ export function statusMeta(status: string): StatusMeta {
 
 // The lifecycle order for the stage-guide legend (pipeline stages + the two
 // off-track states people most need explained).
-export const STAGE_GUIDE_ORDER = ["dispatched", "delivered", "verified", "failed", "escalated", "merged"] as const;
+export const STAGE_GUIDE_ORDER = ["dispatched", "redirected", "delivered", "verified", "failed", "escalated", "merged"] as const;

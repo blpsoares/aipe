@@ -85,6 +85,34 @@ test("ledger-governed lock (pid 0) collides across sessions while dispatched", a
   }
 });
 
+// Finding A (whole-branch review, same class as the dashboard/journey
+// visibility bugs): `hasDispatchedDispatch` only matched status "dispatched"
+// — but `recordDispatch` upserts a redirect IN PLACE of the specialist's
+// "dispatched" record (same repo+package+specialist key), so the instant a
+// live redirect lands, the lock would look orphaned even though the
+// specialist is still actively working, just on a changed brief. A second
+// coordinator session must still collide, not be handed the same worktree.
+test("a redirected dispatch keeps the lock ACTIVE — a redirect is not a release", async () => {
+  const dir = await ws();
+  try {
+    await startJourney(dir, "j1");
+    await recordDispatch(dir, "j1", {
+      repo: "embark", specialist: "A", branch: "b", worktree: "w",
+      status: "redirected", redirectReason: "PE changed direction mid-flight",
+    });
+    const a = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A", pid: 0 });
+    expect(a.ok).toBe(true);
+
+    await startJourney(dir, "j2");
+    await recordDispatch(dir, "j2", { repo: "embark", specialist: "B", branch: "b2", worktree: "w2", status: "dispatched" });
+    const b = await claimLock(dir, { repo: "embark", journey: "j2", specialist: "B", pid: 0 });
+    expect(b.ok).toBe(false);
+    if (!b.ok) expect(b.reason).toBe("collision");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("collision against an ACTIVE lock, then --force overrides", async () => {
   const dir = await ws();
   try {
