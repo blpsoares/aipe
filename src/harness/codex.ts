@@ -233,7 +233,7 @@ export const codexAdapter: HarnessAdapter = {
   // session-dispatch the moment it finds "untrusted", rather than assuming
   // trust because a file was written. Absent either, `null` is the only
   // honest answer.
-  containmentHook(): ContainmentHook | null {
+  containmentHook(_role?: string): ContainmentHook | null {
     return null;
   },
 

@@ -66,7 +66,7 @@ export const genericAdapter: HarnessAdapter = {
 
   // A harness AIPe drives only through files has no block-before-execute
   // mechanism, so it can never be trusted to hold a specialist inside its lane.
-  containmentHook(): null {
+  containmentHook(_role?: string): null {
     return null;
   },
 

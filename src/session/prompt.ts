@@ -76,7 +76,7 @@ export function composePrompt(input: PromptInput): string {
       "",
       "# Your relationship to agentop",
       "",
-      "You are a specialist (`AIPE_ROLE=specialist`). You **must not open** a new agentop session, and you must not kill any session — that authority belongs to the coordinator alone, and a hook enforces it.",
+      "You are a specialist. You **must not open** a new agentop session, and you must not kill any session — that authority belongs to the coordinator alone, and a hook enforces it.",
       "You may read: `agentop session list`, `attach`, `note`, `rename` — including to orient yourself about the sibling sessions filed under this journey's task.",
     ].join("\n"),
   );

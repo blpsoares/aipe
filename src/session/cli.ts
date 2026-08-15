@@ -1,11 +1,13 @@
 #!/usr/bin/env bun
 // `aipe session <dispatch|collect|guard|doctor>`.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { packageFqid } from "../context-brain/packages";
 import { readLedger, recordDispatch } from "../journey/ledger";
 import type { JourneyDispatch } from "../journey/types";
 import { getAdapter, resolveAdapter } from "../harness/registry";
+import { isContainable } from "../harness/types";
+import type { HarnessAdapter } from "../harness/types";
 import { personaSlug } from "../hire-specialists/render";
 import { startBatch, type BatchUnit } from "./batch";
 import { composePrompt } from "./prompt";
@@ -107,9 +109,20 @@ async function tryConsumeGrant(
   }
 }
 
+// `role` is the EXPLICIT value carried in the hook command itself (`aipe
+// session guard --role <role>` — see the `role` note on
+// HarnessAdapter#containmentHook in src/harness/types.ts). It takes
+// precedence over `env.AIPE_ROLE` when given. Nothing in production sets
+// AIPE_ROLE — agentop's `session batch`/`session <harness>` has no
+// env-injection flag (confirmed against the real v1.13.7 binary), so a role
+// that only ever arrived via the environment would never reach a dispatched
+// session at all. The env fallback is kept only so a hook installed before
+// this parameter existed, or a caller that still sets AIPE_ROLE directly
+// (e.g. a test), keeps working.
 export async function guardCommand(
   payload: string,
   env: Record<string, string | undefined>,
+  role?: string,
 ): Promise<{ code: number; stdout: string }> {
   const command = readCommand(payload);
   // Fail open: a guard that cannot read the payload must not block real work.
@@ -117,7 +130,7 @@ export async function guardCommand(
   // agent is worse than the drift it prevents.
   if (command === null) return { code: 0, stdout: "" };
 
-  const decision = decide({ command, role: env.AIPE_ROLE });
+  const decision = decide({ command, role: role ?? env.AIPE_ROLE });
   if (decision.action === "allow") return { code: 0, stdout: "" };
   if (decision.action === "deny") return { code: 0, stdout: denyJson(decision.reason) };
 
@@ -140,9 +153,10 @@ export async function guardCommand(
   };
 }
 
-async function guard(): Promise<number> {
+async function guard(args: string[]): Promise<number> {
+  const role = getFlag(args, "--role");
   const payload = await new Response(Bun.stdin.stream()).text();
-  const { code, stdout } = await guardCommand(payload, process.env);
+  const { code, stdout } = await guardCommand(payload, process.env, role);
   if (stdout) console.log(stdout);
   return code;
 }
@@ -151,6 +165,47 @@ export interface DispatchOptions {
   workspace: string;
   journeyId: string;
   runner: AgentopRunner;
+}
+
+// Writes the containment hook — with the specialist role baked into the guard
+// invocation, see the `role` note on HarnessAdapter#containmentHook in
+// src/harness/types.ts — into a DISPATCHED UNIT'S OWN WORKTREE, which is
+// where the session's cwd actually is. Merging into the workspace root or a
+// repo root (what installIntegration/ensureSessionStartHook do for the PE's
+// own workspace) never reaches this file: a worktree is a separate git
+// checkout under `<repo>/.worktrees/<journey>-<slug>`, and nothing else
+// writes a containment hook there.
+//
+// Deliberately parallels ensureSessionStartHook (claude-code.ts) /
+// ensureGeminiHooks (gemini.ts) — read whatever settings file already exists
+// (tolerating missing/malformed), merge, write back — but generic over the
+// adapter's own `relPath`/`merge` rather than hardcoded to one harness's
+// path, since a unit's harness varies (claude-code writes
+// .claude/settings.json, gemini writes .gemini/settings.json, …).
+async function installWorktreeContainmentHook(
+  worktreeDir: string,
+  adapter: HarnessAdapter,
+): Promise<void> {
+  const hook = adapter.containmentHook("specialist");
+  if (!hook) {
+    // Unreachable in practice: dispatchCommand refuses any unit whose adapter
+    // isn't containable before this is ever called (see the isContainable
+    // check below). Thrown, not silently skipped, so a future call site that
+    // forgets that check fails loudly instead of dispatching uncontained.
+    throw new Error(`${adapter.id} is not containable`);
+  }
+  const settingsPath = join(worktreeDir, hook.relPath);
+  let existing: unknown = {};
+  try {
+    existing = JSON.parse(await readFile(settingsPath, "utf8"));
+  } catch {
+    // Missing or malformed → start fresh, same tolerance as
+    // ensureSessionStartHook/ensureGeminiHooks.
+    existing = {};
+  }
+  const merged = hook.merge(existing);
+  await mkdir(dirname(settingsPath), { recursive: true });
+  await writeFile(settingsPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
 }
 
 // Pulls this unit's section out of the approved Orientation Spec. Falls back to
@@ -302,7 +357,13 @@ export async function dispatchCommand(
   // dispatch that fails partway (persona missing for unit 2 of 3, say) must
   // not leave unit 1's prompt file behind, orphaned, implying a dispatch that
   // never happened. Validate everything first; write only once all reads land.
-  const resolved: { d: (typeof pending)[number]; fqid: string; personaBody: string; agentopHarness: string }[] = [];
+  const resolved: {
+    d: (typeof pending)[number];
+    fqid: string;
+    personaBody: string;
+    agentopHarness: string;
+    unitAdapter: HarnessAdapter;
+  }[] = [];
   for (const d of pending) {
     const fqid = packageFqid(d.repo, d.package);
 
@@ -324,16 +385,50 @@ export async function dispatchCommand(
     // explicitly rather than let a `null` reach the argv as a literal
     // "null" harness (or worse, silently coerce to something else).
     if (agentopHarness === null) {
-      lines.push(`ERROR harness: ${unitAdapter.id} has no agentop equivalent — not session-dispatchable`);
+      lines.push(`ERROR harness: ${fqid} uses ${unitAdapter.id}, which has no agentop equivalent — not session-dispatchable`);
+      return { code: 1, lines };
+    }
+    // `aipe dispatch validate` is only advisory — `--harness` on `aipe
+    // journey record` is deliberately unvalidated, so a ledger unit can carry
+    // a harness (codex, copilot) whose adapter has a non-null
+    // `agentopHarness` above but a `containmentHook()` that returns `null`
+    // (see codex.ts/copilot.ts: agentop knows how to start that harness, but
+    // AIPe cannot govern it once started). Re-running the eligibility law
+    // HERE, on the path that actually starts sessions, is the fix: refuse
+    // before anything is written or started, rather than let an
+    // advisory-only check be the sole guard on real dispatch.
+    if (!isContainable(unitAdapter)) {
+      lines.push(`ERROR harness: ${fqid} uses ${unitAdapter.id}, which is not containable — not session-dispatchable`);
       return { code: 1, lines };
     }
 
     const target = adapter.personaTarget(personaSlug(d.specialist));
     try {
       const personaBody = await readFile(join(opts.workspace, d.repo, target.relDir, target.filename), "utf8");
-      resolved.push({ d, fqid, personaBody, agentopHarness });
+      resolved.push({ d, fqid, personaBody, agentopHarness, unitAdapter });
     } catch {
       lines.push(`ERROR persona: could not read the persona for ${d.specialist}@${d.repo}`);
+      return { code: 1, lines };
+    }
+  }
+
+  // Pass 2: install each unit's containment hook — with the specialist role
+  // baked in — into its OWN worktree, using ITS OWN adapter's relPath/merge
+  // (claude-code writes .claude/settings.json, gemini writes
+  // .gemini/settings.json, …; never a hardcoded path). This must happen
+  // BEFORE any session starts (see startBatch below): a specialist session
+  // that starts even one tick before its hook is on disk would run
+  // uncontained for that window, and a hook that fails to install for one
+  // unit must not let ANY unit's session start — a partial dispatch that
+  // leaves one specialist uncontained is worse than none, so this aborts the
+  // whole wave rather than starting the units whose hook did land.
+  for (const { d, fqid, unitAdapter } of resolved) {
+    try {
+      await installWorktreeContainmentHook(d.worktree, unitAdapter);
+    } catch (err) {
+      lines.push(
+        `ERROR containment: could not install the containment hook for ${fqid} in ${d.worktree} (${err instanceof Error ? err.message : String(err)}) — no session was started`,
+      );
       return { code: 1, lines };
     }
   }
@@ -614,14 +709,14 @@ const HELP = [
   "  grant    --journey <id> --session-id <id> --count <n> [--workspace <dir>]",
   "                                                 Issue a quota of session spawns to a specialist",
   "  doctor                                        Report agentop availability",
-  "  guard                                         (internal) containment hook decision",
+  "  guard [--role <role>]                         (internal) containment hook decision",
 ].join("\n");
 
 export async function run(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
     case "guard":
-      return guard();
+      return guard(rest);
     case "dispatch": {
       const workspace = getFlag(rest, "--workspace") ?? process.cwd();
       const journeyId = getFlag(rest, "--journey");

@@ -176,11 +176,12 @@ const SESSION_START_HOOK = {
   hooks: [{ type: "command", command: SESSION_CONTEXT_COMMAND }],
 };
 
-// `run_shell_command`, NOT `Bash` — see the file-header "Hooks" note.
-const BEFORE_TOOL_HOOK = {
-  matcher: "run_shell_command",
-  hooks: [{ type: "command", command: CONTAINMENT_COMMAND }],
-};
+// `run_shell_command`, NOT `Bash` — see the file-header "Hooks" note. `command`
+// already carries `--role <role>` baked in when one applies — see the `role`
+// note on `containmentHook()` in ./types.ts.
+function beforeToolHook(command: string) {
+  return { matcher: "run_shell_command", hooks: [{ type: "command", command }] };
+}
 
 interface GeminiSettings {
   hooks?: { SessionStart?: unknown[]; BeforeTool?: unknown[]; [k: string]: unknown };
@@ -251,7 +252,10 @@ export const geminiAdapter: HarnessAdapter = {
     return { mode: "hook", command: "aipe session-context" };
   },
 
-  containmentHook(): ContainmentHook {
+  containmentHook(role?: string): ContainmentHook {
+    // See the `role` note on HarnessAdapter#containmentHook in ./types.ts:
+    // baked into the command literally, never delivered via env var.
+    const command = role ? `${CONTAINMENT_COMMAND} --role ${role}` : CONTAINMENT_COMMAND;
     return {
       relPath: join(".gemini", "settings.json"),
       merge(existing: unknown): unknown {
@@ -259,8 +263,8 @@ export const geminiAdapter: HarnessAdapter = {
           existing && typeof existing === "object" ? { ...(existing as GeminiSettings) } : {};
         const hooks = { ...(settings.hooks ?? {}) };
         const list = Array.isArray(hooks.BeforeTool) ? [...hooks.BeforeTool] : [];
-        const already = list.some((e) => JSON.stringify(e).includes(CONTAINMENT_COMMAND));
-        if (!already) list.push(BEFORE_TOOL_HOOK);
+        const already = list.some((e) => JSON.stringify(e).includes(command));
+        if (!already) list.push(beforeToolHook(command));
         hooks.BeforeTool = list;
         settings.hooks = hooks;
         return settings;

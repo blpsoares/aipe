@@ -73,7 +73,25 @@ export interface HarnessAdapter {
   // How this harness is told to block a command before it runs. `null` means
   // the harness cannot be contained, and is therefore not eligible for
   // session-mode dispatch.
-  containmentHook(): ContainmentHook | null;
+  //
+  // `role`, when given, is baked LITERALLY into the rendered hook's guard
+  // invocation (`aipe session guard --role <role>`) — never delivered via an
+  // env var, because agentop's `session batch`/`session <harness>` has no
+  // flag to inject one into the session it starts (confirmed against the
+  // real v1.13.7 binary). Two call sites use this differently, on purpose:
+  //   - Installing into the PE's OWN workspace (installIntegration /
+  //     ensureSessionStartHook here, ensureGeminiHooks in gemini.ts) calls
+  //     this with NO role, so the coordinator's own PreToolUse/BeforeTool
+  //     hook never says `--role specialist` — the coordinator must keep
+  //     unrestricted `agentop session` access.
+  //   - Installing into a DISPATCHED unit's worktree (dispatchCommand, see
+  //     src/session/cli.ts) calls this with `"specialist"`, so that
+  //     worktree's hook — and only that worktree's hook — denies the
+  //     specialist role's session spawns/kills per `decide()` in
+  //     src/session/guard.ts.
+  // Omitting the argument MUST NOT default to "specialist" — that would hand
+  // the coordinator's own workspace the specialist's restrictions.
+  containmentHook(role?: string): ContainmentHook | null;
 
   // C — where a persona file lives inside its repo, and how it is wrapped so
   //     THIS harness auto-loads it. `personaTarget` is relative to the repo root.

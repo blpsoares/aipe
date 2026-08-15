@@ -13,7 +13,10 @@
 
 export interface GuardInput {
   command: string;
-  role: string | undefined; // AIPE_ROLE
+  // The resolved role, whatever it came from (an explicit `--role` baked
+  // into the hook command, or AIPE_ROLE as a fallback — see guardCommand in
+  // src/session/cli.ts). decide() itself doesn't care which; it stays pure.
+  role: string | undefined;
 }
 
 export type GuardDecision =

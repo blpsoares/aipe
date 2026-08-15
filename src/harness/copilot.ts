@@ -254,7 +254,7 @@ export const copilotAdapter: HarnessAdapter = {
   // seen worktree does not clear, and GitHub's own docs never confirm safe
   // non-interactive behavior for it — the same shape of problem that ruled
   // out Codex, via a different mechanism.
-  containmentHook(): ContainmentHook | null {
+  containmentHook(_role?: string): ContainmentHook | null {
     return null;
   },
 

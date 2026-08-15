@@ -22,10 +22,12 @@ const SESSION_START_HOOK = {
   hooks: [{ type: "command", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' }],
 };
 
-const PRE_TOOL_USE_HOOK = {
-  matcher: "Bash",
-  hooks: [{ type: "command", command: CONTAINMENT_COMMAND }],
-};
+// Builds the PreToolUse hook entry. `command` already carries `--role <role>`
+// baked in when one applies — see the `role` note on `containmentHook()` in
+// ./types.ts.
+function preToolUseHook(command: string) {
+  return { matcher: "Bash", hooks: [{ type: "command", command }] };
+}
 
 interface Settings {
   hooks?: { SessionStart?: unknown[]; PreToolUse?: unknown[]; [k: string]: unknown };
@@ -98,7 +100,10 @@ export const claudeCodeAdapter: HarnessAdapter = {
     return { mode: "hook", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' };
   },
 
-  containmentHook(): ContainmentHook {
+  containmentHook(role?: string): ContainmentHook {
+    // See the `role` note on HarnessAdapter#containmentHook in ./types.ts:
+    // baked into the command literally, never delivered via env var.
+    const command = role ? `${CONTAINMENT_COMMAND} --role ${role}` : CONTAINMENT_COMMAND;
     return {
       relPath: join(".claude", "settings.json"),
       merge(existing: unknown): unknown {
@@ -106,8 +111,8 @@ export const claudeCodeAdapter: HarnessAdapter = {
           existing && typeof existing === "object" ? { ...(existing as Settings) } : {};
         const hooks = { ...(settings.hooks ?? {}) };
         const list = Array.isArray(hooks.PreToolUse) ? [...hooks.PreToolUse] : [];
-        const already = list.some((e) => JSON.stringify(e).includes(CONTAINMENT_COMMAND));
-        if (!already) list.push(PRE_TOOL_USE_HOOK);
+        const already = list.some((e) => JSON.stringify(e).includes(command));
+        if (!already) list.push(preToolUseHook(command));
         hooks.PreToolUse = list;
         settings.hooks = hooks;
         return settings;
