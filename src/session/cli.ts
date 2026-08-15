@@ -25,11 +25,27 @@ function getFlag(args: string[], name: string): string | undefined {
 
 function denyJson(reason: string): string {
   return JSON.stringify({
+    // Claude Code / Codex shape: both read hookSpecificOutput.permissionDecision.
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
       permissionDecisionReason: reason,
     },
+    // Gemini CLI's BeforeTool hook reads a TOP-LEVEL `decision`/`reason` pair,
+    // never `hookSpecificOutput.permissionDecision` — confirmed 2026-08-14
+    // against geminicli.com/docs/hooks/reference/, where "permissionDecision"
+    // appears zero times and the documented deny shape is exactly
+    // `{"decision":"deny","reason":"..."}`. `aipe session guard` always exits
+    // 0 (see below), and Gemini's own docs say exit-code-0 + JSON `decision`
+    // is "preferred for all logic" — so without this field a Gemini BeforeTool
+    // hook pointed at this command would parse the JSON fine (satisfying
+    // "stdout must be JSON-only") but find no recognized decision and fail
+    // OPEN: a hook that looks installed and denies nothing. See
+    // src/harness/gemini.ts's header comment for the full citation. Both
+    // shapes coexist harmlessly — each harness reads only the keys it
+    // recognizes.
+    decision: "deny",
+    reason,
   });
 }
 

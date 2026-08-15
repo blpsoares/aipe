@@ -24,6 +24,20 @@ test("a specialist without a grant is denied, with a reason", async () => {
   expect(out.hookSpecificOutput.permissionDecisionReason).toContain("not permitted");
 });
 
+// Gemini's BeforeTool hook reads a TOP-LEVEL `decision`/`reason` pair, never
+// `hookSpecificOutput.permissionDecision` (see src/harness/gemini.ts's header
+// comment). Both shapes must be present in the SAME payload so one guard
+// binary contains every harness it's wired into, exit code 0 throughout.
+test("a deny also carries Gemini's top-level decision/reason shape, alongside Claude/Codex's", async () => {
+  const r = await guardCommand(payload("agentop session claude -p x"), {
+    AIPE_ROLE: "specialist",
+  });
+  expect(r.code).toBe(0);
+  const out = JSON.parse(r.stdout);
+  expect(out.decision).toBe("deny");
+  expect(out.reason).toContain("not permitted");
+});
+
 test("a specialist with a grant is allowed, and the grant is spent", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-guardcli-"));
   await issueGrant(dir, "j1", "s1", 1);

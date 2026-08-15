@@ -166,14 +166,31 @@ test("parseBatch rejects an unknown intensity rather than silently dropping it",
   expect(parseBatch([{ repo: "embark", specialist: "Joaquim", intensity: "turbo" }])).toBeNull();
 });
 
-// Codex is registered (KNOWN_HARNESSES still probes it) but its adapter's
-// containmentHook() returns null — see src/harness/codex.ts — so it must NOT
-// show up as containable here. "generic" is also excluded (no containment
-// hook), leaving only "claude-code".
-test("buildSessionContext reports only containable harnesses (codex excluded — not containable)", async () => {
+// Codex and Copilot are registered (KNOWN_HARNESSES still probes them) but
+// their adapters' containmentHook() returns null — see src/harness/codex.ts
+// and src/harness/copilot.ts — so neither shows up as containable here.
+// "generic" is also excluded (no containment hook). Gemini's adapter DOES
+// return a real hook (see src/harness/gemini.ts's header comment: folder
+// trust is off by default, and its hook-identity warning is non-blocking),
+// so it's the one addition to claude-code.
+test("buildSessionContext reports only containable harnesses (codex, copilot excluded — not containable)", async () => {
   const ctx = await buildSessionContext(async () => ({ code: 0, stdout: "agentop v1.9.0", stderr: "" }));
   expect(ctx.agentopOk).toBe(true);
-  expect(ctx.containableHarnesses).toEqual(["claude-code"]);
+  expect(ctx.containableHarnesses.sort()).toEqual(["claude-code", "gemini"]);
+});
+
+// End-to-end eligibility: buildSessionContext reports exactly the set of
+// containable harnesses this branch landed with, and a session-mode batch
+// targeting a non-containable one — including a genuinely-not-registered id
+// like "kimi" — is rejected the same way.
+test("every containable harness is eligible, and kimi still is not", async () => {
+  const ctx = await buildSessionContext(async () => ({ code: 0, stdout: "agentop v1.9.0", stderr: "" }));
+  expect(ctx.containableHarnesses.sort()).toEqual(["claude-code", "gemini"]);
+  const v = validateBatch(
+    [{ repo: "embark", specialist: "Joaquim", mode: "session", harness: "kimi" }],
+    repos, roster, ctx,
+  );
+  expect(v.ok === false && v.rejects).toContain("harness-not-containable kimi");
 });
 
 // Pins the new specified behaviour end-to-end: a session-mode batch targeting
@@ -189,4 +206,19 @@ test("a session-mode batch targeting harness: codex is rejected as not-containab
   );
   expect(v.ok).toBe(false);
   expect(v.ok === false && v.rejects).toContain("harness-not-containable codex");
+});
+
+// Same pin as codex, above, for copilot: copilotAdapter.containmentHook() is
+// null (see src/harness/copilot.ts's header comment — the directory-trust
+// gate), so "copilot" never appears in containableHarnesses either.
+test("a session-mode batch targeting harness: copilot is rejected as not-containable", async () => {
+  const ctx = await buildSessionContext(async () => ({ code: 0, stdout: "agentop v1.9.0", stderr: "" }));
+  const v = validateBatch(
+    [{ repo: "embark", specialist: "Joaquim", mode: "session", harness: "copilot" }],
+    repos,
+    roster,
+    ctx,
+  );
+  expect(v.ok).toBe(false);
+  expect(v.ok === false && v.rejects).toContain("harness-not-containable copilot");
 });
