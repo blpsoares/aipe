@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { probeAll, probeBinary } from "../probe";
+import { probeAll, probeBinary, PROBED_HARNESSES } from "../probe";
+import { getAdapter } from "../../harness/registry";
 import type { ProbeRunner } from "../types";
 
 const ok = (out: string): ProbeRunner => async () => ({ code: 0, stdout: out, stderr: "" });
@@ -27,4 +28,20 @@ test("a non-zero exit is absent, not a false positive", async () => {
 test("probeAll covers every harness AIPe knows how to start", async () => {
   const all = await probeAll(ok("x 1.0.0"));
   expect(all.map((p) => p.bin).sort()).toEqual(["claude", "codex", "copilot", "gemini"]);
+});
+
+test("PROBED_HARNESSES maps exact adapter id→binary pairs", () => {
+  expect(PROBED_HARNESSES).toEqual([
+    { id: "claude-code", bin: "claude" },
+    { id: "gemini", bin: "gemini" },
+    { id: "codex", bin: "codex" },
+    { id: "copilot", bin: "copilot" },
+  ]);
+});
+
+test("every PROBED_HARNESSES id resolves to a registered adapter with matching id", () => {
+  for (const entry of PROBED_HARNESSES) {
+    const adapter = getAdapter(entry.id);
+    expect(adapter.id).toBe(entry.id);
+  }
 });
