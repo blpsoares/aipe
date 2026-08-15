@@ -7,6 +7,11 @@
 // figure that looked like money would be fabricated. The index exists to make
 // RELATIVE choices legible — that ultracode across four session units is an
 // order of magnitude above one subagent — not to predict a bill.
+// `costIndex` is safe today only because every caller feeds it values drawn
+// from the closed `Envelope` unions (mode/tier/intensity); if a future
+// caller ever hands it an out-of-union string, the `Record` lookups below
+// yield `undefined`, the arithmetic produces `NaN`, and `NaN > maxCostIndexPerWave`
+// evaluates false — a NaN would silently bypass the cost gate rather than error.
 import type { Envelope, Intensity } from "./types";
 import type { ModelTier } from "../model/types";
 
