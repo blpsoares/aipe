@@ -75,9 +75,13 @@ absent or malformed. It carries:
 
 **Cost is a coarse relative unit, never currency.** AIPe cannot know a token
 price, a plan, or a rate limit, and a spec that implies it can will get a
-fabricated dollar figure. The unit is a **cost index**: a whole number where one
-subagent unit at the `standard` tier is 1, and the multipliers for mode, tier
-and intensity are declared in the policy file with conservative defaults. It
+fabricated dollar figure. The unit is a **cost index**: a whole number where the
+cheapest possible envelope — one subagent unit at the `fast` tier, normal
+intensity — is 1, and every other combination is a whole multiple of it. The
+reference is the cheapest envelope rather than a mid-tier one so that every tier
+stays a distinct integer; anchoring at `standard` would have collapsed `fast`
+and `standard` onto the same value. Multipliers for mode, tier and intensity are
+declared with conservative defaults. It
 exists to make *relative* choices legible — that `ultracode` on four session
 units is an order of magnitude above one subagent — not to predict a bill. Every
 surface that shows it must label it as an index, never as money.
