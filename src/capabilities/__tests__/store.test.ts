@@ -13,25 +13,29 @@ async function writeRawCaps(dir: string, yaml: string): Promise<void> {
 
 test("a missing file reads as null, never a throw", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-caps-"));
-  expect(await readCapabilities(dir)).toBeNull();
+  const result = await readCapabilities(dir);
+  expect(result).toBeNull();
 });
 
 test("harnesses as a non-array reads as null", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-caps-"));
   await writeRawCaps(dir, "harnesses: nope\nconfirmed: false\n");
-  expect(await readCapabilities(dir)).toBeNull();
+  const result = await readCapabilities(dir);
+  expect(result).toBeNull();
 });
 
 test("a bare scalar document reads as null", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-caps-"));
   await writeRawCaps(dir, "42\n");
-  expect(await readCapabilities(dir)).toBeNull();
+  const result = await readCapabilities(dir);
+  expect(result).toBeNull();
 });
 
 test("a top-level array document (no `harnesses` key to find) reads as null", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-caps-"));
   await writeRawCaps(dir, "[]\n");
-  expect(await readCapabilities(dir)).toBeNull();
+  const result = await readCapabilities(dir);
+  expect(result).toBeNull();
 });
 
 test("a malformed harness entry is dropped, the well-formed ones are kept", async () => {
@@ -56,11 +60,15 @@ test("a malformed harness entry is dropped, the well-formed ones are kept", asyn
       "  - {}",
     ].join("\n"),
   );
-  expect(await readCapabilities(dir)).toEqual({
-    confirmed: false,
-    harnesses: [
-      { id: "claude-code", bin: "claude", present: true, version: "5.0.0", source: "probe", checkedAt: NOW },
-    ],
+  const result = await readCapabilities(dir);
+  expect(result).toEqual({
+    capabilities: {
+      confirmed: false,
+      harnesses: [
+        { id: "claude-code", bin: "claude", present: true, version: "5.0.0", source: "probe", checkedAt: NOW },
+      ],
+    },
+    dropped: 2,
   });
 });
 
@@ -76,14 +84,22 @@ test("capabilities round-trip through the file", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-caps-"));
   const caps = fromProbes([{ bin: "gemini", present: true, version: "3.1.0" }], NOW);
   await writeCapabilities(dir, caps);
-  expect(await readCapabilities(dir)).toEqual(caps);
+  const result = await readCapabilities(dir);
+  expect(result).toEqual({
+    capabilities: caps,
+    dropped: 0,
+  });
 });
 
 test("capabilities round-trip through the file with present: false and version: null", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-caps-"));
   const caps = fromProbes([{ bin: "codex", present: false, version: null }], NOW);
   await writeCapabilities(dir, caps);
-  expect(await readCapabilities(dir)).toEqual(caps);
+  const result = await readCapabilities(dir);
+  expect(result).toEqual({
+    capabilities: caps,
+    dropped: 0,
+  });
 });
 
 test("fromProbes skips a bin that isn't in PROBED_HARNESSES", () => {
@@ -155,4 +171,52 @@ test("a recorded harness absent from a partial fresh list is not drift", () => {
   );
   // fresh only re-checked claude; gemini simply wasn't probed this round.
   expect(drift(recorded, [{ bin: "claude", present: true, version: "5.0.0" }])).toEqual([]);
+});
+
+test("no console output happens when reading a file with malformed entries", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-caps-"));
+  await writeRawCaps(
+    dir,
+    [
+      "confirmed: false",
+      "harnesses:",
+      "  - id: claude-code",
+      "    bin: claude",
+      "    present: true",
+      "    version: 5.0.0",
+      "    source: probe",
+      `    checkedAt: "${NOW}"`,
+      "  - {}",
+    ].join("\n"),
+  );
+
+  const originalError = console.error;
+  const originalLog = console.log;
+  const errors: string[] = [];
+  const logs: string[] = [];
+
+  try {
+    console.error = (...args: unknown[]) => {
+      errors.push(String(args.join(" ")));
+    };
+    console.log = (...args: unknown[]) => {
+      logs.push(String(args.join(" ")));
+    };
+
+    const result = await readCapabilities(dir);
+    expect(result).toEqual({
+      capabilities: {
+        confirmed: false,
+        harnesses: [
+          { id: "claude-code", bin: "claude", present: true, version: "5.0.0", source: "probe", checkedAt: NOW },
+        ],
+      },
+      dropped: 1,
+    });
+    expect(errors).toEqual([]);
+    expect(logs).toEqual([]);
+  } finally {
+    console.error = originalError;
+    console.log = originalLog;
+  }
 });

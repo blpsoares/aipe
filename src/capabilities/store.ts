@@ -38,22 +38,26 @@ function isValidHarnessCapability(v: unknown): v is HarnessCapability {
 // really work that way, which is worse than losing that one entry and
 // falling back to a re-probe for it. Discarding the whole record over one
 // bad line would throw away entries that were fine, which under-reports
-// what the machine has for no reason. Either way this must not be silent —
-// a caller that gets three harnesses back when the file listed four has no
-// way to know unless we say so.
-export async function readCapabilities(workspaceDir: string): Promise<Capabilities | null> {
+// what the machine has for no reason.
+//
+// Returns { capabilities, dropped } where `dropped` is the count of malformed
+// entries removed (0 if all entries were valid). A caller that gets three
+// harnesses back with `dropped: 1` can see that four were in the file — no
+// silent loss. Returns null when the file is missing or the top-level YAML
+// is malformed: no usable record at all.
+export async function readCapabilities(
+  workspaceDir: string,
+): Promise<{ capabilities: Capabilities; dropped: number } | null> {
   try {
     const path = capsPath(workspaceDir);
     const parsed = parse(await readFile(path, "utf8"));
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.harnesses)) return null;
     const harnesses = parsed.harnesses.filter(isValidHarnessCapability);
-    if (harnesses.length !== parsed.harnesses.length) {
-      const dropped = parsed.harnesses.length - harnesses.length;
-      console.error(
-        `readCapabilities: dropped ${dropped} malformed harness entr${dropped === 1 ? "y" : "ies"} from ${path}`,
-      );
-    }
-    return { harnesses, confirmed: parsed.confirmed === true };
+    const dropped = parsed.harnesses.length - harnesses.length;
+    return {
+      capabilities: { harnesses, confirmed: parsed.confirmed === true },
+      dropped,
+    };
   } catch {
     return null;
   }
