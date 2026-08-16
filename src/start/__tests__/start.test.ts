@@ -36,18 +36,18 @@ test("renderHarnessList numbers every harness", () => {
 });
 
 test("slugify lowercases, strips accents, and hyphenates", () => {
-  expect(slugify("Eletromídia")).toBe("eletromidia");
+  expect(slugify("Minha Emprésa")).toBe("minha-empresa");
   expect(slugify("  Op Vibes  ")).toBe("op-vibes");
 });
 
 test("run --harness --name creates aipe-<slug>/ with the integration", async () => {
   const parent = await mkdtemp(join(tmpdir(), "aipe-start-run-"));
   try {
-    const code = await run(["--harness", "claude-code", "--name", "Eletromídia", "--dir", parent], only([]));
+    const code = await run(["--harness", "claude-code", "--name", "Minha Emprésa", "--dir", parent], only([]));
     expect(code).toBe(0);
-    const settings = JSON.parse(await readFile(join(parent, "aipe-eletromidia", ".claude", "settings.json"), "utf8"));
+    const settings = JSON.parse(await readFile(join(parent, "aipe-minha-empresa", ".claude", "settings.json"), "utf8"));
     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain("aipe session-context");
-    const skill = await readFile(join(parent, "aipe-eletromidia", ".claude", "skills", "make-workspace", "SKILL.md"), "utf8");
+    const skill = await readFile(join(parent, "aipe-minha-empresa", ".claude", "skills", "make-workspace", "SKILL.md"), "utf8");
     expect(skill).toContain("name: make-workspace");
   } finally {
     await rm(parent, { recursive: true, force: true });

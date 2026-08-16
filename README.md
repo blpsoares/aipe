@@ -248,16 +248,16 @@ curl -fsSL https://aipe.openvibes.tech/cli | sh
 #    step needed before the coordinator can propose a priced dispatch envelope.
 aipe start
 #    ? Choose your agent harness:  ❯ Claude Code
-#    ? Workspace name:  eletromidia
+#    ? Workspace name:  minha-empresa
 #    aipe: checked which harnesses are available on this machine:
 #    aipe:  - OK claude-code claude 2.1.4
 #    aipe:  - NOTE capabilities: probed, not confirmed — a binary on PATH is
 #             not an authenticated binary. Run `aipe capabilities confirm`
 #             once you have checked.
-#    ✓ Created aipe-eletromidia/
+#    ✓ Created aipe-minha-empresa/
 
 # 3. Open that folder in your harness and just say hi.
-cd aipe-eletromidia && claude
+cd aipe-minha-empresa && claude
 #    The coordinator asks for your repos and drives onboarding; after each step
 #    it tells you to open a NEW session to continue — no slash commands to memorize.
 #    Once onboarded, bring a demand and it runs /operate.
