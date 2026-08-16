@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildBatchArgs, parseBatchOutput, startBatch } from "../batch";
+import { buildBatchArgs, buildRenameArgs, parseBatchOutput, startBatch } from "../batch";
 import type { AgentopRunner } from "../types";
 
 const units = [
@@ -293,6 +293,28 @@ test("startBatch refuses a mixed-model wave without ever invoking the runner", a
   ];
   await expect(startBatch("aipe/j1", mixed, runner)).rejects.toThrow(/disagree on model/);
   expect(called).toBe(false);
+});
+
+// buildRenameArgs — verified against the real agentop v1.18.2 binary (see
+// its own header comment): `agentop session rename <id|name> "label"` is two
+// bare positional arguments after the `session rename` subcommand, no flags.
+test("buildRenameArgs produces the exact positional argv agentop expects", () => {
+  expect(buildRenameArgs("s-1", "embark@Joaquim")).toEqual(["session", "rename", "s-1", "embark@Joaquim"]);
+});
+
+test("buildRenameArgs never contains --name — the batch-only flag that does not exist on rename either", () => {
+  expect(buildRenameArgs("s-1", "embark@Joaquim")).not.toContain("--name");
+});
+
+// A label built from a specialist with spaces (e.g. "Ana Paula") must survive
+// as ONE argv element — `Bun.spawn` never re-parses argv through a shell, so
+// unlike the recovery-command strings in cli.ts, no quoting is needed or
+// wanted here; quoting it would embed literal quote characters in the label
+// agentop actually stores.
+test("a label containing spaces stays a single argv element, unquoted", () => {
+  const args = buildRenameArgs("s-1", "embark@Ana Paula");
+  expect(args).toEqual(["session", "rename", "s-1", "embark@Ana Paula"]);
+  expect(args).toHaveLength(4);
 });
 
 test("startBatch accepts a wave where every model-bearing unit agrees, mixed with model-less units", async () => {

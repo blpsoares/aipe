@@ -27,9 +27,10 @@ export interface BatchUnit {
 //    (`agentop session <harness> ... --name "label"`), never on `batch`, and
 //    the `--session "<harness>[@<cwd>]: <prompt>"` string has no field for it
 //    either. So `batch` cannot name a session, in ANY form, at dispatch time
-//    — the closest equivalent is the separate `agentop session rename <id>
-//    "label"` command, run AFTER a session id is known, which is out of
-//    scope for this fix (see startBatch below: naming is dropped, not faked).
+//    — the actual equivalent is the separate `agentop session rename <id>
+//    "label"` command (see buildRenameArgs below), run once per session AFTER
+//    its id comes back from `batch` — which is exactly what dispatchCommand
+//    (../cli.ts) does.
 //
 // 2. `--model` is a BATCH-level flag, not a per-session one: given once,
 //    before the `--session` flags, it applies to every session in that one
@@ -164,6 +165,21 @@ export function parseBatchOutput(stdout: string): BatchParseResult {
     });
   }
   return { sessions, malformed };
+}
+
+// Builds the argv for `agentop session rename <id|name> "label"` — the ONLY
+// route agentop offers to name a session started via `batch` (see the
+// `--name` note above). Verified against the real agentop v1.18.2 binary:
+// `agentop session rename` with no arguments prints
+// `Usage: agentop session rename <id|name> "label"` on STDERR and exits 1;
+// `agentop session rename <bogus-id> "x"` prints
+// `No session matches "<bogus-id>". Run \`agentop session list\` to see
+// them.`, also on stderr, also exit 1. Two bare positional arguments, no
+// flags — `id` and `label` are each a single argv element handed straight to
+// `Bun.spawn` (never through a shell), so a label containing spaces (e.g. a
+// multi-word specialist name) needs no quoting here.
+export function buildRenameArgs(id: string, label: string): string[] {
+  return ["session", "rename", id, label];
 }
 
 export async function startBatch(

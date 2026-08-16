@@ -9,7 +9,7 @@ import { getAdapter, resolveAdapter } from "../harness/registry";
 import { isContainable } from "../harness/types";
 import type { HarnessAdapter } from "../harness/types";
 import { personaSlug } from "../hire-specialists/render";
-import { startBatch, type BatchUnit } from "./batch";
+import { buildRenameArgs, startBatch, type BatchUnit } from "./batch";
 import { composePrompt } from "./prompt";
 import { classify, pollOnce } from "./poll";
 import { probe, realRunner } from "./runner";
@@ -307,6 +307,21 @@ function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: J
   return parts.join(" ");
 }
 
+// The label a dispatched session is renamed to once it has an id (see the
+// rename step in dispatchCommand below). `fqid@specialist` — e.g.
+// "embark@Joaquim" — is the SAME idiom `aipe execution plan` already uses to
+// key a unit (`dispatchLabel` in src/execution/cli.ts): the bare fqid alone
+// is not enough, because SKILL.md can dispatch a dev AND a QA specialist
+// against the same package in the same wave — two separate sessions that
+// would otherwise carry the identical, indistinguishable label in `agentop
+// session ls`. Reusing the exact separator and field order AIPe already
+// trains a human to read (rather than inventing a second convention, e.g.
+// "specialist@fqid" or a slash) means "embark@Joaquim" reads the same way
+// here as it does in a plan.
+function sessionLabel(fqid: string, specialist: string): string {
+  return `${fqid}@${specialist}`;
+}
+
 export async function dispatchCommand(
   opts: DispatchOptions,
 ): Promise<{ code: number; lines: string[] }> {
@@ -460,8 +475,10 @@ export async function dispatchCommand(
       // verified against the real v1.13.7 binary, and the `--session
       // "<harness>[@<cwd>]: <prompt>"` string has no field for a label
       // either. So a session started via `batch` cannot be named at dispatch
-      // time in any form — the cockpit shows it by task (`aipe/<journeyId>`)
-      // and cwd instead. See the comment on buildBatchArgs in ./batch.ts.
+      // time in any form — the cockpit already groups the wave by task
+      // (`aipe/<journeyId>`), and each individual session is named
+      // separately, AFTER it has an id, via `agentop session rename` (see
+      // the rename loop below and buildRenameArgs in ./batch.ts).
       ...(d.model ? { model: d.model } : {}),
     });
   }
@@ -542,6 +559,33 @@ export async function dispatchCommand(
           `WARN ledger: ${fqid}'s redirectReason (${JSON.stringify(d.redirectReason)}) cannot be represented by the recovery command above and will be lost if it is run verbatim — restore it manually`,
         );
       }
+    }
+
+    // Best-effort labeling: the session is ALREADY a real, running detached
+    // process by this point (agentop started it inside startBatch, above) —
+    // exactly the same footing as the ledger write just above. A rename is
+    // cosmetic (it only changes what a human sees in `agentop session ls`);
+    // the work underneath it is real and must not be undone or interrupted
+    // over a label. So — same reasoning as the ledger try/catch — a rename
+    // that throws (binary gone mid-run), exits non-zero, or fails for any
+    // other reason must never fail this dispatch or stop the remaining
+    // units in the wave from being recorded and (attempted to be) renamed:
+    // report it as a WARN (never ERROR — ERROR is what flips the exit code
+    // below) and move on. The session id is still recorded in the ledger
+    // either way, `collect` still works either way, and the human can rename
+    // it by hand.
+    const label = sessionLabel(fqid, d.specialist);
+    try {
+      const renamed = await opts.runner(buildRenameArgs(session.id, label));
+      if (renamed.code !== 0) {
+        lines.push(
+          `WARN rename: session ${session.id} for ${fqid} could not be renamed to ${JSON.stringify(label)} (${renamed.stderr || `exit ${renamed.code}`}) — rename it manually: agentop session rename ${session.id} ${shQuote(label)}`,
+        );
+      }
+    } catch (err) {
+      lines.push(
+        `WARN rename: session ${session.id} for ${fqid} could not be renamed to ${JSON.stringify(label)} (${err instanceof Error ? err.message : String(err)}) — rename it manually: agentop session rename ${session.id} ${shQuote(label)}`,
+      );
     }
   }
   if (started.length !== pending.length) {

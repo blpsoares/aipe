@@ -216,7 +216,12 @@ test("a unit whose harness is not claude-code produces its own agentop harness n
     let capturedArgs: string[] = [];
     const capturingRunner: AgentopRunner = async (args) => {
       if (args[0] === "--version") return { code: 0, stdout: "agentop v1.9.0", stderr: "" };
-      capturedArgs = args;
+      // dispatchCommand also issues a `session rename` call per started
+      // session after the batch call returns (see the rename step in
+      // dispatchCommand) — that call has no `--session` flag in its argv, so
+      // it must not overwrite what this test actually wants to inspect: the
+      // batch call's own argv.
+      if (args.includes("--session")) capturedArgs = args;
       return okRunner(args);
     };
     const r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: capturingRunner });
