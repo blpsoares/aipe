@@ -168,6 +168,16 @@ digraph operate {
    into **waves**: everything in a wave can run at once; a later wave depends on
    an earlier one. Independent repos go in the same wave.
 
+   **Session mode binds the model per WAVE, not per unit** — `agentop` treats
+   `--model` as a batch-level flag, and `aipe session dispatch` refuses a wave
+   whose units disagree. So units wanting different models must go in different
+   waves. `aipe execution plan --journey <id>` (step 3.5 below explains its
+   sibling `propose`) groups the *chosen* envelopes into waves and tells you
+   when that split costs an extra wave; if one wave matters more than the finer
+   model choice, subagent mode binds the model per unit and does not force the
+   split. That trade is the PE's — surface it in the spec rather than deciding
+   it silently.
+
 3.5. **Write the Orientation Spec — and get the PE's approval (the gate).**
    Before *any* dispatch, author a durable, cross-package spec for this demand.
    Scaffold it (one scope section per unit in the batch):
@@ -180,8 +190,51 @@ digraph operate {
    (waves), and **Out of scope**. Keep it cross-package — implementation detail is
    each specialist's own SDD, not this.
 
-   **Per-unit dispatch envelope (the PE approves this too).** Each unit's scope
-   section carries three fields:
+   **Per-unit dispatch envelope (the PE approves this too).**
+
+   **Propose the envelope — do not hand the PE a blank one.** Before writing
+   this section, run:
+
+   ```bash
+   aipe execution propose --journey <id> --workspace <workspace>
+   ```
+
+   It refuses outright if this machine has no capabilities record —
+   `ERROR capabilities: no record — run aipe capabilities probe then aipe
+   capabilities confirm`. Run those first; a probe is a claim with a date, not
+   a fact (a binary on `PATH` is not an authenticated binary, which is what
+   `confirm` is for). Once there is a record, `propose` prints, per unit, the
+   envelopes actually viable **on this machine**, each with a `cost-index` and
+   marked `GATED` where policy requires the PE's signature. It **enumerates
+   and prices; it does not choose.** Choosing is yours.
+
+   For each unit, write the envelope you chose **and why**, plus the
+   alternatives you discarded. The reasoning is not decoration — without it
+   the PE can only accept or reject blind, which is the situation this exists
+   to end. Write it like this:
+
+   > `session / gemini / fast / normal` — session because the unit touches 40
+   > files and a shared context would starve it; gemini because this is the QA
+   > and the dev ran on claude-code; fast because this is a mechanical rename,
+   > not design. Discarded ultracode: there is no solution space to explore
+   > here.
+
+   **`cost-index` is a coarse relative index, never money.** The cheapest
+   envelope — subagent, `fast` tier, normal intensity — is 1. Never present it
+   as currency and never convert it: AIPe does not know the PE's token price,
+   plan, or rate limits.
+
+   **The gated line.** An envelope `propose` prints marked `GATED` needs the
+   PE's explicit approval before you record it; below that line you record
+   your choice and proceed. This is what keeps the PE from approving thirty
+   obvious envelopes to reach the one that mattered.
+
+   **If `propose` fails**, it names the constraint that bit — no capabilities
+   record, no containable harness on this machine, everything above the
+   policy ceiling. Say which to the PE, and fall back to subagent mode. Never
+   dispatch on a guess about what this machine can run.
+
+   Each unit's scope section then carries three fields:
 
    - `mode: subagent | session` — `subagent` (default) is in-process and returns
      its evidence directly. `session` is a real detached session with its own
