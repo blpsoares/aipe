@@ -259,6 +259,18 @@ digraph operate {
    # PE approves →
    aipe journey spec --journey <id> --approve --workspace <workspace>
    ```
+
+   **Record the approved envelope.** Once approved, record each unit's chosen
+   envelope onto its dispatch record using the five flags: `--mode`,
+   `--intensity`, `--harness`, `--tier`, `--model`. The shape mirrors step 4c
+   (session mode) — `aipe journey record` with these fields added to the base
+   dispatch record. **Critical rule for session mode:** a session-mode unit
+   **MUST** have `--model` recorded when the envelope is locked in. Without it,
+   the unit is silently treated as "not chosen yet" and `aipe execution plan`
+   tells the PE to approve the Orientation Spec first (no model to bind to the
+   wave). A subagent-mode unit needs no model — it binds per unit. Record this
+   before moving to step 4a so `plan` has complete envelopes to group into waves.
+
    Do **not** dispatch until `--show` reports `approved=true`. If an escalation
    later changes the cross-package shape, `--amend` (bumps the version), edit, and
    get re-approval before the next wave.
