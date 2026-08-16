@@ -13,8 +13,9 @@
 // (gateAboveSessions, maxCostIndexPerWave) reach a human — groupIntoWaves has
 // no other caller in this codebase.
 import { packageFqid } from "../context-brain/packages";
-import { readCapabilities } from "../capabilities/store";
-import type { Capabilities } from "../capabilities/types";
+import { probeAll, realProbeRunner } from "../capabilities/probe";
+import { fromProbes, readCapabilities, writeCapabilities } from "../capabilities/store";
+import type { Capabilities, ProbeRunner } from "../capabilities/types";
 import { getAdapter, hasAdapter } from "../harness/registry";
 import { isContainable } from "../harness/types";
 import { readLedger } from "../journey/ledger";
@@ -44,10 +45,18 @@ function droppedWarning(dropped: number): string {
 const UNCONFIRMED_NOTE =
   "NOTE capabilities: this record was probed but never confirmed by you — a binary on PATH is not an authenticated binary.";
 
+const AUTO_PROBED_NOTE =
+  "NOTE capabilities: no record found — probed this machine automatically just now.";
+
+const PROBED_BIN_LIST = "claude, gemini, codex, copilot";
+
 type CapsLoad =
   | { ok: true; caps: Capabilities; leadingLines: string[]; trailingNotes: string[] }
   | { ok: false; lines: string[] };
 
+// `plan` never self-heals: it only ever reads what `propose`/`aipe
+// capabilities probe` already recorded, so a missing record there is always
+// a firm refusal.
 async function loadCapabilities(workspace: string): Promise<CapsLoad> {
   const result = await readCapabilities(workspace);
   if (!result) {
@@ -66,15 +75,88 @@ async function loadCapabilities(workspace: string): Promise<CapsLoad> {
   return { ok: true, caps, leadingLines, trailingNotes };
 }
 
+// `propose` is the coordinator's entry point, and the whole point of this
+// subsystem is that the coordinator arrives with a FILLED envelope instead of
+// handing the human a blank one — so a missing record here self-heals by
+// probing right where the refusal used to be, instead of making the human
+// run `aipe capabilities probe` by hand just to get back to where `aipe
+// start` should already have left them.
+//
+// An EXISTING record — confirmed or not — is never re-probed here. Two
+// reasons, not one:
+//   - a confirmed record is the PE's word; re-probing on every `propose`
+//     would risk silently discarding a correction the moment the machine's
+//     PATH looks different than last time.
+//   - an UNCONFIRMED record is still the most recent evidence anyone has
+//     bothered to gather. Re-probing it on every call would make repeated
+//     `propose` invocations churn the file for no benefit, and would give an
+//     unconfirmed record less stability than a confirmed one deserves — the
+//     only thing that should ever promote unconfirmed to confirmed is `aipe
+//     capabilities confirm`, never a side effect of `propose` happening to
+//     run again.
+// So self-healing fires exactly once: the first time there is nothing on
+// disk at all.
+async function loadOrProbeCapabilities(
+  workspace: string,
+  runner: ProbeRunner,
+  now: string,
+): Promise<CapsLoad> {
+  const result = await readCapabilities(workspace);
+  if (result) {
+    const { capabilities: caps, dropped } = result;
+    const leadingLines: string[] = [];
+    const trailingNotes: string[] = [];
+    if (dropped > 0) leadingLines.push(droppedWarning(dropped));
+    if (!caps.confirmed) trailingNotes.push(UNCONFIRMED_NOTE);
+    return { ok: true, caps, leadingLines, trailingNotes };
+  }
+
+  let probes;
+  try {
+    probes = await probeAll(runner);
+  } catch (err) {
+    return {
+      ok: false,
+      lines: [
+        `ERROR capabilities: automatic probe failed (${err}) — run \`aipe capabilities probe\` to see why, then \`aipe capabilities confirm\``,
+      ],
+    };
+  }
+
+  const caps = fromProbes(probes, now);
+  if (!caps.harnesses.some((h) => h.present)) {
+    // Nothing usable: refuse rather than invent options, and don't persist a
+    // record that would make the NEXT call skip probing again (this stays a
+    // one-shot self-heal attempt every time, not a permanent all-absent
+    // record blocking a future retry once something gets installed).
+    return {
+      ok: false,
+      lines: [
+        `ERROR capabilities: probed this machine automatically and found no usable harness (${PROBED_BIN_LIST} all absent) — install one, then re-run \`aipe execution propose\``,
+      ],
+    };
+  }
+
+  await writeCapabilities(workspace, caps);
+  return { ok: true, caps, leadingLines: [AUTO_PROBED_NOTE], trailingNotes: [UNCONFIRMED_NOTE] };
+}
+
 export interface ProposeCommandOptions {
   workspace: string;
   journeyId: string;
+  // Injectable so tests never shell out to a real harness binary — see
+  // capabilities/__tests__/cli.test.ts's `only()` for the pattern this
+  // follows. Defaults to the real subprocess runner outside tests.
+  runner?: ProbeRunner;
+  now?: string;
 }
 
 export async function proposeCommand(
   opts: ProposeCommandOptions,
 ): Promise<{ code: number; lines: string[] }> {
-  const capsLoad = await loadCapabilities(opts.workspace);
+  const runner = opts.runner ?? realProbeRunner;
+  const now = opts.now ?? new Date().toISOString();
+  const capsLoad = await loadOrProbeCapabilities(opts.workspace, runner, now);
   if (!capsLoad.ok) return { code: 1, lines: capsLoad.lines };
   const { caps, leadingLines, trailingNotes } = capsLoad;
 

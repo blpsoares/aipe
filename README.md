@@ -128,19 +128,22 @@ aipe serve --port 8080 --workspace ../aipe-opvibes
 
 Every dispatch has four axes: `mode` (in-process subagent vs. a detached
 session), `intensity` (normal vs. `ultracode`), `harness` and `tier`/`model`.
-Left to guesswork, the cheapest correct choice rarely gets made. `aipe
-capabilities probe` detects which harness binaries this machine actually has
-(a claim with a date, not a fact — `aipe capabilities confirm` is the PE's
-word overriding it); `aipe execution propose --journey <id>` then crosses that
-record against `.aipe/execution-policy.yaml` and prints, per unit, every
-*viable* envelope with a `cost-index` and a `GATED` marker where the policy
-needs the PE's signature — it enumerates and prices, it never chooses. Once
-the PE approves and the coordinator records the chosen envelope per unit,
-`aipe execution plan --journey <id>` groups the recorded choices into waves
-(session mode binds `--model` per wave, not per unit) and reports the
-wave-level cost and any gate. **`cost-index` is a coarse relative index, never
-money** — AIPe cannot know your token price, plan, or rate limits. See
-[dossier 14](docs/dossie/14-execution-envelope.md).
+Left to guesswork, the cheapest correct choice rarely gets made. `aipe start`
+already probes this machine's harness binaries automatically and writes
+`.aipe/capabilities.yaml` — a claim with a date, not a fact, so it stays
+unconfirmed until you run `aipe capabilities confirm` (the PE's word
+overriding it). Even if that record is somehow missing, `aipe execution
+propose --journey <id>` self-heals: it probes right there, says so, and
+proceeds — it only refuses if that probe finds no usable harness at all.
+`propose` then crosses the record against `.aipe/execution-policy.yaml` and
+prints, per unit, every *viable* envelope with a `cost-index` and a `GATED`
+marker where the policy needs the PE's signature — it enumerates and prices,
+it never chooses. Once the PE approves and the coordinator records the chosen
+envelope per unit, `aipe execution plan --journey <id>` groups the recorded
+choices into waves (session mode binds `--model` per wave, not per unit) and
+reports the wave-level cost and any gate. **`cost-index` is a coarse relative
+index, never money** — AIPe cannot know your token price, plan, or rate
+limits. See [dossier 14](docs/dossie/14-execution-envelope.md).
 
 ### Session-mode dispatch — `aipe session`
 
@@ -240,10 +243,17 @@ curl -fsSL https://aipe.openvibes.tech/cli | sh
 
 # 2. Create a workspace. `aipe start` is a plain terminal program (no AI):
 #    it shows an arrow-key list of harnesses, asks the workspace name,
-#    and creates aipe-<name>/ (a publishable git repo) with the integration inside.
+#    creates aipe-<name>/ (a publishable git repo) with the integration inside,
+#    and probes this machine's harness binaries automatically — no separate
+#    step needed before the coordinator can propose a priced dispatch envelope.
 aipe start
 #    ? Choose your agent harness:  ❯ Claude Code
 #    ? Workspace name:  eletromidia
+#    aipe: checked which harnesses are available on this machine:
+#    aipe:  - OK claude-code claude 2.1.4
+#    aipe:  - NOTE capabilities: probed, not confirmed — a binary on PATH is
+#             not an authenticated binary. Run `aipe capabilities confirm`
+#             once you have checked.
 #    ✓ Created aipe-eletromidia/
 
 # 3. Open that folder in your harness and just say hi.
@@ -272,16 +282,20 @@ session mode (below): a claude-code workspace can still dispatch a QA unit to
 `gemini`, since that only needs the `gemini` binary present, not a supported
 `aipe start` integration for it.
 
-Two more steps become relevant once you are operating, each optional and each
-needing something outside `aipe` itself:
+One more step becomes relevant once you are operating, and it's optional:
 
 ```sh
-# 4. Before the coordinator can propose a priced dispatch envelope (it does
-#    this automatically at the approval gate of every /operate journey), this
-#    machine's capabilities must be on record. `aipe execution propose`
-#    refuses outright without one — run this once, in the workspace:
-aipe capabilities probe      # detects the claude/gemini/codex/copilot binaries on PATH
-aipe capabilities confirm    # your word that what was detected is trustworthy
+# 4. `aipe start` already probed your capabilities (unconfirmed — a binary on
+#    PATH is not an authenticated binary). Once you've actually checked what
+#    it found, put your word on record:
+aipe capabilities confirm
+#    Skipping this is fine too: `aipe execution propose` still runs on an
+#    unconfirmed record (it just prints a NOTE saying so on every line), and
+#    if a workspace somehow has no capabilities record at all, `propose`
+#    probes automatically right there rather than refusing outright.
+#    `aipe capabilities probe` re-runs the detection by hand — useful right
+#    after installing a new harness binary — and `aipe capabilities show`
+#    flags drift (a recorded harness that has since appeared or vanished).
 
 # 5. For session-mode dispatch (a specialist running as its own detached
 #    agentop session instead of an in-process subagent), install agentop
@@ -357,7 +371,7 @@ aipe-opvibes/
   │    ├── journeys/<id>/orientation.md    # the approved Orientation Spec (scope + per-unit envelope)
   │    ├── journeys/<id>/prompts/<fqid>.md # session-mode: exactly what each specialist was told
   │    ├── journeys/<id>/grants/<sessionId>/  # session-mode: spawn-quota tokens issued via `aipe session grant`
-  │    ├── capabilities.yaml     # what this machine can run (`aipe capabilities probe|confirm`)
+  │    ├── capabilities.yaml     # what this machine can run (probed automatically by `aipe start`; `aipe capabilities probe|show|confirm`)
   │    └── execution-policy.yaml # wave-level spending limits (optional; conservative defaults if absent)
   ├── .claude/                   # SessionStart hook + AIPe skills
   └── <repo>/                    # cloned repo (NOT published), with:

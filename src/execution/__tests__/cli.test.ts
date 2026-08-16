@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planCommand, proposeCommand } from "../cli";
-import { writeCapabilities } from "../../capabilities/store";
+import { readCapabilities, writeCapabilities } from "../../capabilities/store";
 import { recordDispatch, startJourney } from "../../journey/ledger";
 import { defaultExecutionPolicy } from "../policy";
 import { proposeForUnit } from "../propose";
-import type { Capabilities } from "../../capabilities/types";
+import type { Capabilities, ProbeRunner } from "../../capabilities/types";
 
 const NOW = "2026-08-15T00:00:00.000Z";
 const caps: Capabilities = {
@@ -21,6 +21,16 @@ const COST_INDEX_NOTE =
   "NOTE cost-index is a COARSE RELATIVE INDEX, not currency: the cheapest envelope (subagent, fast tier, normal intensity) is 1.";
 const UNCONFIRMED_NOTE =
   "NOTE capabilities: this record was probed but never confirmed by you — a binary on PATH is not an authenticated binary.";
+const AUTO_PROBED_NOTE =
+  "NOTE capabilities: no record found — probed this machine automatically just now.";
+
+// `propose`'s self-heal path never shells out to a real harness binary in a
+// test — same injectable-runner pattern as
+// capabilities/__tests__/cli.test.ts's `only()`. All four (claude, gemini,
+// codex, copilot) are actually installed on a dev machine, so a test that
+// forgot this fake would pass here and fail everywhere else.
+const only = (present: string[]): ProbeRunner => async (bin) =>
+  present.includes(bin) ? { code: 0, stdout: `${bin} 1.2.3`, stderr: "" } : { code: 127, stdout: "", stderr: "" };
 
 async function newWorkspace(): Promise<string> {
   return mkdtemp(join(tmpdir(), "aipe-execcli-"));
@@ -107,13 +117,70 @@ test("gated options are marked so, with the reason, in the real CLI output", asy
   );
 });
 
-test("without capabilities, propose refuses rather than guessing", async () => {
+test("without capabilities, propose self-heals by probing automatically and says so", async () => {
   const { dir, journey } = await fixture(false);
-  const r = await proposeCommand({ workspace: dir, journeyId: journey });
+  const r = await proposeCommand({ workspace: dir, journeyId: journey, runner: only(["claude"]), now: NOW });
+  expect(r.code).toBe(0);
+
+  const probedCaps: Capabilities = {
+    confirmed: false,
+    harnesses: [
+      { id: "claude-code", bin: "claude", present: true, version: "1.2.3", source: "probe", checkedAt: NOW },
+      { id: "gemini", bin: "gemini", present: false, version: null, source: "probe", checkedAt: NOW },
+      { id: "codex", bin: "codex", present: false, version: null, source: "probe", checkedAt: NOW },
+      { id: "copilot", bin: "copilot", present: false, version: null, source: "probe", checkedAt: NOW },
+    ],
+  };
+  const proposal = proposeForUnit("embark", probedCaps, defaultExecutionPolicy(), {});
+  const expected = [AUTO_PROBED_NOTE, "UNIT embark"];
+  for (const o of proposal.options) {
+    const e = o.envelope;
+    const gate = o.gated ? ` GATED (${o.gateReasons.join("; ")})` : "";
+    expected.push(`  ${e.mode} ${e.harness} ${e.tier} ${e.intensity} cost-index=${o.costIndex}${gate}`);
+  }
+  for (const x of proposal.excluded) expected.push(`  -- ${x.harness} excluded: ${x.reason}`);
+  expected.push(UNCONFIRMED_NOTE, COST_INDEX_NOTE);
+
+  expect(r.lines).toEqual(expected);
+
+  // The self-heal persists what it found, so `capabilities show`/`plan` never
+  // have to probe again on their own.
+  const result = await readCapabilities(dir);
+  expect(result!.capabilities).toEqual(probedCaps);
+});
+
+test("propose still refuses when the probe finds no usable harness, naming the constraint", async () => {
+  const { dir, journey } = await fixture(false);
+  const r = await proposeCommand({ workspace: dir, journeyId: journey, runner: only([]), now: NOW });
   expect(r.code).toBe(1);
   expect(r.lines).toEqual([
-    "ERROR capabilities: no record — run `aipe capabilities probe` then `aipe capabilities confirm`",
+    "ERROR capabilities: probed this machine automatically and found no usable harness (claude, gemini, codex, copilot all absent) — install one, then re-run `aipe execution propose`",
   ]);
+
+  // A failed self-heal writes nothing, so the NEXT propose call retries the
+  // probe instead of being stuck with a permanent all-absent record.
+  const result = await readCapabilities(dir);
+  expect(result).toBeNull();
+});
+
+test("an existing unconfirmed record is never re-probed or overwritten by propose", async () => {
+  const { dir, journey } = await fixture(false);
+  const unconfirmed: Capabilities = { ...caps, confirmed: false };
+  await writeCapabilities(dir, unconfirmed);
+
+  let called = false;
+  const spyRunner: ProbeRunner = async () => {
+    called = true;
+    throw new Error("propose must not probe when a record already exists");
+  };
+
+  const r = await proposeCommand({ workspace: dir, journeyId: journey, runner: spyRunner, now: NOW });
+  expect(called).toBe(false);
+  expect(r.code).toBe(0);
+  expect(r.lines.slice(-2)).toEqual([UNCONFIRMED_NOTE, COST_INDEX_NOTE]);
+
+  const result = await readCapabilities(dir);
+  expect(result!.capabilities).toEqual(unconfirmed);
 });
 
 test("an unknown journey errors, for propose", async () => {

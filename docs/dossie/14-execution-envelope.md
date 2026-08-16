@@ -26,13 +26,27 @@ coordinator's (and ultimately the PE's).
 
 ## `.aipe/capabilities.yaml` — what this machine can actually run
 
-Written by `aipe capabilities probe`, which shells out to each known harness
-binary's `--version` and records what it found. **A probe result is a claim
-with a date, not a fact** — a binary on `PATH` is not an authenticated
-binary, and a harness that was usable last month may not be after a CLI
-update. `aipe capabilities confirm` is the only thing that outranks a probe:
-it is the PE's word, recorded as such, so a later probe cannot silently
-overwrite a correction.
+`aipe start` probes this automatically as the last step of creating a
+workspace — the whole point of this subsystem is that the coordinator
+arrives at the approval gate with a **filled** envelope, so nothing about
+getting there should be a manual prerequisite. The probe itself shells out to
+each known harness binary's `--version` and records what it found; `aipe
+capabilities probe` re-runs the same detection by hand (useful right after
+installing a new harness binary). **A probe result is a claim with a date,
+not a fact** — a binary on `PATH` is not an authenticated binary, and a
+harness that was usable last month may not be after a CLI update. `aipe
+capabilities confirm` is the only thing that outranks a probe: it is the PE's
+word, recorded as such, so a later probe cannot silently overwrite a
+correction.
+
+If a workspace somehow has no record at all — an older workspace predating
+this auto-probe, or the file was deleted — `aipe execution propose` self-heals
+the same way `aipe start` does: it probes right there, says so in its output,
+and proceeds. It only refuses outright if that probe itself fails or finds no
+usable harness; an EXISTING record, confirmed or not, is never re-probed by
+`propose` (that would risk silently discarding a `confirm`, and would make an
+unconfirmed record less stable than it should be — only `aipe capabilities
+confirm` ever promotes one).
 
 ```yaml
 harnesses:
@@ -120,10 +134,16 @@ is defined as **1**; every other combination is a whole multiple of it
 `cost-index = mode × tier × intensity`. Anchored at the cheapest envelope
 (not a mid-tier one) so every tier lands on a distinct integer.
 
-## The flow: probe → confirm → propose → approve → record → plan
+## The flow: probe (automatic) → confirm → propose → approve → record → plan
 
-1. **`aipe capabilities probe`** — detects harness binaries, writes
-   `.aipe/capabilities.yaml` with `confirmed: false`.
+1. **`aipe start`** — probes harness binaries as the last step of creating
+   the workspace and writes `.aipe/capabilities.yaml` with `confirmed: false`.
+   Nothing manual is required to reach step 3 below. Probing never fails
+   `start`: if it throws or finds nothing, `start` says so and still
+   completes — a workspace without a capabilities record is fine (step 3
+   handles it), a `start` that dies half-way is not. `aipe capabilities
+   probe` re-runs the same detection by hand, e.g. right after installing a
+   new harness binary.
 2. **`aipe capabilities confirm`** — the PE's word, flips every entry's
    `source` to `pe-confirmed`. `aipe execution propose` still runs without
    this step, but prints an `UNCONFIRMED` note on every line.
@@ -133,9 +153,15 @@ is defined as **1**; every other combination is a whole multiple of it
    `hasAdapter` — never a second opinion) and prints every **viable**
    envelope with its cost-index and `GATED` marking, plus an explicit reason
    for anything excluded (an unauthenticated harness, a non-containable one).
-   It **fails outright** — `ERROR capabilities: no record — run aipe
-   capabilities probe then aipe capabilities confirm` — if step 1 was never
-   run; this is a firm ordering requirement, not a soft suggestion.
+   If somehow no record exists at all (step 1 never ran, or the file was
+   deleted), `propose` **self-heals**: it probes right there, prepends a NOTE
+   saying it did, and proceeds on the result — the same unconfirmed-by-default
+   record `aipe start` would have produced. An EXISTING record, confirmed or
+   not, is never re-probed here. It **still fails outright** — naming the
+   constraint — if that self-heal probe itself throws, or finds no usable
+   harness at all (every one of `claude`/`gemini`/`codex`/`copilot` absent);
+   in the all-absent case nothing is written, so the next `propose` call
+   retries rather than being stuck with a permanent empty record.
 4. **The coordinator chooses**, states why, states what it discarded, and
    presents it as part of the Orientation Spec. **The PE approves** (`aipe
    journey spec --approve`) — above the gated line explicitly; below it, the
@@ -148,7 +174,10 @@ is defined as **1**; every other combination is a whole multiple of it
    and a wave whose units disagree cannot be started as one call — see
    dossier 15), and reports each wave's cost-index and gate. This is the
    **only** path by which the wave-level policy limits
-   (`gateAboveSessions`, `maxCostIndexPerWave`) reach a human.
+   (`gateAboveSessions`, `maxCostIndexPerWave`) reach a human. Unlike
+   `propose`, `plan` never self-heals a missing record — it only ever reads
+   what `propose`/`aipe capabilities probe` already recorded, so a missing
+   record here is still a firm refusal.
 
 A unit whose envelope is incomplete (any of `mode`/`harness`/`tier`/
 `intensity` missing, or — for session mode specifically — no `model`
