@@ -53,6 +53,18 @@ const DEGRADED_CAPS: Capabilities = {
   ],
 };
 
+// codex is present on this machine but its adapter's `containmentHook()`
+// returns `null` (see harness/codex.ts) — it is NEVER containable, so a
+// session envelope on it is exactly what `dispatch/law.ts` REJECTs as
+// `harness-not-containable codex`.
+const CAPS_WITH_CODEX: Capabilities = {
+  confirmed: true,
+  harnesses: [
+    { id: "claude-code", bin: "claude", present: true, version: "1", source: "pe-confirmed", checkedAt: NOW },
+    { id: "codex", bin: "codex", present: true, version: "1", source: "pe-confirmed", checkedAt: NOW },
+  ],
+};
+
 async function fixture(withCaps = true): Promise<{ dir: string; journey: string }> {
   const dir = await newWorkspace();
   await startJourney(dir, "j1");
@@ -184,7 +196,7 @@ test("plan groups the recorded envelopes into one ungated subagent wave", async 
   const r = await planCommand({ workspace: dir, journeyId: "j1" });
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
-    "WAVE 1 model=(subagent — model binds per unit) units=embark,embark/pkgB cost-index=3",
+    "WAVE 1 model=(subagent — model binds per unit) units=embark@Joaquim,embark/pkgB@Marina cost-index=3",
     COST_INDEX_NOTE,
   ]);
 });
@@ -203,7 +215,7 @@ test("a wave whose recorded envelopes exceed the policy's session gate is report
   const r = await planCommand({ workspace: dir, journeyId: "j1" });
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
-    "WAVE 1 model=gpt-5 units=embark/a,embark/b,embark/c cost-index=12 GATED (3 concurrent sessions exceeds the policy's gate of 2 — needs your authorization)",
+    "WAVE 1 model=gpt-5 units=embark/a@Joaquim,embark/b@Marina,embark/c@Otavio cost-index=12 GATED (3 concurrent sessions exceeds the policy's gate of 2 — needs your authorization)",
     COST_INDEX_NOTE,
   ]);
 });
@@ -268,8 +280,8 @@ test("a unit with no recorded envelope is excluded from the plan and noted, whil
   const r = await planCommand({ workspace: dir, journeyId: "j1" });
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
-    "NOTE unit embark/pkgB: no envelope recorded yet — excluded from this plan",
-    "WAVE 1 model=(subagent — model binds per unit) units=embark cost-index=1",
+    "NOTE unit embark/pkgB@Marina: no envelope recorded yet — excluded from this plan",
+    "WAVE 1 model=(subagent — model binds per unit) units=embark@Joaquim cost-index=1",
     COST_INDEX_NOTE,
   ]);
 });
@@ -302,7 +314,7 @@ test("a subagent unit with no model recorded is still planned normally — the m
   const r = await planCommand({ workspace: dir, journeyId: "j1" });
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
-    "WAVE 1 model=(subagent — model binds per unit) units=embark cost-index=1",
+    "WAVE 1 model=(subagent — model binds per unit) units=embark@Joaquim cost-index=1",
     COST_INDEX_NOTE,
   ]);
 });
@@ -327,9 +339,9 @@ test("a mixed journey plans the complete units and calls out the session unit mi
   const r = await planCommand({ workspace: dir, journeyId: "j1" });
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
-    "NOTE unit embark/sessionNoModel: no envelope recorded yet — excluded from this plan",
-    "WAVE 1 model=gpt-5 units=embark/sessionOk cost-index=4",
-    "WAVE 2 model=(subagent — model binds per unit) units=embark/subagentOk cost-index=1",
+    "NOTE unit embark/sessionNoModel@Marina: no envelope recorded yet — excluded from this plan",
+    "WAVE 1 model=gpt-5 units=embark/sessionOk@Joaquim cost-index=4",
+    "WAVE 2 model=(subagent — model binds per unit) units=embark/subagentOk@Otavio cost-index=1",
     COST_INDEX_NOTE,
   ]);
 });
@@ -347,8 +359,112 @@ test("a degraded capabilities record surfaces how many entries were dropped, for
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
     "WARN capabilities: 1 malformed entry discarded from the record — re-run `aipe capabilities probe` to rebuild it",
-    "WAVE 1 model=(subagent — model binds per unit) units=embark cost-index=1",
+    "WAVE 1 model=(subagent — model binds per unit) units=embark@Joaquim cost-index=1",
     UNCONFIRMED_NOTE,
+    COST_INDEX_NOTE,
+  ]);
+});
+
+// ---------------------------------------------------------------------------
+// plan — the four merge-blocker regressions, driven through the real
+// ledger -> planCommand path (never groupIntoWaves in isolation: that
+// isolation is exactly what let the original modeByFqid bug ship).
+// ---------------------------------------------------------------------------
+
+test("a dev subagent and a QA session on the same fqid both appear, distinguishable, correctly labelled, with no placeholder text", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  // Dev recorded FIRST, QA SECOND — under the old modeByFqid map keyed by the
+  // bare fqid, the QA row (recorded later) would overwrite the dev row's
+  // mode for the shared key "embark", mislabeling the dev's subagent wave.
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "b-dev", worktree: "w-dev", status: "dispatched",
+    mode: "subagent", harness: "claude-code", tier: "fast", intensity: "normal",
+  });
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Marina", branch: "b-qa", worktree: "w-qa", status: "dispatched",
+    mode: "session", harness: "claude-code", tier: "standard", intensity: "normal", model: "gpt-5",
+  });
+  await writeCapabilities(dir, caps);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(0);
+  expect(r.lines).toEqual([
+    "WAVE 1 model=gpt-5 units=embark@Marina cost-index=4",
+    "WAVE 2 model=(subagent — model binds per unit) units=embark@Joaquim cost-index=1",
+    COST_INDEX_NOTE,
+  ]);
+  expect(r.lines.join("\n")).not.toContain("unreachable");
+});
+
+test("a dev and a QA both session on the same fqid, same model, appear twice as DISTINCT units — never the same unit twice in one wave", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "b-dev", worktree: "w-dev", status: "dispatched",
+    mode: "session", harness: "claude-code", tier: "standard", intensity: "normal", model: "gpt-5",
+  });
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Marina", branch: "b-qa", worktree: "w-qa", status: "dispatched",
+    mode: "session", harness: "claude-code", tier: "standard", intensity: "normal", model: "gpt-5",
+  });
+  await writeCapabilities(dir, caps);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(0);
+  expect(r.lines).toEqual([
+    "WAVE 1 model=gpt-5 units=embark@Joaquim,embark@Marina cost-index=8",
+    COST_INDEX_NOTE,
+  ]);
+  // Exactly what dispatch/law.ts's validateBatch would REJECT as
+  // `same-package embark` — a plan must never offer what dispatch refuses.
+  expect(r.lines[0]).not.toContain("units=embark,embark");
+});
+
+test("three merged units and one dispatched unit — only the pending one is planned; cost and gate reflect it alone", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  for (const [pkg, specialist] of [["a", "Joaquim"], ["b", "Marina"], ["c", "Otavio"]] as const) {
+    await recordDispatch(dir, "j1", {
+      repo: "embark", package: pkg, specialist, branch: `b-${pkg}`, worktree: `w-${pkg}`, status: "merged",
+      mode: "session", harness: "claude-code", tier: "standard", intensity: "normal", model: "gpt-5",
+    });
+  }
+  await recordDispatch(dir, "j1", {
+    repo: "embark", package: "d", specialist: "Renata", branch: "b-d", worktree: "w-d", status: "dispatched",
+    mode: "session", harness: "claude-code", tier: "standard", intensity: "normal", model: "gpt-5",
+  });
+  await writeCapabilities(dir, caps);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(0);
+  expect(r.lines).toEqual([
+    'NOTE unit embark/a@Joaquim: status "merged" is not pending — excluded from this plan',
+    'NOTE unit embark/b@Marina: status "merged" is not pending — excluded from this plan',
+    'NOTE unit embark/c@Otavio: status "merged" is not pending — excluded from this plan',
+    "WAVE 1 model=gpt-5 units=embark/d@Renata cost-index=4",
+    COST_INDEX_NOTE,
+  ]);
+});
+
+test("a session envelope on codex is excluded with a stated reason, not planned as a clean wave", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w", status: "dispatched",
+    mode: "subagent", harness: "claude-code", tier: "fast", intensity: "normal",
+  });
+  await recordDispatch(dir, "j1", {
+    repo: "embark", package: "pkgB", specialist: "Marina", branch: "b2", worktree: "w2", status: "dispatched",
+    mode: "session", harness: "codex", tier: "standard", intensity: "normal", model: "codex-model",
+  });
+  await writeCapabilities(dir, CAPS_WITH_CODEX);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(0);
+  expect(r.lines).toEqual([
+    "NOTE unit embark/pkgB@Marina: harness codex excluded — not containable — AIPe never starts a session it cannot govern",
+    "WAVE 1 model=(subagent — model binds per unit) units=embark@Joaquim cost-index=1",
     COST_INDEX_NOTE,
   ]);
 });

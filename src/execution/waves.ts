@@ -15,7 +15,17 @@ export interface ChosenUnit {
   model: string | null;
 }
 
+// Explicit, not inferred: a caller must never derive "is this a subagent
+// wave?" from `model === null`, because `model` is ALSO null for a session
+// wave whose units have no model chosen (see the null-model test below) —
+// that ambiguity is exactly what let a session wave get mislabeled as a
+// subagent wave upstream (execution/cli.ts). `mode` says which kind of wave
+// this is by construction; `model` says which model, only meaningful when
+// `mode === "session"`.
+export type WaveMode = "subagent" | "session";
+
 export interface Wave {
+  mode: WaveMode;
   model: string | null; // null for subagent waves — the model binds per unit there
   units: string[];
   costIndex: number;
@@ -44,6 +54,7 @@ function buildWave(
     );
   }
   return {
+    mode: isSession ? "session" : "subagent",
     model,
     units: members.map((m) => m.fqid),
     costIndex: cost,

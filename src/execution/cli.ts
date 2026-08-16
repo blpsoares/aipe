@@ -15,8 +15,10 @@
 import { packageFqid } from "../context-brain/packages";
 import { readCapabilities } from "../capabilities/store";
 import type { Capabilities } from "../capabilities/types";
+import { getAdapter, hasAdapter } from "../harness/registry";
+import { isContainable } from "../harness/types";
 import { readLedger } from "../journey/ledger";
-import type { JourneyDispatch } from "../journey/types";
+import type { DispatchStatus, JourneyDispatch } from "../journey/types";
 import { isTier } from "../model/types";
 import { readExecutionPolicy } from "./policy";
 import { proposeForUnit } from "./propose";
@@ -128,6 +130,58 @@ function recordedEnvelope(d: JourneyDispatch): Envelope | null {
   return { mode: d.mode, harness: d.harness, tier: d.tier, intensity: d.intensity };
 }
 
+// `plan` must key a unit for planning purposes the way the ledger keys a
+// dispatch: (repo, package, specialist) — NOT the bare fqid `propose` uses,
+// because SKILL.md dispatches a dev AND a QA against the same package as two
+// separate ledger rows sharing one fqid. Folding them onto one fqid let a QA
+// row silently overwrite a dev row's mode (see the `modeByFqid` bug this
+// replaced). `@` matches the separator `dispatch/law.ts` already uses for a
+// specialist-qualified unit (`unknown-specialist name@repo`), so a human
+// reading `embark@Joaquim` and `embark@Marina` recognizes the idiom.
+function dispatchLabel(d: JourneyDispatch): string {
+  return `${packageFqid(d.repo, d.package)}@${d.specialist}`;
+}
+
+// Only a dispatch that still represents work the coordinator could run
+// belongs in a human-facing plan:
+//   - `dispatched`  — claimed, not yet delivered: this IS the pending work.
+//   - `delivered`/`verified`/`merged` — the dev/QA step this ROW records is
+//     already done (verified/merged is the `verified|merged` = landed idiom
+//     dispatch/cli.ts already establishes for "safe to build on"; `delivered`
+//     is the same "this row's job is finished" state one step earlier, just
+//     not yet QA-cleared). Replanning it re-prices and re-gates work that
+//     will never run again.
+//   - `failed` — QA rejected it; the unit is NOT done, but nothing is
+//     scheduled to run until the coordinator deliberately re-dispatches
+//     (recordDispatchGuarded's redispatch-needs-reason gate, ledger.ts) —
+//     until then this row is a rejected record, not queued work.
+//   - `escalated` — explicitly waiting on the PE, not on a wave.
+//   - `redirected` — a session already running under new live direction; it
+//     is not something a fresh plan schedules, it is already underway.
+//   - `removed` — the worktree is gone; there is nothing left to plan.
+// Only `dispatched` survives this filter.
+const PENDING_STATUSES: DispatchStatus[] = ["dispatched"];
+
+// Consults the same authorities `propose` does (harness/registry.ts's
+// hasAdapter/getAdapter, and harness/types.ts's isContainable) so a unit
+// `dispatch/law.ts` would REJECT at batch time (`harness-not-containable`,
+// an unknown/absent harness) never reaches a wave for the PE to approve.
+// Containment only gates SESSION mode, exactly as in propose.ts and in the
+// dispatch law itself — subagent mode is never routed through agentop.
+function checkEligibility(envelope: Envelope, caps: Capabilities): { ok: true } | { ok: false; reason: string } {
+  if (!hasAdapter(envelope.harness)) {
+    return { ok: false, reason: "unknown harness — no adapter registered for this id" };
+  }
+  const cap = caps.harnesses.find((c) => c.id === envelope.harness);
+  if (!cap || !cap.present) {
+    return { ok: false, reason: "not present on this machine" };
+  }
+  if (envelope.mode === "session" && !isContainable(getAdapter(envelope.harness))) {
+    return { ok: false, reason: "not containable — AIPe never starts a session it cannot govern" };
+  }
+  return { ok: true };
+}
+
 export interface PlanCommandOptions {
   workspace: string;
   journeyId: string;
@@ -138,7 +192,7 @@ export async function planCommand(
 ): Promise<{ code: number; lines: string[] }> {
   const capsLoad = await loadCapabilities(opts.workspace);
   if (!capsLoad.ok) return { code: 1, lines: capsLoad.lines };
-  const { leadingLines, trailingNotes } = capsLoad;
+  const { caps, leadingLines, trailingNotes } = capsLoad;
 
   const ledger = await readLedger(opts.workspace, opts.journeyId);
   if (!ledger) {
@@ -152,15 +206,36 @@ export async function planCommand(
   }
 
   const chosen: ChosenUnit[] = [];
-  const missing: string[] = [];
+  const planNotes: string[] = [];
   for (const d of ledger.dispatches) {
-    const fqid = packageFqid(d.repo, d.package);
-    const envelope = recordedEnvelope(d);
-    if (!envelope) {
-      missing.push(fqid);
+    const label = dispatchLabel(d);
+
+    // Filter by status FIRST: a dispatch that no longer represents pending
+    // work (merged/verified/delivered/failed/escalated/redirected/removed)
+    // is never priced or gated, however complete its recorded envelope is —
+    // that is what let three `merged` units get re-planned alongside one
+    // `dispatched` unit and inflate cost-index 4x with a spurious gate.
+    if (!PENDING_STATUSES.includes(d.status)) {
+      planNotes.push(`unit ${label}: status "${d.status}" is not pending — excluded from this plan`);
       continue;
     }
-    chosen.push({ fqid, envelope, model: d.model ?? null });
+
+    const envelope = recordedEnvelope(d);
+    if (!envelope) {
+      planNotes.push(`unit ${label}: no envelope recorded yet — excluded from this plan`);
+      continue;
+    }
+
+    // Consult the eligibility authority BEFORE a session envelope can reach a
+    // wave — never reimplement dispatch/law.ts's containability/harness
+    // checks here, only ask them.
+    const eligibility = checkEligibility(envelope, caps);
+    if (!eligibility.ok) {
+      planNotes.push(`unit ${label}: harness ${envelope.harness} excluded — ${eligibility.reason}`);
+      continue;
+    }
+
+    chosen.push({ fqid: label, envelope, model: d.model ?? null });
   }
 
   if (chosen.length === 0) {
@@ -176,28 +251,21 @@ export async function planCommand(
   const { waves, notes } = groupIntoWaves(chosen, policy);
 
   const lines: string[] = [...leadingLines];
-  for (const fqid of missing) {
-    lines.push(`NOTE unit ${fqid}: no envelope recorded yet — excluded from this plan`);
-  }
+  for (const note of planNotes) lines.push(`NOTE ${note}`);
 
-  // `Wave.model === null` is ambiguous by construction (waves.ts, deliberately
-  // out of scope here, hardcodes it for the one subagent wave — where the
-  // model genuinely binds per unit) — it says nothing about *why* a wave has
-  // no model. Deriving the label from the envelope mode of the wave's own
-  // units, instead of from `model === null`, keeps that ambiguity from ever
-  // reaching this print site: recordedEnvelope above already guarantees every
-  // session ChosenUnit that survives into `chosen` has a real model, so a
-  // session-mode wave here always has `w.model` set, and only the one
-  // subagent wave can print the "binds per unit" label.
-  const modeByFqid = new Map(chosen.map((c) => [c.fqid, c.envelope.mode]));
+  // `Wave.mode` (waves.ts) says by construction whether this is the one
+  // subagent wave or a session wave — never derived from `model === null`,
+  // which is ALSO true for a session wave whose units have no model (that
+  // ambiguity is exactly what let a QA session wave inherit a dev subagent
+  // row's label upstream). `recordedEnvelope` above already guarantees every
+  // session ChosenUnit that reaches `chosen` carries a real model, so
+  // `w.model` is non-null on every session wave that can exist here; the
+  // fallback below stays purely defensive.
   waves.forEach((w, i) => {
-    // A wave's units are never empty (groupIntoWaves only pushes a wave for a
-    // non-empty slice of members), so units[0] always resolves.
-    const isSubagentWave = modeByFqid.get(w.units[0]!) === "subagent";
-    const model = isSubagentWave
-      ? "(subagent — model binds per unit)"
-      : (w.model ??
-        "(session wave with no model recorded — this should be unreachable; recordedEnvelope is meant to exclude it)");
+    const model =
+      w.mode === "subagent"
+        ? "(subagent — model binds per unit)"
+        : (w.model ?? "(session wave with no model recorded — unreachable: recordedEnvelope excludes it)");
     const gate = w.gated ? ` GATED (${w.gateReasons.join("; ")})` : "";
     lines.push(`WAVE ${i + 1} model=${model} units=${w.units.join(",")} cost-index=${w.costIndex}${gate}`);
   });
