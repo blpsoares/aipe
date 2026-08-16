@@ -124,6 +124,46 @@ aipe serve                       # http://127.0.0.1:4317
 aipe serve --port 8080 --workspace ../aipe-opvibes
 ```
 
+### Execution-envelope recommendation — `aipe capabilities` / `aipe execution`
+
+Every dispatch has four axes: `mode` (in-process subagent vs. a detached
+session), `intensity` (normal vs. `ultracode`), `harness` and `tier`/`model`.
+Left to guesswork, the cheapest correct choice rarely gets made. `aipe
+capabilities probe` detects which harness binaries this machine actually has
+(a claim with a date, not a fact — `aipe capabilities confirm` is the PE's
+word overriding it); `aipe execution propose --journey <id>` then crosses that
+record against `.aipe/execution-policy.yaml` and prints, per unit, every
+*viable* envelope with a `cost-index` and a `GATED` marker where the policy
+needs the PE's signature — it enumerates and prices, it never chooses. Once
+the PE approves and the coordinator records the chosen envelope per unit,
+`aipe execution plan --journey <id>` groups the recorded choices into waves
+(session mode binds `--model` per wave, not per unit) and reports the
+wave-level cost and any gate. **`cost-index` is a coarse relative index, never
+money** — AIPe cannot know your token price, plan, or rate limits. See
+[dossier 14](docs/dossie/14-execution-envelope.md).
+
+### Session-mode dispatch — `aipe session`
+
+A specialist is normally dispatched as an in-process **subagent**, sharing
+the coordinator's context and lifetime. `aipe session dispatch --journey <id>`
+instead starts it as a real, detached `agentop` session
+with its own full context window (and, opted in, `ultracode`) — for units
+heavy or long enough that a shared context would starve them. It records into
+the journey ledger instead of returning; `aipe session collect --journey <id>`
+polls and classifies each unit as `landed`, `running`, or `dead-silent`. A
+per-harness containment hook stops a dispatched specialist from opening or
+killing further sessions — `aipe session grant` is the only authorised
+escape, and today its quota **cannot yet take effect**: `agentop` does not
+stamp `AGENTOP_SESSION_ID` into the specialist's environment, so the
+consuming side has nothing to check against (the command says so). Only
+`claude-code` and `gemini` are containable today; `codex` and `copilot` each
+require an interactive trust step AIPe's unattended dispatch cannot clear, so
+`aipe dispatch validate` rejects them from session mode outright. `aipe
+session doctor` reports whether `agentop` (>= 1.9.0, from the *agentistics*
+project — not the unrelated npm package of the same name) is installed;
+without it, `mode: session` is simply unavailable and every unit dispatches
+as a subagent, unaffected. See [dossier 15](docs/dossie/15-session-dispatch.md).
+
 ## Status
 
 | # | Sub-project | Status | Dossier |
@@ -141,6 +181,8 @@ aipe serve --port 8080 --workspace ../aipe-opvibes
 | 10 | **Model policy** (`aipe model` — model selection by tier + authorization/volume gates) | Built | [12](docs/dossie/12-model-policy.md) |
 | 11 | **Toolbox kits** (`aipe skill add sdd-lite\|spec-kit\|pdd` + `aipe skill preset` — vendored Spec Kit, wired PDD plugin) | Built | — |
 | 12 | **`/handoff`** (portable `CLAUDE.md` export for a collaborator who won't install AIPe) | Built | [13](docs/dossie/13-handoff.md) |
+| 13 | **Execution-envelope recommendation** (`aipe capabilities probe\|show\|confirm`, `aipe execution propose\|plan`) | Built | [14](docs/dossie/14-execution-envelope.md) |
+| 14 | **Session-mode dispatch** (`aipe session dispatch\|collect\|grant\|doctor\|guard` via `agentop`) | Built | [15](docs/dossie/15-session-dispatch.md) |
 
 ### Roadmap (pending)
 
@@ -150,6 +192,8 @@ aipe serve --port 8080 --workspace ../aipe-opvibes
 | Harness adapters beyond Claude Code | The `aipe` CLI is already harness-agnostic; an adapter needs another harness to target + validate against. Deferred. |
 | Non-Claude-Code harness adapters | The `aipe` CLI is already harness-agnostic; only the skills are Claude-Code-shaped. Deferred (Claude Code suffices for now). |
 | Release + Cloudflare wiring | Deferred debt — see [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md). Publish the release, then create the redirect rules. |
+| Codex/Copilot session-mode containment | Both CLIs gate on an interactive trust step (Codex: per-hook-hash `/hooks` trust; Copilot: directory trust) that AIPe's unattended dispatch cannot clear headlessly today, so their adapters return `containmentHook(): null` and stay ineligible. Needs a documented non-interactive bypass from either CLI. |
+| `aipe session grant` redemption | The quota machinery is implemented and tested, but consuming it requires `agentop` to stamp `AGENTOP_SESSION_ID` into the specialist's environment, which it does not do yet. Blocked on that agentop-side change. |
 
 ## Laws & conventions
 
@@ -180,6 +224,11 @@ The rules the framework enforces (most as tested CLI, a few as skill prose):
   secrets in an MCP config (env references only; `--allow-secrets` overrides).
 - **Non-destructive growth:** `--merge` modes for relations and personas fold a
   new repo in without disturbing existing edges/personas.
+- **Session containment:** a specialist dispatched via `aipe session dispatch`
+  can never open or kill an `agentop` session — every containable harness's
+  adapter writes a `PreToolUse`-shaped hook into **that unit's own worktree**
+  (never the PE's own workspace) that denies it. `aipe session grant` is the
+  only authorised escape, and it is scoped to one `(journey, session)` pair.
 - **English-only repository:** code, specs, plans, skills, docs, and commit
   messages are English; interaction with the PE may happen in any language.
 
@@ -215,6 +264,34 @@ same project-scoped integration is installed **inside each specialist repo** too
 directly in a repo gets that repo's persona-scoped context instead of the
 coordinator's.
 
+Today `aipe start` only offers **Claude Code** and the experimental
+**generic/AGENTS.md** adapter as a *workspace* harness — Codex, Gemini,
+Copilot, Antigravity and Cursor are listed but `coming-soon` there. That is a
+separate question from which harness a *unit* can be dispatched to under
+session mode (below): a claude-code workspace can still dispatch a QA unit to
+`gemini`, since that only needs the `gemini` binary present, not a supported
+`aipe start` integration for it.
+
+Two more steps become relevant once you are operating, each optional and each
+needing something outside `aipe` itself:
+
+```sh
+# 4. Before the coordinator can propose a priced dispatch envelope (it does
+#    this automatically at the approval gate of every /operate journey), this
+#    machine's capabilities must be on record. `aipe execution propose`
+#    refuses outright without one — run this once, in the workspace:
+aipe capabilities probe      # detects the claude/gemini/codex/copilot binaries on PATH
+aipe capabilities confirm    # your word that what was detected is trustworthy
+
+# 5. For session-mode dispatch (a specialist running as its own detached
+#    agentop session instead of an in-process subagent), install agentop
+#    (>= 1.9.0, from the agentistics project — NOT the unrelated npm package
+#    of the same name) and check it:
+aipe session doctor
+#    Without agentop, mode: session is simply unavailable; every unit
+#    dispatches as a subagent, which needs nothing extra and is the default.
+```
+
 ## Requirements & distribution
 
 AIPe is meant to run for **anyone, in any agent harness, on any OS**. The
@@ -225,7 +302,7 @@ portable core is a single CLI (`aipe`):
 - Handoff (standalone, no workspace): `handoff` — one-shot `CLAUDE.md`
   export for a collaborator who won't install AIPe.
 - Operation & growth: `worktree · dispatch · journey · dashboard · serve ·
-  rehydrate · skill · mcp · add-repo`
+  rehydrate · skill · mcp · add-repo · capabilities · execution · session`
 
 - **End users need no runtime.** The CLI compiles to a standalone executable
   per OS/arch (`bun build --compile`), so there's **no Bun, Node, or npm**
@@ -250,6 +327,7 @@ src/cli.ts                    # unified `aipe` entry point: dispatches every sub
 src/<name>/                   # deterministic TS per capability (types, logic, cli.ts run(), __tests__/)
   context-brain, make-workspace, relationship, hire-specialists, start, session-hook   # onboarding
   worktree, dispatch, journey, rehydrate, toolbox, add-repo, dashboard, serve, handoff  # operation & growth
+  capabilities, execution, session                                                      # envelope recommendation + agentop dispatch
 bin/aipe, bin/aipe.cmd        # launchers: pick the standalone binary for the host (or Bun dev fallback)
 scripts/build.ts              # cross-platform `bun build --compile` into dist/ (gitignored)
 skills/<name>/SKILL.md        # coordinator-facing flows (Claude Code adapter):
@@ -275,7 +353,12 @@ aipe-opvibes/
   │    ├── personas/<repo>/<slug>/SKILL.md   # published persona sources (for rehydrate)
   │    ├── toolbox.yaml          # skill-packages + MCP catalog
   │    ├── skills/<name>/SKILL.md# published toolbox-skill sources
-  │    └── journeys/<id>.yaml    # per-demand dispatch ledger (audit)
+  │    ├── journeys/<id>.yaml    # per-demand dispatch ledger (audit)
+  │    ├── journeys/<id>/orientation.md    # the approved Orientation Spec (scope + per-unit envelope)
+  │    ├── journeys/<id>/prompts/<fqid>.md # session-mode: exactly what each specialist was told
+  │    ├── journeys/<id>/grants/<sessionId>/  # session-mode: spawn-quota tokens issued via `aipe session grant`
+  │    ├── capabilities.yaml     # what this machine can run (`aipe capabilities probe|confirm`)
+  │    └── execution-policy.yaml # wave-level spending limits (optional; conservative defaults if absent)
   ├── .claude/                   # SessionStart hook + AIPe skills
   └── <repo>/                    # cloned repo (NOT published), with:
        ├── .claude/skills/<persona>/SKILL.md   # installed persona (rehydratable)

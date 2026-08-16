@@ -38,12 +38,19 @@ may happen in another language, but the repository is English-only.)
 | 7 | AIPe Web Console (`aipe serve` — responsive org chart, pipeline, detail, embedded terminal, live over SSE) | Built | [08-web-console.md](08-web-console.md) |
 | 8 | Monorepo module granularity (`module` as the unit of work) + toolbox uninstall | Built | [09-module-granularity.md](09-module-granularity.md) |
 | 9 | Spec-first operation (coordinator Orientation Spec + PE gate + specialist SDD) | Built | [10-spec-first-operation.md](10-spec-first-operation.md) |
+| 10 | Model policy (`aipe model` — model selection by tier + authorization/volume gates) | Built | [12-model-policy.md](12-model-policy.md) |
+| 11 | Harness adapters (`HarnessAdapter` seam — Claude Code extraction + `generic` demonstrator) | Built | [11-harness-adapters.md](11-harness-adapters.md) |
+| 12 | `/handoff` (portable `CLAUDE.md` export for a collaborator who won't install AIPe) | Built | [13-handoff.md](13-handoff.md) |
+| 13 | Execution-envelope recommendation (`aipe capabilities probe\|show\|confirm`, `aipe execution propose\|plan`) | Built | [14-execution-envelope.md](14-execution-envelope.md) |
+| 14 | Session-mode dispatch (`aipe session dispatch\|collect\|grant\|doctor\|guard` via `agentop`) | Built | [15-session-dispatch.md](15-session-dispatch.md) |
 
 ### Roadmap (not yet built)
 
 - Persona load-order validation (needs a live session)
 - Harness adapters beyond Claude Code; release + Cloudflare wiring
 - Follow-ups: `/relationship` discovery at module grain; per-module persona-body prose
+- Codex/Copilot session-mode containment — both gate on an interactive trust step AIPe's unattended dispatch cannot clear headlessly; their adapters return `containmentHook(): null` until a non-interactive bypass is documented
+- `aipe session grant` redemption — the quota machinery is implemented and tested, but consuming it needs `agentop` to stamp `AGENTOP_SESSION_ID` into the specialist's environment, which it does not do yet
 
 See the foundation design at
 `docs/superpowers/specs/2026-07-01-aipe-context-brain-design.md`.
