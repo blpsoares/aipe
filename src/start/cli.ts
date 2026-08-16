@@ -104,7 +104,7 @@ export async function startCommand(
   return { code: 0, lines };
 }
 
-export async function run(args: string[]): Promise<number> {
+export async function run(args: string[], runner?: ProbeRunner): Promise<number> {
   const parent = getFlag(args, "--dir") ?? process.cwd();
   const explicitName = getFlag(args, "--name");
   const explicitHarness = getFlag(args, "--harness");
@@ -134,7 +134,7 @@ export async function run(args: string[]): Promise<number> {
     name = await askLine("Workspace name: ");
   }
 
-  const result = await startCommand({ parentDir: parent, harness, name: name ?? "" });
+  const result = await startCommand({ parentDir: parent, harness, name: name ?? "", runner });
   print(result.lines);
   return result.code;
 }
