@@ -207,6 +207,8 @@ export async function planCommand(
 
   const chosen: ChosenUnit[] = [];
   const planNotes: string[] = [];
+  let anyEnvelopeRecorded = false;
+
   for (const d of ledger.dispatches) {
     const label = dispatchLabel(d);
 
@@ -226,6 +228,8 @@ export async function planCommand(
       continue;
     }
 
+    anyEnvelopeRecorded = true;
+
     // Consult the eligibility authority BEFORE a session envelope can reach a
     // wave — never reimplement dispatch/law.ts's containability/harness
     // checks here, only ask them.
@@ -239,12 +243,30 @@ export async function planCommand(
   }
 
   if (chosen.length === 0) {
-    return {
-      code: 1,
-      lines: [
-        `ERROR journey: no unit in ${opts.journeyId} has a chosen envelope yet — approve the Orientation Spec first, then re-run \`aipe execution plan\``,
-      ],
-    };
+    // If no unit has any recorded envelope, the coordinator must approve the
+    // Orientation Spec first — that is what records envelopes.
+    // If units have envelopes but all were excluded (ineligible harness, absent
+    // harness, non-pending status, or any mix), list those reasons so the human
+    // can tell "nobody chose yet" from "your choices cannot run, here is why".
+    if (!anyEnvelopeRecorded) {
+      return {
+        code: 1,
+        lines: [
+          `ERROR journey: no unit in ${opts.journeyId} has a chosen envelope yet — approve the Orientation Spec first, then re-run \`aipe execution plan\``,
+        ],
+      };
+    } else {
+      return {
+        code: 1,
+        lines: [
+          ...leadingLines,
+          ...planNotes.map((note) => `NOTE ${note}`),
+          `ERROR journey: no unit in ${opts.journeyId} is eligible for planning — see the exclusion reasons above`,
+          ...trailingNotes,
+          COST_INDEX_NOTE,
+        ],
+      };
+    }
   }
 
   const policy = await readExecutionPolicy(opts.workspace);

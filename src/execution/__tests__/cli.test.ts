@@ -469,6 +469,43 @@ test("a session envelope on codex is excluded with a stated reason, not planned 
   ]);
 });
 
+test("only unit is a session envelope on codex (not containable) — outputs the reason, not the approve-spec message", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w", status: "dispatched",
+    mode: "session", harness: "codex", tier: "standard", intensity: "normal", model: "codex-model",
+  });
+  await writeCapabilities(dir, CAPS_WITH_CODEX);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(1);
+  expect(r.lines).toEqual([
+    "NOTE unit embark@Joaquim: harness codex excluded — not containable — AIPe never starts a session it cannot govern",
+    "ERROR journey: no unit in j1 is eligible for planning — see the exclusion reasons above",
+    COST_INDEX_NOTE,
+  ]);
+});
+
+test("only unit is a session envelope on an absent harness — outputs its reason, not the approve-spec message", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w", status: "dispatched",
+    mode: "session", harness: "gemini", tier: "standard", intensity: "normal", model: "some-model",
+  });
+  // caps only has claude-code, so gemini is absent from this machine
+  await writeCapabilities(dir, caps);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(1);
+  expect(r.lines).toEqual([
+    "NOTE unit embark@Joaquim: harness gemini excluded — not present on this machine",
+    "ERROR journey: no unit in j1 is eligible for planning — see the exclusion reasons above",
+    COST_INDEX_NOTE,
+  ]);
+});
+
 test("--journey missing errors via run() for plan too", async () => {
   const originalLog = console.log;
   const logged: string[] = [];
