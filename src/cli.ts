@@ -27,6 +27,8 @@ import { run as serve } from "./serve/cli";
 import { run as detectPackages } from "./detect-packages/cli";
 import { run as validatePersonas } from "./validate-personas/cli";
 import { run as model } from "./model/cli";
+import { run as capabilities } from "./capabilities/cli";
+import { run as execution } from "./execution/cli";
 import { checkUpdate, upgrade } from "./update/cli";
 import { maybeOfferUpdate } from "./update/notify";
 
@@ -56,6 +58,8 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "detect-packages": detectPackages,
   "validate-personas": validatePersonas,
   model: model,
+  capabilities: capabilities,
+  execution: execution,
   "check-update": checkUpdate,
   upgrade: upgrade,
   update: upgrade,
@@ -83,6 +87,8 @@ const HELP = [
   "  serve              Responsive web console (org chart, pipeline, terminal)",
   "  validate-personas  Preflight persona load-order readiness + live-check steps",
   "  model              Resolve model by tier + adjudicate authorization/volume gates",
+  "  capabilities       Detect and record which harness binaries this machine has",
+  "  execution          Price the viable ways to run each unit of a journey",
   "  rehydrate          Restore personas + toolbox and sync coordinator flow-skills",
   "  skill              Add/list toolbox skill-packages (frameworks) per repo",
   "  mcp                Add/list MCP servers (workspace-shared or per-repo)",
