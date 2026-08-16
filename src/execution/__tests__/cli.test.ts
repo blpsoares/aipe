@@ -274,6 +274,66 @@ test("a unit with no recorded envelope is excluded from the plan and noted, whil
   ]);
 });
 
+test("a session unit with mode/harness/tier/intensity recorded but no model is excluded, not planned as a mislabeled session wave", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w", status: "dispatched",
+    mode: "session", harness: "claude-code", tier: "standard", intensity: "normal",
+  });
+  await writeCapabilities(dir, caps);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(1);
+  expect(r.lines).toEqual([
+    "ERROR journey: no unit in j1 has a chosen envelope yet — approve the Orientation Spec first, then re-run `aipe execution plan`",
+  ]);
+});
+
+test("a subagent unit with no model recorded is still planned normally — the model genuinely binds per unit there", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w", status: "dispatched",
+    mode: "subagent", harness: "claude-code", tier: "fast", intensity: "normal",
+  });
+  await writeCapabilities(dir, caps);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(0);
+  expect(r.lines).toEqual([
+    "WAVE 1 model=(subagent — model binds per unit) units=embark cost-index=1",
+    COST_INDEX_NOTE,
+  ]);
+});
+
+test("a mixed journey plans the complete units and calls out the session unit missing its model", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", package: "sessionOk", specialist: "Joaquim", branch: "b1", worktree: "w1", status: "dispatched",
+    mode: "session", harness: "claude-code", tier: "standard", intensity: "normal", model: "gpt-5",
+  });
+  await recordDispatch(dir, "j1", {
+    repo: "embark", package: "sessionNoModel", specialist: "Marina", branch: "b2", worktree: "w2", status: "dispatched",
+    mode: "session", harness: "claude-code", tier: "standard", intensity: "normal",
+  });
+  await recordDispatch(dir, "j1", {
+    repo: "embark", package: "subagentOk", specialist: "Otavio", branch: "b3", worktree: "w3", status: "dispatched",
+    mode: "subagent", harness: "claude-code", tier: "fast", intensity: "normal",
+  });
+  await writeCapabilities(dir, caps);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(0);
+  expect(r.lines).toEqual([
+    "NOTE unit embark/sessionNoModel: no envelope recorded yet — excluded from this plan",
+    "WAVE 1 model=gpt-5 units=embark/sessionOk cost-index=4",
+    "WAVE 2 model=(subagent — model binds per unit) units=embark/subagentOk cost-index=1",
+    COST_INDEX_NOTE,
+  ]);
+});
+
 test("a degraded capabilities record surfaces how many entries were dropped, for plan", async () => {
   const dir = await newWorkspace();
   await startJourney(dir, "j1");

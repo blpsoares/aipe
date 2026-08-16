@@ -113,9 +113,18 @@ export async function proposeCommand(
 // present AND the tier is a value the model layer still recognizes — a
 // hand-edited or stale ledger entry with a bogus tier is treated the same as
 // "not chosen yet", never smuggled into groupIntoWaves as a fake Envelope.
+//
+// `model` is checked too, but only for session mode: agentop binds --model
+// per BATCH, so a session unit with no model chosen is not a finished
+// decision — it must be excluded, exactly like any other incomplete
+// envelope, rather than defaulting to null and landing in a real session
+// wave mislabeled as "model binds per unit" (that label is true only for
+// subagent mode). A subagent unit with no model is still complete: there the
+// model genuinely binds per unit, so there is nothing to be missing.
 function recordedEnvelope(d: JourneyDispatch): Envelope | null {
   if (!d.mode || !d.harness || !d.tier || !d.intensity) return null;
   if (!isTier(d.tier)) return null;
+  if (d.mode === "session" && !d.model) return null;
   return { mode: d.mode, harness: d.harness, tier: d.tier, intensity: d.intensity };
 }
 
@@ -170,8 +179,25 @@ export async function planCommand(
   for (const fqid of missing) {
     lines.push(`NOTE unit ${fqid}: no envelope recorded yet — excluded from this plan`);
   }
+
+  // `Wave.model === null` is ambiguous by construction (waves.ts, deliberately
+  // out of scope here, hardcodes it for the one subagent wave — where the
+  // model genuinely binds per unit) — it says nothing about *why* a wave has
+  // no model. Deriving the label from the envelope mode of the wave's own
+  // units, instead of from `model === null`, keeps that ambiguity from ever
+  // reaching this print site: recordedEnvelope above already guarantees every
+  // session ChosenUnit that survives into `chosen` has a real model, so a
+  // session-mode wave here always has `w.model` set, and only the one
+  // subagent wave can print the "binds per unit" label.
+  const modeByFqid = new Map(chosen.map((c) => [c.fqid, c.envelope.mode]));
   waves.forEach((w, i) => {
-    const model = w.model ?? "(subagent — model binds per unit)";
+    // A wave's units are never empty (groupIntoWaves only pushes a wave for a
+    // non-empty slice of members), so units[0] always resolves.
+    const isSubagentWave = modeByFqid.get(w.units[0]!) === "subagent";
+    const model = isSubagentWave
+      ? "(subagent — model binds per unit)"
+      : (w.model ??
+        "(session wave with no model recorded — this should be unreachable; recordedEnvelope is meant to exclude it)");
     const gate = w.gated ? ` GATED (${w.gateReasons.join("; ")})` : "";
     lines.push(`WAVE ${i + 1} model=${model} units=${w.units.join(",")} cost-index=${w.costIndex}${gate}`);
   });
