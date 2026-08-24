@@ -32,7 +32,7 @@ import { run as execution } from "./execution/cli";
 import { checkUpdate, upgrade } from "./update/cli";
 import { maybeOfferUpdate } from "./update/notify";
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.3.1";
 
 type Subcommand = (args: string[]) => Promise<number>;
 
