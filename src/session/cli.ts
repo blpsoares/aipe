@@ -850,8 +850,10 @@ export async function run(args: string[]): Promise<number> {
       }
       console.log(`ERROR agentop: ${probed.reason ?? "unavailable"}`);
       console.log("Session-mode dispatch needs agentop >= 1.9.0 (agentistics).");
-      console.log("It is NOT the npm package named `agentop` — that is an unrelated project.");
-      console.log("Install it, then re-run `aipe session doctor`. Subagent-mode dispatch works without it.");
+      console.log("It is NOT the npm package named `agentop` (unscoped) — that is an unrelated project.");
+      console.log("Install it via `curl -fsSL https://agentop.openvibes.tech/cli | bash`");
+      console.log("or `npm i -g @agentistics/agentop` (same binary, Linux x86_64 only today),");
+      console.log("then re-run `aipe session doctor`. Subagent-mode dispatch works without it.");
       return 1;
     }
     default:

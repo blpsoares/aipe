@@ -140,9 +140,11 @@ open a session" — it cannot, yet, regardless of what was issued.
 - **`aipe session doctor`** — reports whether `agentop` is installed and
   meets the minimum version (`1.9.0` — the first release verified to carry
   `session batch`/`list` with `--json`). Prints install instructions
-  otherwise, and is explicit that the npm package literally named `agentop`
-  is an unrelated project (a `top`-like dashboard) — installing it would put
-  the wrong binary on `PATH`.
+  otherwise — either `curl -fsSL https://agentop.openvibes.tech/cli | bash`
+  or `npm i -g @agentistics/agentop` (a thin wrapper that fetches the same
+  binary; Linux x86_64 only, today) — and is explicit that the npm package
+  literally named `agentop` (unscoped) is an unrelated project (a `top`-like
+  dashboard) — installing it would put the wrong binary on `PATH`.
 - **`aipe session guard [--role <role>]`** — internal: the command every
   containment hook actually invokes. Reads the harness's hook payload on
   stdin, prints the decision in whichever JSON shape that harness expects.

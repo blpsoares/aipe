@@ -300,7 +300,9 @@ aipe capabilities confirm
 # 5. For session-mode dispatch (a specialist running as its own detached
 #    agentop session instead of an in-process subagent), install agentop
 #    (>= 1.9.0, from the agentistics project — NOT the unrelated npm package
-#    of the same name) and check it:
+#    of the same name): either `curl -fsSL https://agentop.openvibes.tech/cli
+#    | bash` or `npm i -g @agentistics/agentop` (a thin wrapper that fetches
+#    the same binary — Linux x86_64 only, today). Then check it:
 aipe session doctor
 #    Without agentop, mode: session is simply unavailable; every unit
 #    dispatches as a subagent, which needs nothing extra and is the default.
