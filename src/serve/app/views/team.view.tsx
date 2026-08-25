@@ -128,6 +128,6 @@ function TeamView() {
 
 export const route: Route = {
   path: "/team",
-  nav: { label: "nav_workers", icon: "◑", order: 3 },
+  nav: { label: "nav_workers", icon: "team", order: 3 },
   component: TeamView,
 };

@@ -19,6 +19,7 @@ import {
 import { formatElapsed } from "../../present-time";
 import type { Dispatch, AttentionItem } from "../runtime/store";
 import { snapshot } from "../runtime/store";
+import { CoordinatorPanel } from "./CoordinatorPanel";
 
 // The dispatch's OWN journey (for its spec, elapsed and attention cross-ref) —
 // which is not necessarily the journey pinned in the rail's Part-1 strip.
@@ -323,6 +324,7 @@ export function WizardRail() {
           {inboxCount === 0 ? t("floor_inbox_clear") : `${inboxCount} ${t("floor_needs_you")}`}
         </span>
       </div>
+      <CoordinatorPanel />
       <div class="wz-body" data-tone={bodyTone}>
         {pinned ? <DispatchBody d={pinned} j={pinnedJourney} /> : j ? <JourneyBody j={j} /> : <div class="val">{t("floor_no_journey")}</div>}
       </div>

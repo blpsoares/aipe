@@ -22,7 +22,7 @@ afterEach(() => {
 
 test("route contract: path/order/icon preserved", () => {
   expect(route.path).toBe("/team");
-  expect(route.nav).toEqual({ label: "nav_workers", icon: "◑", order: 3 });
+  expect(route.nav).toEqual({ label: "nav_workers", icon: "team", order: 3 });
 });
 
 test("renders one card per worker (coordinator already excluded upstream)", () => {

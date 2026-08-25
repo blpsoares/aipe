@@ -35,6 +35,7 @@ test("routes.generated.ts has all view stubs, order-sorted, the Floor first, no 
     "/activity",
     "/monitor",
     "/settings",
+    "/status",
   ]);
   expect(appRoutes.some((r) => r.path === "/terminal")).toBe(false);
 });
@@ -43,7 +44,13 @@ test("Sidebar renders one nav-i per route.nav, in nav.order — settings in the 
   const { container } = render(<Sidebar />);
   const mainLabels = [...container.querySelectorAll(".sidebar > .nav-i")].map((b) => b.textContent);
   const nonSettings = appRoutes.filter((r) => r.path !== "/settings");
-  expect(mainLabels).toEqual(nonSettings.map((r) => r.nav.icon + t(r.nav.label)));
+  expect(mainLabels).toEqual(nonSettings.map((r) => t(r.nav.label)));
+  // Icons are inline SVGs now (5.2) — every nav item carries one with an accessible name.
+  for (const btn of container.querySelectorAll(".sidebar > .nav-i")) {
+    const svg = btn.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg!.getAttribute("aria-label")).toBeTruthy();
+  }
   // Settings lives in .sb-foot, alongside Collapse.
   const footButtons = [...container.querySelectorAll(".sb-foot > button")];
   expect(footButtons.length).toBe(2);
@@ -85,7 +92,7 @@ test("BottomNav lists only overview/pipeline/team/activity/monitor, in that orde
   const labels = [...container.querySelectorAll("#tabbar button")].map((b) => b.textContent);
   const expected = ["overview", "pipeline", "team", "activity", "monitor"].map((p) => {
     const r = appRoutes.find((x) => x.path === "/" + p)!;
-    return r.nav.icon + t(r.nav.label);
+    return t(r.nav.label);
   });
   expect(labels).toEqual(expected);
 });

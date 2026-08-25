@@ -81,6 +81,6 @@ function PipelineView() {
 
 export const route: Route = {
   path: "/pipeline",
-  nav: { label: "nav_pipeline", icon: "▦", order: 2 },
+  nav: { label: "nav_pipeline", icon: "pipeline", order: 2 },
   component: PipelineView,
 };

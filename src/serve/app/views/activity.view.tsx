@@ -26,6 +26,6 @@ function ActivityView() {
 
 export const route: Route = {
   path: "/activity",
-  nav: { label: "nav_activity", icon: "⧗", order: 5, badge: "escalation" },
+  nav: { label: "nav_activity", icon: "activity", order: 5, badge: "escalation" },
   component: ActivityView,
 };

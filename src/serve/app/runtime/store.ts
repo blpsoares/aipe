@@ -95,6 +95,9 @@ export interface RawSnapshot {
   // Live agentop session activity, folded in server-side (serve/payload.ts).
   // Absent when no dispatch runs as a session, or when agentop is unavailable.
   sessions?: SessionInfo[];
+  // The coordinator's own open sessions (rooted at the workspace) — a fact about
+  // sessions, not multiple coordinators (5.5).
+  coordinatorSessions?: SessionInfo[];
   [key: string]: unknown;
 }
 
@@ -122,6 +125,7 @@ export interface Snapshot {
   cvs: unknown[];
   attention: AttentionItem[];
   sessions: SessionInfo[];
+  coordinatorSessions: SessionInfo[];
 }
 
 type Translator = (k: string) => string;
@@ -260,6 +264,7 @@ const EMPTY_SNAPSHOT: Snapshot = {
   cvs: [],
   attention: [],
   sessions: [],
+  coordinatorSessions: [],
 };
 
 export const snapshot: Signal<Snapshot> = signal(EMPTY_SNAPSHOT);
@@ -299,6 +304,10 @@ export const floorJourney: ReadonlySignal<JourneyLike | null> = computed(() =>
 // absent). Used to derive a session-mode dispatch's true phase + activity.
 export const sessions: ReadonlySignal<SessionInfo[]> = computed(() => snapshot.value.sessions ?? []);
 
+// The coordinator's own open sessions — a fact about sessions, not multiple
+// coordinators (5.5). There is one coordinator identity: snapshot.context.coordinator.
+export const coordinatorSessionCount: ReadonlySignal<number> = computed(() => (snapshot.value.coordinatorSessions ?? []).length);
+
 // Everything waiting on the PE, ranked. The empty list IS the success state.
 export const decisionInbox: ReadonlySignal<DecisionItem[]> = computed(() =>
   buildDecisionInbox({
@@ -331,6 +340,7 @@ export function applySnapshot(raw: RawSnapshot, now: number, t: Translator = (k)
     cvs: raw.personaCVs || [],
     attention: raw.attention || [],
     sessions: raw.sessions || [],
+    coordinatorSessions: raw.coordinatorSessions || [],
   };
   snapshot.value = next;
 

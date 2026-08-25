@@ -6,6 +6,7 @@ import { toggleMobileOpen } from "../runtime/ui";
 import { ConnBadge } from "./ConnBadge";
 import { LangSwitch } from "./LangSwitch";
 import { ThemeToggle } from "./ThemeToggle";
+import { Icon } from "./Icon";
 
 const appRoutes = routes as Route[];
 
@@ -22,7 +23,7 @@ export function Topbar({ onOpenCommandPalette }: TopbarProps = {}) {
   return (
     <div class="topbar">
       <button type="button" class="icon-btn" id="hamb" onClick={toggleMobileOpen}>
-        ☰
+        <Icon name="menu" title={t("open_menu")} />
       </button>
       <div>
         <div class="tb-title" id="tbTitle">
@@ -30,7 +31,7 @@ export function Topbar({ onOpenCommandPalette }: TopbarProps = {}) {
         </div>
       </div>
       <button type="button" class="cmdk" id="cmdkBtn" onClick={() => onOpenCommandPalette?.()}>
-        <span>🔍</span>
+        <Icon name="search" title={t("search")} size={15} />
         <span class="lbl2">{t("search")}</span>
         <span class="kbd" style="margin-left:auto">
           ⌘K

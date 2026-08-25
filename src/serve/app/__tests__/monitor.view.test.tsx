@@ -33,7 +33,7 @@ afterEach(() => {
 
 test("route contract: path/order/icon preserved", () => {
   expect(route.path).toBe("/monitor");
-  expect(route.nav).toEqual({ label: "nav_monitor", icon: "◉", order: 6 });
+  expect(route.nav).toEqual({ label: "nav_monitor", icon: "monitor", order: 6 });
 });
 
 test("header: translated title/sub + live conn badge", () => {

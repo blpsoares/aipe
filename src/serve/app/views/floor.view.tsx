@@ -7,6 +7,7 @@ import { WizardRail } from "../components/WizardRail";
 import { DecisionInbox } from "../components/DecisionInbox";
 import { RepoGroup } from "../components/RepoGroup";
 import { ConnBadge } from "../components/ConnBadge";
+import { Icon } from "../components/Icon";
 import { dispatches, decisionInbox, pinnedDispatch, snapshot } from "../runtime/store";
 import { t } from "../runtime/i18n";
 import type { Route } from "../route-types";
@@ -68,7 +69,7 @@ function FloorView() {
         onClick={() => setInboxOpen((v) => !v)}
         aria-label={t("floor_inbox")}
       >
-        {inboxCount === 0 ? "✓" : `⚑ ${inboxCount}`}
+        inboxCount === 0 ? <Icon name="check" title={t("floor_inbox_clear")} /> : <><Icon name="flag" /> {inboxCount}</>
       </button>
     </div>
   );
@@ -76,6 +77,6 @@ function FloorView() {
 
 export const route: Route = {
   path: "/",
-  nav: { label: "floor_nav", icon: "▚", order: -1, badge: "escalation" },
+  nav: { label: "floor_nav", icon: "floor", order: -1, badge: "escalation" },
   component: FloorView,
 };

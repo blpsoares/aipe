@@ -1,4 +1,5 @@
 import { t, interpolate } from "../runtime/i18n";
+import { Icon } from "../components/Icon";
 import { fqid } from "../runtime/dom";
 import { navigate } from "../runtime/router";
 import { snapshot, counts, dispatches, activity, attentionItems } from "../runtime/store";
@@ -17,7 +18,7 @@ function HeroStatus() {
     const top = crit[0]!;
     return (
       <div class="hero crit">
-        <div class="orb">⚠</div>
+        <div class="orb"><Icon name="warn" size={22} title={t("att_critical")} /></div>
         <div>
           <h2>{interpolate(t("crit_h"), { n: att.length })}</h2>
           <p>{`${top.unit} — ${top.detail}${att.length > 1 ? ` (+${att.length - 1})` : ""}`}</p>
@@ -36,7 +37,7 @@ function HeroStatus() {
   const warnP = escW ? interpolate(t("warn_p"), { who: escW.name, repo: fqid(escW) }) : t("warn_p0");
   return (
     <div class={`hero ${warn ? "warn" : "ok"}`}>
-      <div class="orb">{warn ? "⚠" : "✓"}</div>
+      <div class="orb">{warn ? <Icon name="warn" size={22} title={t("att_warning")} /> : <Icon name="check" size={22} title={t("ok_h")} />}</div>
       <div>
         <h2>{warn ? interpolate(t("warn_h"), { n: c.escalated }) : t("ok_h")}</h2>
         <p>{warn ? warnP : t("ok_p")}</p>
@@ -184,6 +185,6 @@ function OverviewView() {
 
 export const route: Route = {
   path: "/overview",
-  nav: { label: "nav_overview", icon: "◎", order: 0 },
+  nav: { label: "nav_overview", icon: "overview", order: 0 },
   component: OverviewView,
 };

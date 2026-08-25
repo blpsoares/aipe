@@ -18,7 +18,7 @@ afterEach(() => {
 
 test("route contract: path/order/icon/badge preserved", () => {
   expect(route.path).toBe("/activity");
-  expect(route.nav).toEqual({ label: "nav_activity", icon: "⧗", order: 5, badge: "escalation" });
+  expect(route.nav).toEqual({ label: "nav_activity", icon: "activity", order: 5, badge: "escalation" });
 });
 
 test("header: translated title/sub + static streaming indicator", () => {

@@ -17,7 +17,7 @@ afterEach(() => {
 
 test("route contract: path/order/icon preserved", () => {
   expect(route.path).toBe("/toolbox");
-  expect(route.nav).toEqual({ label: "nav_toolbox", icon: "⬡", order: 4 });
+  expect(route.nav).toEqual({ label: "nav_toolbox", icon: "toolbox", order: 4 });
 });
 
 test("header: translated title/sub, no .between wrapper, no action buttons", () => {

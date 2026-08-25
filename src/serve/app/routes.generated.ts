@@ -6,7 +6,8 @@ import { route as r3 } from "./views/org.view";
 import { route as r4 } from "./views/overview.view";
 import { route as r5 } from "./views/pipeline.view";
 import { route as r6 } from "./views/settings.view";
-import { route as r7 } from "./views/team.view";
-import { route as r8 } from "./views/toolbox.view";
+import { route as r7 } from "./views/status.view";
+import { route as r8 } from "./views/team.view";
+import { route as r9 } from "./views/toolbox.view";
 // biome-ignore lint/suspicious/noExplicitAny: array is untyped until Task 8+ defines the Route/view contract
-export const routes: any[] = [r0, r1, r2, r3, r4, r5, r6, r7, r8].sort((a: any, b: any) => a.nav.order - b.nav.order);
+export const routes: any[] = [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9].sort((a: any, b: any) => a.nav.order - b.nav.order);

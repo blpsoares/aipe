@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { hasSessionDispatch, relevantSessions } from "../payload";
+import { hasSessionDispatch, relevantSessions, coordinatorSessionsOf } from "../payload";
 import type { SessionInfo } from "../sessions";
 import type { JourneyView } from "../../dashboard/snapshot";
 
@@ -23,4 +23,14 @@ test("relevantSessions keeps only sessions whose cwd matches a dispatch worktree
   ];
   const kept = relevantSessions(sessions, journeys).map((s) => s.id).sort();
   expect(kept).toEqual(["dead", "mine"]);
+});
+
+test("coordinatorSessionsOf keeps only RUNNING sessions rooted at the workspace itself", () => {
+  const sessions: SessionInfo[] = [
+    { id: "coord", status: "running", cwd: "/ws" }, // at the workspace root → coordinator
+    { id: "coord-dead", status: "exited", cwd: "/ws" }, // exited → not counted
+    { id: "spec", status: "running", cwd: "/ws/aipe/.worktrees/na-jesse" }, // a specialist worktree
+  ];
+  const kept = coordinatorSessionsOf(sessions, "/ws").map((s) => s.id);
+  expect(kept).toEqual(["coord"]);
 });

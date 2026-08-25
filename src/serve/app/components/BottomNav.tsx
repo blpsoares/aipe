@@ -3,6 +3,7 @@ import type { Route } from "../route-types";
 import { t } from "../runtime/i18n";
 import { attentionCount, attentionHasCritical } from "../runtime/store";
 import { currentPath, navigate } from "../runtime/router";
+import { Icon } from "./Icon";
 
 // Mobile tabbar (app.html:492-499) — only these 5, in this order (terminal
 // removed). Deriving from `routes` (already order-sorted) rather than
@@ -19,7 +20,7 @@ export function BottomNav() {
     <nav class="tabbar" id="tabbar">
       {items.map((r) => (
         <button type="button" key={r.path} class={path === r.path ? "on" : ""} onClick={() => navigate(r.path)}>
-          <span class="ic">{r.nav.icon}</span>
+          <Icon name={r.nav.icon} title={t(r.nav.label)} />
           <span>{t(r.nav.label)}</span>
           {r.nav.badge === "escalation" && attention > 0 && <span class={`tbadge${crit ? " crit" : ""}`} />}
         </button>

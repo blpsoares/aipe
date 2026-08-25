@@ -21,7 +21,7 @@ afterEach(() => {
 
 test("route contract: path/order/icon preserved", () => {
   expect(route.path).toBe("/pipeline");
-  expect(route.nav).toEqual({ label: "nav_pipeline", icon: "▦", order: 2 });
+  expect(route.nav).toEqual({ label: "nav_pipeline", icon: "pipeline", order: 2 });
 });
 
 test("5 lanes in order dispatched/delivered/verified/escalated/merged with correct counts", () => {

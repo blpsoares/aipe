@@ -7,6 +7,7 @@ import { useState } from "preact/hooks";
 import { conn, pinnedDispatch, sessions } from "../runtime/store";
 import { t, stt } from "../runtime/i18n";
 import { Chip } from "./Chip";
+import { Icon } from "./Icon";
 import {
   derivePhase,
   isGreenPhase,
@@ -121,7 +122,7 @@ export function RepoGroup({ repo, dispatches: reps }: { repo: string; dispatches
             <span class="count-pill" key={st} title={stt(st)}>{stt(st)} {n}</span>
           ))}
         </span>
-        {serializing > 0 && <span class="law-badge">⧗ {t("floor_serializing")} {serializing}</span>}
+        {serializing > 0 && <span class="law-badge"><Icon name="law" size={13} title={t("floor_serializing")} /> {t("floor_serializing")} {serializing}</span>}
       </button>
       {open && (
         <div class="repo-body">
