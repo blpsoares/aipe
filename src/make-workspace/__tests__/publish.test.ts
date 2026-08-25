@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
 import { publishWorkspace, type Runner, type OriginInspector } from "../publish";
 
+// The real resolver reads the workspace off disk to decide which harness paths
+// exist; these tests have no workspace, so the list is injected. What is being
+// tested here is the git/gh choreography, not path discovery (see
+// allowlistFor/existingAllowlist tests).
+const allowlist = async () => [".aipe", ".claude", ".gitignore", "README.md"];
+
 const ranCommands: string[][] = [];
 
 function fakeRunner(script: (cmd: string[]) => { code: number; stdout: string; stderr: string }): Runner {
@@ -19,7 +25,7 @@ test("origin already exists → skipped, no gh repo create, no push", async () =
   };
   const hasOrigin: OriginInspector = async () => true;
 
-  const result = await publishWorkspace("/tmp/ws", { name: "opvibes" }, { run, hasOrigin });
+  const result = await publishWorkspace("/tmp/ws", { name: "opvibes" }, { run, hasOrigin, allowlist });
 
   expect(result.status).toBe("skipped");
   expect(commands.some((c) => c[0] === "gh" && c[1] === "repo" && c[2] === "create")).toBe(false);
@@ -34,7 +40,7 @@ test("fresh workspace → git init, commits only allowlist, gh repo create --pri
   };
   const hasOrigin: OriginInspector = async () => false;
 
-  const result = await publishWorkspace("/tmp/ws2", { name: "opvibes" }, { run, hasOrigin });
+  const result = await publishWorkspace("/tmp/ws2", { name: "opvibes" }, { run, hasOrigin, allowlist });
 
   expect(result.status).toBe("published");
 
@@ -68,7 +74,7 @@ test("gh repo create command is always --private, never --public", async () => {
   };
   const hasOrigin: OriginInspector = async () => false;
 
-  await publishWorkspace("/tmp/ws3", { name: "myspace" }, { run, hasOrigin });
+  await publishWorkspace("/tmp/ws3", { name: "myspace" }, { run, hasOrigin, allowlist });
 
   const createCmd = commands.find((c) => c[0] === "gh" && c[1] === "repo" && c[2] === "create");
   expect(createCmd).toBeDefined();
@@ -83,7 +89,7 @@ test("runner failure (nonzero code) surfaces as failed result, not thrown", asyn
   };
   const hasOrigin: OriginInspector = async () => false;
 
-  const result = await publishWorkspace("/tmp/ws4", { name: "opvibes" }, { run, hasOrigin });
+  const result = await publishWorkspace("/tmp/ws4", { name: "opvibes" }, { run, hasOrigin, allowlist });
 
   expect(result.status).toBe("failed");
   if (result.status === "failed") {
@@ -98,7 +104,7 @@ test("failure on git init is surfaced, not thrown", async () => {
   };
   const hasOrigin: OriginInspector = async () => false;
 
-  const result = await publishWorkspace("/tmp/ws5", { name: "opvibes" }, { run, hasOrigin });
+  const result = await publishWorkspace("/tmp/ws5", { name: "opvibes" }, { run, hasOrigin, allowlist });
 
   expect(result.status).toBe("failed");
 });

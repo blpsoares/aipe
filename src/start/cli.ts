@@ -2,6 +2,8 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
   findHarness,
+  harnessTag,
+  realIsContainable,
   HARNESSES,
   renderIntro,
   renderNextSteps,
@@ -12,7 +14,7 @@ import {
 import { probeCommand } from "../capabilities/cli";
 import { realProbeRunner } from "../capabilities/probe";
 import type { ProbeRunner } from "../capabilities/types";
-import { getAdapter, writeHarness } from "../harness/registry";
+import { getAdapter, hasAdapter, writeHarness } from "../harness/registry";
 import { scaffoldWorkspace } from "./scaffold";
 import { askLine, selectInteractive } from "./prompt";
 
@@ -35,7 +37,10 @@ async function pickHarness(explicit: string | undefined): Promise<Harness | null
   print(renderIntro());
   const index = await selectInteractive(
     "Choose your agent harness:",
-    HARNESSES.map((h) => ({ label: h.label, disabled: h.status === "coming-soon" })),
+    HARNESSES.map((h) => ({
+      label: `${h.label}${harnessTag(h, realIsContainable(h.id))}`,
+      disabled: h.status === "coming-soon",
+    })),
   );
   if (index === null) return null;
   return HARNESSES[index] ?? null;
@@ -74,11 +79,13 @@ export async function startCommand(
   const workspaceDir = join(opts.parentDir, folder);
   await mkdir(workspaceDir, { recursive: true });
 
-  // Make the workspace a publishable git repo (allowlist .gitignore: brain in,
-  // cloned repos + secrets out) — harness-agnostic.
-  await scaffoldWorkspace(workspaceDir);
-
+  // Make the workspace a publishable git repo. The allowlist (.gitignore, and
+  // the README's file map) has to know which harness was chosen — a Gemini
+  // workspace that ignores `.gemini/` and `.agents/` publishes without its
+  // integration and rehydrates into nothing on the next machine.
   const adapter = getAdapter(opts.harness.id);
+  await scaffoldWorkspace(workspaceDir, adapter);
+
   const report = await adapter.installIntegration(workspaceDir);
   await writeHarness(workspaceDir, opts.harness.id);
 
@@ -116,6 +123,13 @@ export async function run(args: string[], runner?: ProbeRunner): Promise<number>
   }
   if (harness === null) {
     console.log(`ERROR harness: unknown or cancelled. Known: ${HARNESSES.map((h) => h.id).join(", ")}`);
+    return 1;
+  }
+  // Defence in depth against the failure `harnessTag`'s comment describes: an
+  // id listed as supported with no adapter would install Claude Code's files
+  // under another harness's name, and nothing downstream would notice.
+  if (harness.status === "supported" && !hasAdapter(harness.id)) {
+    console.log(`ERROR harness: ${harness.id} has no adapter — this is a bug, please report it.`);
     return 1;
   }
   if (harness.status === "coming-soon") {

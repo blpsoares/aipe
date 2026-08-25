@@ -1,12 +1,16 @@
-// Thin wrapper kept for the CLI + existing tests: the Claude Code integration
-// now lives behind the HarnessAdapter seam (src/harness/claude-code.ts). This
-// installs it and prints the user-facing summary.
 import { join } from "node:path";
-import { claudeCodeAdapter } from "../harness/claude-code";
+import type { HarnessAdapter } from "../harness/types";
 
-export async function installClaudeCode(workspace: string): Promise<number> {
-  const report = await claudeCodeAdapter.installIntegration(workspace);
-  console.log(`aipe: installed the Claude Code integration into ${join(workspace, ".claude")}`);
+/**
+ * Install the chosen harness's integration into the workspace and report what
+ * landed. Generic over the adapter — it used to import `claudeCodeAdapter`
+ * directly and announce ".claude", which meant picking any other harness still
+ * printed the Claude Code path.
+ */
+export async function installHarnessIntegration(adapter: HarnessAdapter, workspace: string): Promise<number> {
+  const report = await adapter.installIntegration(workspace);
+  const where = report.files[0] ?? adapter.integrationPaths()[0] ?? ".";
+  console.log(`aipe: installed the ${adapter.label} integration into ${join(workspace, where)}`);
   for (const note of report.notes) console.log(`aipe:  - ${note}`);
   return 0;
 }

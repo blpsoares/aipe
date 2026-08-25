@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findHarness, HARNESSES, renderHarnessList, slugify } from "../start";
-import { installClaudeCode } from "../install";
+import { claudeCodeAdapter } from "../../harness/claude-code";
+import { installHarnessIntegration } from "../install";
 import { run } from "../cli";
 import type { ProbeRunner } from "../../capabilities/types";
 
@@ -73,10 +74,10 @@ test("run --harness generic creates AGENTS.md + records the harness", async () =
   }
 });
 
-test("installClaudeCode writes settings.json hook + the onboarding skills", async () => {
+test("installHarnessIntegration writes the Claude Code settings.json hook + the onboarding skills", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-start-"));
   try {
-    const code = await installClaudeCode(dir);
+    const code = await installHarnessIntegration(claudeCodeAdapter, dir);
     expect(code).toBe(0);
 
     const settings = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf8"));
@@ -92,11 +93,11 @@ test("installClaudeCode writes settings.json hook + the onboarding skills", asyn
   }
 });
 
-test("installClaudeCode is idempotent — no duplicate hook on second run", async () => {
+test("installHarnessIntegration is idempotent — no duplicate hook on second run", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-start-"));
   try {
-    await installClaudeCode(dir);
-    await installClaudeCode(dir);
+    await installHarnessIntegration(claudeCodeAdapter, dir);
+    await installHarnessIntegration(claudeCodeAdapter, dir);
     const settings = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf8"));
     expect(settings.hooks.SessionStart).toHaveLength(1);
   } finally {

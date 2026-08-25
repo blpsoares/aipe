@@ -152,7 +152,7 @@
 //    than silently resolved, per this task's Finding 2.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FLOW_SKILLS } from "./skills";
+import { FLOW_SKILLS, renderFlowSkills } from "./skills";
 import type { ContainmentHook, HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDelivery } from "./types";
 import { CONTAINMENT_COMMAND } from "./types";
 
@@ -236,7 +236,7 @@ export const geminiAdapter: HarnessAdapter = {
     await ensureGeminiHooks(workspaceDir);
 
     // 2. write the onboarding/operation flow skills under .agents/skills/.
-    for (const [name, body] of Object.entries(FLOW_SKILLS)) {
+    for (const [name, body] of Object.entries(renderFlowSkills(this))) {
       const { relDir, filename } = this.flowSkillTarget(name);
       const dir = join(workspaceDir, relDir);
       await mkdir(dir, { recursive: true });
@@ -254,6 +254,10 @@ export const geminiAdapter: HarnessAdapter = {
       ],
     };
   },
+
+  // The workspace install and the per-repo install are the SAME hook write —
+  // `installIntegration` just also lays down the flow-skills.
+  ensureStartupHook: ensureGeminiHooks,
 
   startupDelivery(): StartupDelivery {
     // Gemini documents a SessionStart hook event, so — like Claude Code and
@@ -285,6 +289,12 @@ export const geminiAdapter: HarnessAdapter = {
     return { relDir: join(".agents", "skills", slug), filename: "SKILL.md" };
   },
 
+  // No agent-type concept in this harness: a persona exists purely as a skill.
+  // Writing an `agents/` file here would look installed and be inert.
+  agentTarget(_slug: string): null {
+    return null;
+  },
+
   flowSkillTarget(name: string): { relDir: string; filename: string } {
     return { relDir: join(".agents", "skills", name), filename: "SKILL.md" };
   },
@@ -295,6 +305,11 @@ export const geminiAdapter: HarnessAdapter = {
     const unit = meta.package ? "package" : "repo";
     const description = `${ROLE_LABEL[meta.role]} for the ${scope} ${unit} (${stackLabel}). Dispatched by the coordinator for tasks scoped to ${scope}, or worn directly when a session opens inside the ${meta.repo} repo.${ROLE_NOTE[meta.role]}`;
     return `---\nname: ${meta.slug}\ndescription: ${description}\n---\n\n${body.trim()}\n`;
+  },
+
+  // Gemini reads settings from `.gemini/` and skills from `.agents/`.
+  integrationPaths(): string[] {
+    return [".gemini", ".agents"];
   },
 
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string {

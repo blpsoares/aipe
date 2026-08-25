@@ -83,10 +83,34 @@ function edgeLine(edge: PersonaContext["edges"][number]): string {
   return `- ${sanitize(String(edge.from))} ${sanitize(String(edge.type))} ${sanitize(String(edge.to))}${suffix}`;
 }
 
+/**
+ * Where this harness keeps a repo's persona files, as a sentence fragment.
+ *
+ * Told to the model, so it has to be true for the harness the workspace
+ * actually runs: telling a Gemini session its personas are in `.claude/skills/`
+ * sends it looking at a path that does not exist.
+ */
+export function personaFileHint(paths?: PersonaPaths): string {
+  if (!paths) return "";
+  const where = paths.agentDir ? `${paths.skillDir} and ${paths.agentDir}` : paths.skillDir;
+  const how = paths.agentDir
+    ? "the harness picks the right one by matching the task to its description; you don't need to declare which one you are. "
+    : "load the one whose description matches the task. ";
+  return `Their persona files live in ${where} — ${how}`;
+}
+
+/** Where the workspace's harness writes persona skills (and agent types, when
+ *  it has such a concept). Resolved from the adapter by the caller. */
+export interface PersonaPaths {
+  skillDir: string;
+  agentDir: string | null;
+}
+
 export function buildPersonaAwareness(
   f: Fields,
   repo: { name: string; path: string },
   ctx: PersonaContext,
+  paths?: PersonaPaths,
 ): string {
   const roster =
     ctx.personas.length > 0
@@ -98,15 +122,14 @@ export function buildPersonaAwareness(
 
   return (
     `This session opened directly inside the ${sanitize(repo.name)} repo, part of the ${f.contextName} context.${peClause} ` +
-    `Personas hired for this repo: ${roster}. Their skill/agent files live in .claude/skills/ and .claude/agents/ — ` +
-    "Claude picks the right one by matching the task to its description; you don't need to declare which one you are. " +
+    `Personas hired for this repo: ${roster}. ${personaFileHint(paths)}` +
     `Known relations for ${sanitize(repo.name)}:\n${relations}`
   );
 }
 
-export function renderSessionContext(f: Fields, personaCtx?: PersonaContext): string {
+export function renderSessionContext(f: Fields, personaCtx?: PersonaContext, paths?: PersonaPaths): string {
   const additionalContext =
-    f.repoAtCwd && personaCtx ? buildPersonaAwareness(f, f.repoAtCwd, personaCtx) : buildAwareness(f);
+    f.repoAtCwd && personaCtx ? buildPersonaAwareness(f, f.repoAtCwd, personaCtx, paths) : buildAwareness(f);
   return JSON.stringify(
     {
       hookSpecificOutput: {
