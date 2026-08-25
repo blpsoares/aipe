@@ -16,6 +16,7 @@ function deps(over: Partial<ApplyDeps> = {}): ApplyDeps {
     spawnDetached: () => 999,
     stop: () => true,
     log: () => {},
+    isLegacy: async () => false,
     wait: async () => {},
     ...over,
   };
@@ -91,7 +92,7 @@ test("a console that stops but will not come back is reported", async () => {
 test("nothing to apply is a success, not an error", async () => {
   const lines: string[] = [];
   const out = await applyUpgrade(BIN, deps({ log: (l) => lines.push(l) }));
-  expect(out).toEqual({ ok: true, rehydrated: [], restarted: [], failures: [] });
+  expect(out).toEqual({ ok: true, rehydrated: [], restarted: [], failures: [], legacyLayout: [] });
   expect(lines.join("\n")).toContain("Nothing to apply");
 });
 
@@ -144,4 +145,58 @@ test("a loopback console carries no token and no env", async () => {
   await applyUpgrade(BIN, deps({ serves: async () => [serve()], spawnDetached: (c, e) => (calls.push({ cmd: c, env: e }), 1) }));
   expect(calls[0]!.env).toBeUndefined();
   expect(calls[0]!.cmd).not.toContain("--insecure");
+});
+
+test("a legacy-layout workspace is REPORTED after the upgrade, with the command to fix it", async () => {
+  const lines: string[] = [];
+  const out = await applyUpgrade(BIN, deps({
+    workspaces: async () => ["/w/legacy", "/w/modern"],
+    isLegacy: async (ws) => ws === "/w/legacy",
+    log: (l) => lines.push(l),
+  }));
+
+  expect(out.ok).toBe(true);
+  expect(out.legacyLayout).toEqual(["/w/legacy"]);
+  expect(lines.join("\n")).toContain("/w/legacy still keeps its repos at the workspace root");
+  expect(lines.join("\n")).toContain("aipe workspace migrate-layout");
+});
+
+test("GUARANTEE: the upgrade only ever rehydrates a legacy workspace — it never migrates it", async () => {
+  const ran: string[][] = [];
+  const out = await applyUpgrade(BIN, deps({
+    workspaces: async () => ["/w/legacy"],
+    isLegacy: async () => true,
+    run: async (cmd) => {
+      ran.push(cmd);
+      return 0;
+    },
+  }));
+
+  // Exactly one command per workspace, and it is the rehydrate.
+  expect(ran).toEqual([[BIN, "rehydrate", "--workspace", "/w/legacy"]]);
+  expect(ran.flat()).not.toContain("workspace");
+  expect(ran.flat()).not.toContain("migrate-layout");
+  expect(out.legacyLayout).toEqual(["/w/legacy"]);
+});
+
+test("many legacy workspaces collapse into one line, not one per workspace", async () => {
+  const lines: string[] = [];
+  await applyUpgrade(BIN, deps({
+    workspaces: async () => ["/w/a", "/w/b", "/w/c"],
+    isLegacy: async () => true,
+    log: (l) => lines.push(l),
+  }));
+  expect(lines.filter((l) => l.includes("migrate-layout"))).toHaveLength(1);
+  expect(lines.join("\n")).toContain("3 workspaces still keeps");
+});
+
+test("a workspace whose brain cannot be read is not called legacy", async () => {
+  const out = await applyUpgrade(BIN, deps({
+    workspaces: async () => ["/w/broken"],
+    isLegacy: async () => {
+      throw new Error("no brain.yaml");
+    },
+  }));
+  expect(out.ok).toBe(true);
+  expect(out.legacyLayout).toEqual([]);
 });

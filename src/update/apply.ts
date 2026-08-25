@@ -14,12 +14,26 @@
 // found it, on the new code. Every step's result is CHECKED and collected: a
 // swallowed failure leaves the user on the old behaviour while the CLI claims
 // success, which is precisely the case that hides a bad upgrade.
+import { isLegacyLayout } from "../context-brain/layout";
+import { readBrain } from "../make-workspace/read";
 import { runningServes, unregisterServe, type ServeEntry } from "../runtime/serve-registry";
 import { TOKEN_ENV } from "../serve/auth";
 import { knownWorkspaces } from "../runtime/workspaces";
 
 export interface ApplyOutcome {
   ok: boolean;
+  /**
+   * Workspaces still on the legacy layout (repos as direct children of the
+   * workspace instead of under `repos/`).
+   *
+   * DETECTED, never acted on. Migrating means moving the PE's own checkouts,
+   * and this code path is the worst possible place to do that: it runs
+   * unattended after a self-upgrade, fans out over every workspace this machine
+   * has ever seen, and its `run` discards stdout and stderr. A silent `mv` here
+   * would be unrecoverable and unlogged. `aipe workspace migrate-layout` exists
+   * for that, deliberately, and refuses when a dispatch is in flight.
+   */
+  legacyLayout: string[];
   rehydrated: string[];
   restarted: number[];
   failures: string[];
@@ -37,6 +51,8 @@ export interface ApplyDeps {
   /** Stops a running server. Returns false when the signal could not be sent. */
   stop: (pid: number) => boolean;
   log: (line: string) => void;
+  /** Is this workspace still on the legacy root layout? */
+  isLegacy: (workspace: string) => Promise<boolean>;
   /** Waits between the stop and the restart so the port is free again. */
   wait: (ms: number) => Promise<void>;
 }
@@ -76,6 +92,10 @@ const defaults: ApplyDeps = {
     }
   },
   log: (line) => process.stdout.write(`${line}\n`),
+  isLegacy: async (workspace) => {
+    const result = await readBrain(workspace).catch(() => null);
+    return result !== null && result.ok ? isLegacyLayout(result.brain.repos) : false;
+  },
   wait: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
 
@@ -115,6 +135,7 @@ export async function applyUpgrade(bin: string, deps: Partial<ApplyDeps> = {}): 
   const failures: string[] = [];
   const rehydrated: string[] = [];
   const restarted: number[] = [];
+  const legacyLayout: string[] = [];
 
   const workspaces = await d.workspaces().catch(() => [] as string[]);
   for (const ws of workspaces) {
@@ -122,6 +143,10 @@ export async function applyUpgrade(bin: string, deps: Partial<ApplyDeps> = {}): 
     const code = await d.run(rehydrateCommand(bin, ws));
     if (code === 0) rehydrated.push(ws);
     else failures.push(`rehydrate ${ws}: exited ${code}`);
+    // Reported at the end, not here: one line about a layout the PE chose is
+    // context, and burying it between per-workspace progress lines is how it
+    // gets scrolled past.
+    if (await d.isLegacy(ws).catch(() => false)) legacyLayout.push(ws);
   }
 
   const serves = await d.serves().catch(() => [] as ServeEntry[]);
@@ -144,5 +169,11 @@ export async function applyUpgrade(bin: string, deps: Partial<ApplyDeps> = {}): 
     d.log("  Nothing to apply — no known workspaces and no running web console.");
   }
 
-  return { ok: failures.length === 0, rehydrated, restarted, failures };
+  if (legacyLayout.length > 0) {
+    const which = legacyLayout.length === 1 ? legacyLayout[0] : `${legacyLayout.length} workspaces`;
+    d.log(`  ${which} still keeps its repos at the workspace root.`);
+    d.log("  To move them under repos/: aipe workspace migrate-layout (--apply to commit to it).");
+  }
+
+  return { ok: failures.length === 0, rehydrated, restarted, failures, legacyLayout };
 }
