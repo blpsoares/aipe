@@ -57,3 +57,43 @@ test("model check: exits non-zero (notify) once Opus volume passes the threshold
 test("model resolve rejects an unknown tier", async () => {
   expect(await run(["resolve", "--tier", "genius"])).toBe(1);
 });
+
+// Capture what `run` prints, so we can assert the resolved MODEL line.
+async function captureRun(args: string[]): Promise<{ code: number; out: string[] }> {
+  const out: string[] = [];
+  const original = console.log;
+  console.log = (...a: unknown[]) => { out.push(a.map(String).join(" ")); };
+  try {
+    const code = await run(args);
+    return { code, out };
+  } finally {
+    console.log = original;
+  }
+}
+
+// D4: `model resolve --harness gemini` returned MODEL=claude-sonnet-5 because
+// resolveCmd never read `--harness` at all — it always used the workspace's
+// adapter. Each adapter has its OWN tier→model table (geminiAdapter maps
+// standard → gemini-3-flash-preview), so this is a genuine defect: an explicit
+// `--harness` must resolve to THAT harness's model id, not silently a Claude one.
+test("model resolve --harness gemini resolves to gemini's own model id, not a Claude one (D4)", async () => {
+  const { out } = await captureRun(["resolve", "--tier", "standard", "--harness", "gemini"]);
+  const modelLine = out.find((l) => l.startsWith("MODEL="));
+  expect(modelLine).toContain("gemini-3-flash-preview");
+  expect(modelLine).not.toContain("claude");
+});
+
+test("model resolve without --harness still uses the workspace adapter (default claude-code)", async () => {
+  const { out } = await captureRun(["resolve", "--tier", "standard"]);
+  const modelLine = out.find((l) => l.startsWith("MODEL="));
+  expect(modelLine).toContain("claude-sonnet-5");
+});
+
+// A `--harness` that names no known adapter must fail loudly, not fall back to
+// silently resolving a Claude id (which is exactly the class of silent wrong
+// answer D4 is about).
+test("model resolve --harness with an unknown harness errors explicitly", async () => {
+  const { code, out } = await captureRun(["resolve", "--tier", "standard", "--harness", "borg"]);
+  expect(code).toBe(1);
+  expect(out.some((l) => l.startsWith("ERROR harness"))).toBe(true);
+});
