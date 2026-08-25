@@ -30,17 +30,24 @@ load-order live check**.
 
 ## Still need your input
 
-### 1. `aipe start` — which harnesses, and how it installs
+### 1. `aipe start` — which harnesses, and how it installs — RESOLVED
 
-Built: the `aipe start` interactive picker (emphasizes "install into the
-project/workspace folder"). Claude Code is the only wired target; Cursor and
-"generic" are listed as coming-soon.
-- **Which harnesses should I support next, and in what order?**
-- **Install mechanics:** for Claude Code, should the installer (a) copy the
-  skills + hook into the project's `.claude/` and drive the hook via the
-  on-PATH `aipe` binary (fully self-contained, my lean), or (b) assume AIPe is
-  installed as a global Claude Code plugin? (a) is more portable across
-  harnesses; confirm.
+**Install mechanics:** (a) — the integration is copied into the project folder
+and drives the on-PATH `aipe` binary. Nothing is installed globally and no
+marketplace/plugin step is required.
+
+**Harnesses:** five adapters ship — `claude-code`, `gemini`, `codex`,
+`copilot`, `generic`. Everything harness-specific lives behind
+`HarnessAdapter`, including the *per-repo* install (personas, toolbox skills,
+startup hook), which used to bypass the seam and hardcode `.claude/`.
+`antigravity` and `cursor` remain `coming-soon` — that flag now means exactly
+one thing: no adapter exists yet, enforced by
+`src/harness/__tests__/parity.test.ts`.
+
+Codex and Copilot are supported as *workspace* harnesses but are not
+session-mode eligible: both gate their hooks behind an interactive trust step
+AIPe's unattended dispatch cannot clear. See
+[`docs/harnesses.md`](docs/harnesses.md).
 
 ### 2. Division of labor — RESOLVED
 
@@ -61,36 +68,25 @@ Needs a live interactive session (open a repo with a generated persona, invoke
 a third-party skill on top, observe identity survival). I can't do it
 autonomously. Want to run it together, or accept the format as-is?
 
-### 5. Version single-source-of-truth
+### 5. Version single-source-of-truth — RESOLVED
 
-`0.1.0` is hardcoded in the launcher, installers, `src/cli.ts`, and
-`plugin.json`. Minor; I can wire it from one place at build time if you want.
+`.claude-plugin/plugin.json` is the source; the four other files that hardcode
+the version are stamped from it by `scripts/bump-version.ts` and verified by
+`bun run version:check`. Both share one list (`REFS` in `scripts/version.ts`),
+so writer and guard cannot disagree about which files to touch. The release
+workflow runs both.
 
-## Deferred debt — release + Cloudflare (do near the end, PE's call)
+## Deferred debt — release + Cloudflare — RESOLVED
 
-The PE will do this as one of the **last** steps, once most features are in.
-Order matters: **publish the release first, then create the rules** — the rules
-are just redirects to release assets, so they 404 until the assets exist.
+Releases are automatic: merging to `main` computes the next version from the
+conventional commits, stamps it, builds all five targets, tags and publishes.
+Nobody pushes a tag by hand. The Cloudflare redirect rules are live and route
+through `releases/latest/download`, so they never need touching on future
+releases.
 
-1. **Merge to `main`** (so `scripts/install.sh` is reachable via the raw GitHub
-   URL — this one does NOT need a release).
-2. **Cut the release:** `git tag v0.1.0 && git push --tags`. CI
-   (`release.yml`) builds every target and attaches the binaries +
-   `install.sh`/`install.ps1` + `SHA256SUMS`.
-3. **Create the Cloudflare rules** (use `latest/download` so they never need
-   updating on future releases):
-   - `aipe.openvibes.tech/cli` (exact) → raw `install.sh`
-     (`raw.githubusercontent.com/blpsoares/aipe/main/scripts/install.sh`).
-   - `aipe.openvibes.tech/cli/install.ps1` → raw `install.ps1`.
-   - `aipe.openvibes.tech/cli/aipe-<os>-<arch>[.exe]` →
-     `github.com/blpsoares/aipe/releases/latest/download/aipe-<os>-<arch>[.exe]`
-     (labels: `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`,
-     `windows-x64.exe`).
-4. **Test:** `curl -fsSL https://aipe.openvibes.tech/cli | sh`.
-
-Optional prep I can do before then: switch the installer to the
-`latest/download` pattern and write the exact rule values, so step 3 is
-copy-paste.
+The full procedure, the rule table and the manual `workflow_dispatch` valve are
+in [`RELEASING.md`](RELEASING.md); the runtime half (`aipe upgrade`) is in
+[`docs/upgrades.md`](docs/upgrades.md).
 
 ---
 
