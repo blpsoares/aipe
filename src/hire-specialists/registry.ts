@@ -29,25 +29,42 @@ export function renderPersonasYaml(entries: PersonaRegistryEntry[]): string {
   return stringify({ personas: entries });
 }
 
+// The unit a persona occupies in the roster: (repo, role, package). The
+// package is PART of the key — in a monorepo one (repo, role) has many
+// personas, one per package, and they must not evict one another. A package-
+// less entry (flat repo, or the implicit whole-repo unit) keys on the empty
+// package, matching the pre-package behaviour exactly.
+function slotKey(repo: string, role: string, pkg?: string): string {
+  return `${repo}|${role}|${pkg ?? ""}`;
+}
+
 // Incremental merge for /aipe-add-repo: fold new reports into an existing
 // roster without disturbing personas that aren't being (re)hired. Keeps every
-// existing entry whose repo is still in the brain and whose (repo, role) a new
-// report does not replace, then adds the new entries. The coordinator is always
-// rebuilt fresh from the brain. Deduped by name (coordinator reserved).
+// existing entry whose repo is still in the brain and whose EXACT slot
+// (repo, role, package) a new report does not replace, then adds the new
+// entries. The coordinator is always rebuilt fresh from the brain. Deduped by
+// name (coordinator reserved).
+//
+// D3 (data loss): this key used to be `${repo}|${role}`, blind to the package.
+// In a monorepo that made a single new package's report for a (repo, role)
+// evict EVERY existing persona of that (repo, role) across all OTHER packages —
+// on a 64-persona context, two new reports collapsed the roster to three. The
+// package is now part of the slot key, so a new package's persona replaces only
+// its own slot and every other package's persona survives.
 export function mergeRegistry(
   brain: BrainFile,
   existing: PersonaRegistryEntry[],
   reports: PersonaReport[],
 ): PersonaRegistryEntry[] {
   const repoNames = new Set(brain.repos.map((r) => r.name));
-  const replaced = new Set(reports.map((r) => `${r.repo}|${r.role}`));
+  const replaced = new Set(reports.map((r) => slotKey(r.repo, r.role, r.package)));
 
   const kept = existing.filter(
     (e) =>
       e.role !== "coordinator" &&
       e.repo !== null &&
       repoNames.has(e.repo) &&
-      !replaced.has(`${e.repo}|${e.role}`),
+      !replaced.has(slotKey(e.repo, e.role, e.package)),
   );
 
   const fresh = buildRegistry(brain, reports).filter((e) => e.role !== "coordinator");

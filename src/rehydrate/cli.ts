@@ -7,6 +7,7 @@
 // without re-running onboarding.
 import { rehydrateFlowSkills } from "./flow-skills";
 import { rehydratePersonas } from "./personas";
+import { rebuildRegistryFromSources } from "./registry";
 import { rehydrateToolbox } from "./toolbox";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -21,6 +22,15 @@ export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const personas = await rehydratePersonas(workspace);
   for (const r of personas) console.log(`${r.status.toUpperCase()} persona ${r.repo} ${r.slug}`);
+  // Rebuild the durable roster (.aipe/personas.yaml) from the same sources —
+  // the recovery path for a personas.yaml that was lost/corrupted (D3). Unions
+  // onto the existing roster: it re-registers personas whose entry was lost and
+  // keeps the ones still present (with their richer package/group data). Never
+  // removes an entry, so it is safe to run on every rehydrate.
+  const registry = await rebuildRegistryFromSources(workspace);
+  for (const r of registry.filter((x) => x.status === "registered")) {
+    console.log(`REGISTERED persona ${r.repo} ${r.slug}`);
+  }
   const toolbox = await rehydrateToolbox(workspace);
   for (const r of toolbox) console.log(`${r.status.toUpperCase()} ${r.kind} ${r.name}`);
   const flowSkills = await rehydrateFlowSkills(workspace);
