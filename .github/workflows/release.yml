@@ -129,6 +129,14 @@ jobs:
             # Conventional commits decide the bump. SCOPES COUNT: `feat:*` does
             # not match `feat(session):`, and a glob that misses scoped commits
             # ships every feature in this repo as a patch.
+            #
+            # TFORMAT, NOT FORMAT: `--pretty=format:` omits the trailing newline
+            # after the LAST commit, and `while read` returns non-zero on a line
+            # with no terminator — so the last commit of every range is never
+            # seen by this loop. With one commit in the range (what "release on
+            # every merge to main" produces) that is the ONLY commit, and every
+            # release computes `patch` no matter what it contains. `tformat:`
+            # terminates each line, including the last.
             BUMP="patch"
             while IFS= read -r subject; do
               case "$subject" in
@@ -136,7 +144,7 @@ jobs:
                 feat\(*\)\!:*|fix\(*\)\!:*|refactor\(*\)\!:*|chore\(*\)\!:*|perf\(*\)\!:*) BUMP="major"; break ;;
                 feat:*|feat\(*\):*) [ "$BUMP" != "major" ] && BUMP="minor" || true ;;
               esac
-            done < <(git log "$RANGE" --pretty=format:%s)
+            done < <(git log "$RANGE" --pretty=tformat:%s)
             if git log "$RANGE" --pretty=format:%B | grep -q "BREAKING CHANGE"; then BUMP="major"; fi
 
             MAJOR="${CURRENT%%.*}"; REST="${CURRENT#*.}"
@@ -198,7 +206,9 @@ jobs:
           {
             echo "## What's changed in v${VERSION}"
             echo
-            git log "${{ steps.version.outputs.range }}" --pretty=format:'%s|%H' | while IFS='|' read -r subject sha; do
+            # tformat: for the same reason as the bump loop above — with format:
+            # the newest commit is missing from every release's notes.
+            git log "${{ steps.version.outputs.range }}" --pretty=tformat:'%s|%H' | while IFS='|' read -r subject sha; do
               short="${sha:0:7}"
               url="https://github.com/${{ github.repository }}/commit/${sha}"
               case "$subject" in
