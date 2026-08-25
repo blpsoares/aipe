@@ -11,6 +11,8 @@
 // --background/-d/--detached spawns the server as a detached child, prints its
 // PID + how to stop it, and returns immediately so it outlives the shell.
 import { startServer } from "./server";
+import { registerServe } from "../runtime/serve-registry";
+import { VERSION } from "../cli";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -92,6 +94,17 @@ export async function run(args: string[]): Promise<number> {
   }
 
   const server = startServer({ workspace, port, host });
+  // Announce this server on the machine registry so `aipe upgrade` can bounce
+  // it onto the new binary — a detached console otherwise serves the old code
+  // until someone notices and kills it by hand.
+  await registerServe({
+    pid: process.pid,
+    port: server.port ?? port,
+    host,
+    workspace,
+    version: VERSION,
+    startedAt: Date.now(),
+  });
   const shown = host === "0.0.0.0" ? "localhost" : host;
   console.log(`aipe serve — web console at http://${shown}:${server.port}`);
   console.log(`aipe serve — workspace ${workspace}`);

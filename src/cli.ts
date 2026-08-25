@@ -32,6 +32,7 @@ import { run as capabilities } from "./capabilities/cli";
 import { run as execution } from "./execution/cli";
 import { checkUpdate, upgrade } from "./update/cli";
 import { maybeOfferUpdate } from "./update/notify";
+import { recordWorkspace } from "./runtime/workspaces";
 
 export const VERSION = "0.3.1";
 
@@ -98,13 +99,20 @@ const HELP = [
   "  read-state         Print the coordinator awareness fields (used by hooks)",
   "  session-context    Emit the SessionStart hook JSON (coordinator awareness)",
   "  check-update       Notify if a newer aipe release is available (else silent)",
-  "  upgrade            Self-update to the newest release (alias: update)",
+  "  upgrade            Self-update, then rehydrate workspaces + restart the console",
   "",
   "Common options:",
   "  --workspace <dir>  Workspace directory (defaults to the current directory)",
   "  --version          Print the version",
   "  --help             Print this help",
 ].join("\n");
+
+/** The workspace a command runs against: `--workspace <dir>`, else the cwd. */
+export function workspaceOf(args: string[]): string {
+  const i = args.indexOf("--workspace");
+  const value = i >= 0 ? args[i + 1] : undefined;
+  return value !== undefined && !value.startsWith("--") ? value : process.cwd();
+}
 
 export async function dispatch(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
@@ -126,6 +134,9 @@ export async function dispatch(argv: string[]): Promise<number> {
     console.log(HELP);
     return 1;
   }
+  // Remember which workspace this ran in, so `aipe upgrade` knows what to
+  // rehydrate afterwards. Silent and best-effort — never fails a command.
+  await recordWorkspace(workspaceOf(rest));
   const code = await handler(rest);
   // In a real terminal, offer the update after the command (strict no-op in
   // hooks/subagents/pipes/CI — see maybeOfferUpdate).
