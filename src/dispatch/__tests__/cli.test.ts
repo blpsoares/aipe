@@ -65,10 +65,11 @@ test("validate returns 1 for a same-repo collision", async () => {
   }
 });
 
-test("validate --journey blocks a consumer whose producer hasn't landed", async () => {
+test("validate --journey blocks a consumer whose producer (a unit of this journey) hasn't landed", async () => {
   const dir = await ws();
   try {
-    // embark consumes prontuario (a producer); no ledger yet → nothing landed.
+    // embark consumes prontuario. prontuario is a UNIT OF THIS JOURNEY —
+    // dispatched but not yet landed — so the consumer must wait for it.
     await mkdir(join(dir, ".aipe", "relations"), { recursive: true });
     await writeFile(
       join(dir, ".aipe", "relations", "graph.yaml"),
@@ -76,7 +77,11 @@ test("validate --journey blocks a consumer whose producer hasn't landed", async 
       "utf8",
     );
     await mkdir(join(dir, ".aipe", "journeys"), { recursive: true });
-    await writeFile(join(dir, ".aipe", "journeys", "j1.yaml"), stringify({ id: "j1", dispatches: [] }), "utf8");
+    await writeFile(
+      join(dir, ".aipe", "journeys", "j1.yaml"),
+      stringify({ id: "j1", dispatches: [{ repo: "prontuario", specialist: "Pedro", branch: "b", worktree: "w", status: "dispatched" }] }),
+      "utf8",
+    );
 
     const batch = await writeBatch(dir, [{ repo: "embark", specialist: "Joaquim" }]);
     const blocked = await run(["validate", "--input", batch, "--journey", "j1", "--workspace", dir]);
@@ -90,6 +95,60 @@ test("validate --journey blocks a consumer whose producer hasn't landed", async 
     );
     const freed = await run(["validate", "--input", batch, "--journey", "j1", "--workspace", dir]);
     expect(freed).toBe(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// D5 (blocking): the landing gate permanently blocked any repo with an inbound
+// `consumes` edge to a repo OUTSIDE the journey's demand. graph.yaml records
+// `aipe consumes agentistics` (the agentop binary), and agentistics is a node
+// in the context-wide graph — but it is NOT a unit of this journey and never
+// will be, so it can never reach verified/merged here. The old gate keyed
+// "ours to gate" off "is a graph node", so it fired forever, making aipe
+// undispatchable. The gate must key off "is an actual unit of THIS journey"
+// (the ledger's units + the batch), so an edge to an out-of-demand repo is not
+// treated as an unmet dependency. Batch of only `aipe` must validate.
+test("validate --journey does NOT block a consumer whose producer is a graph node but not a unit of this journey (D5)", async () => {
+  const dir = await ws();
+  try {
+    // Extend the roster/brain with `aipe` so the batch itself is lawful.
+    const brain: BrainFile = {
+      context: { name: "opvibes", coordinator: "Nicolas" },
+      repos: [
+        { name: "aipe", url: "git@github.com:o/aipe.git", path: "./aipe" },
+        { name: "agentistics", url: "git@github.com:o/agentistics.git", path: "./agentistics" },
+      ],
+    };
+    await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(brain), "utf8");
+    await writeFile(
+      join(dir, ".aipe", "personas.yaml"),
+      stringify({ personas: [
+        { name: "Nicolas", role: "coordinator", repo: null, path: null },
+        { name: "Jesse", role: "dev-fullstack", repo: "aipe", path: "./aipe/.claude/skills/jesse" },
+      ] }),
+      "utf8",
+    );
+    await mkdir(join(dir, ".aipe", "relations"), { recursive: true });
+    // agentistics IS a node in the context-wide graph, and aipe consumes it.
+    await writeFile(
+      join(dir, ".aipe", "relations", "graph.yaml"),
+      stringify({
+        nodes: [
+          { fqid: "aipe", repo: "aipe", package: null, stack: [] },
+          { fqid: "agentistics", repo: "agentistics", package: null, stack: [] },
+        ],
+        edges: [{ from: "aipe", to: "agentistics", type: "consumes", perspectives: [{ detail: "the agentop binary", evidence: "src/session/runner.ts" }] }],
+      }),
+      "utf8",
+    );
+    await mkdir(join(dir, ".aipe", "journeys"), { recursive: true });
+    // The journey's demand is ONLY aipe — agentistics is never dispatched here.
+    await writeFile(join(dir, ".aipe", "journeys", "j1.yaml"), stringify({ id: "j1", dispatches: [] }), "utf8");
+
+    const batch = await writeBatch(dir, [{ repo: "aipe", specialist: "Jesse" }]);
+    const code = await run(["validate", "--input", batch, "--journey", "j1", "--workspace", dir]);
+    expect(code).toBe(0); // NOT blocked — agentistics is outside the demand.
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -97,12 +97,22 @@ export function validateBatch(
 // does not exist yet. A single-session dev never needs this; a coordinator does.
 //
 // Pure: the caller supplies the graph edges, the set of landed unit fqids (from
-// the ledger), and the set of in-context unit fqids (graph nodes). An edge
-// `A consumes/imports B` means A depends on B's contract.
+// the ledger), and the set of DEMAND unit fqids. An edge `A consumes/imports B`
+// means A depends on B's contract.
+//
+// `demandUnits` is the units of THIS journey — the ledger's dispatched units
+// plus the batch being validated — NOT every node in the context-wide graph
+// (D5). The graph is context-wide: it holds every repo the workspace knows,
+// including tools a demand merely consumes (e.g. the agentop binary from
+// `agentistics`). Such a repo is a graph node but is NOT a unit of the demand
+// and can never reach verified/merged in this journey, so gating on graph-node
+// membership blocked the consumer forever. An edge to a repo outside the demand
+// is not an unmet dependency — only a producer that this journey itself ships,
+// and has not landed yet, is.
 export interface DependencyContext {
   edges: { from: string; to: string; type: string }[];
   landed: Set<string>; // unit fqids that are verified/merged
-  contextUnits: Set<string>; // all known node fqids (external `to` is skipped)
+  demandUnits: Set<string>; // unit fqids that are part of THIS journey's demand (ledger ∪ batch)
 }
 
 const DEPENDENCY_EDGE_TYPES = new Set(["consumes", "imports"]);
@@ -115,7 +125,7 @@ export function checkDependenciesLanded(batch: Batch, ctx: DependencyContext): s
     for (const edge of ctx.edges) {
       if (edge.from !== consumer || !DEPENDENCY_EDGE_TYPES.has(edge.type)) continue;
       const producer = edge.to;
-      if (!ctx.contextUnits.has(producer)) continue; // external dependency, not ours to gate
+      if (!ctx.demandUnits.has(producer)) continue; // outside this journey's demand → not ours to gate
       if (ctx.landed.has(producer)) continue; // already landed → the consumer is free
       const key = `${consumer}->${producer}`;
       if (seen.has(key)) continue;

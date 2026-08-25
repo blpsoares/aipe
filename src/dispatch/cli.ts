@@ -121,8 +121,17 @@ async function validateCommand(args: string[]): Promise<number> {
           .filter((d) => d.status === "verified" || d.status === "merged")
           .map((d) => packageFqid(d.repo, d.package)),
       );
-      const contextUnits = new Set(graph.nodes.map((n) => n.fqid));
-      rejects.push(...checkDependenciesLanded(batch, { edges: graph.edges, landed, contextUnits }));
+      // The units of THIS journey's demand: every unit already on the ledger,
+      // plus every unit in the batch being validated. NOT every graph node —
+      // the graph is context-wide and includes repos this demand merely
+      // consumes (e.g. the agentop binary from agentistics), which are not
+      // units of the journey and can never land here. Gating on graph-node
+      // membership blocked any such consumer forever (D5).
+      const demandUnits = new Set<string>([
+        ...(ledger?.dispatches ?? []).map((d) => packageFqid(d.repo, d.package)),
+        ...batch.map((e) => packageFqid(e.repo, e.package)),
+      ]);
+      rejects.push(...checkDependenciesLanded(batch, { edges: graph.edges, landed, demandUnits }));
     }
   }
 
