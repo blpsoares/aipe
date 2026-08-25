@@ -1,70 +1,242 @@
 name: release
 
-# Builds the standalone `aipe` binaries for every OS/arch and attaches them to
-# a GitHub Release, so the launcher (bin/aipe) can download the right one with
-# zero runtime dependency on the end user's machine. Bun cross-compiles all
-# targets from a single Linux runner.
+# Releases are AUTOMATIC. Every push to `main` computes the next version from the
+# conventional-commit subjects since the last tag, stamps it onto the five files
+# that hardcode it, builds all five standalone targets, tags, and publishes a
+# GitHub Release with the binaries + installers + checksums.
+#
+# Nobody pushes a tag by hand any more. `workflow_dispatch` with a `version` is
+# the manual valve for the one case the computation has no answer for: it got the
+# number WRONG and only a human can say what should ship.
+#
+# The `latest` release the download domain redirects to is whatever GitHub
+# considers newest, so the Cloudflare rules never need touching.
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Release tag to publish (e.g. v0.1.0)"
-        required: true
+      version:
+        description: "Release exactly this version (e.g. 1.1.0). Empty = compute it."
+        required: false
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  # Never two releases at once: the second would compute its version from a tag
+  # the first has not pushed yet and try to publish the same number twice.
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
-  build-and-release:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # The workflow's own bump commit lands on main and would trigger this
+      # again, forever. A FORCED release is never skipped — the head of main is
+      # always that commit, so honouring the guard on a manual dispatch would
+      # refuse every corrective release outright.
+      - name: Skip the workflow's own bump commit
+        id: guard
+        run: |
+          MSG="$(git log -1 --pretty=format:%s)"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$MSG" | grep -q '^chore(release): '; then
+            echo "Head is the release bump commit — nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: oven-sh/setup-bun@v2
+        if: steps.guard.outputs.skip != 'true'
         with:
           bun-version: latest
 
       - name: Install dependencies
+        if: steps.guard.outputs.skip != 'true'
         run: bun install --frozen-lockfile
 
-      - name: Version consistency guard
+      - name: Version guard (the repo agrees with itself before we touch it)
+        if: steps.guard.outputs.skip != 'true'
         run: bun run version:check
 
-      - name: Tag matches manifest version
-        run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION="v$(node -p "require('./.claude-plugin/plugin.json').version")"
-          if [ "$TAG" != "$VERSION" ]; then
-            echo "Release tag '$TAG' does not match manifest version '$VERSION'." >&2
-            echo "Bump .claude-plugin/plugin.json (and run 'bun run version:check') to match the tag." >&2
-            exit 1
-          fi
-          echo "Tag $TAG matches manifest $VERSION."
-
       - name: Type-check and test
+        if: steps.guard.outputs.skip != 'true'
         run: |
           bun run typecheck
           bun test
 
+      - name: Resolve the next version
+        if: steps.guard.outputs.skip != 'true'
+        id: version
+        run: |
+          set -eu
+
+          # An explicitly requested version wins outright: a corrective release
+          # exists precisely because the automatic answer was wrong, so
+          # consulting it again would refuse the correction.
+          FORCED="${{ github.event.inputs.version }}"
+          FORCED="${FORCED#v}"
+
+          MANIFEST="$(node -p "require('./.claude-plugin/plugin.json').version")"
+          LAST_TAG="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -1)"
+
+          if [ -n "$FORCED" ]; then
+            case "$FORCED" in
+              [0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "::error::version must look like 1.1.0, got '$FORCED'"; exit 1 ;;
+            esac
+            NEXT="$FORCED"
+            RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"
+            RANGE="${RANGE:-HEAD}"
+          else
+            if [ -z "$LAST_TAG" ]; then
+              CURRENT="0.0.0"; RANGE="HEAD"
+            else
+              CURRENT="${LAST_TAG#v}"; RANGE="${LAST_TAG}..HEAD"
+            fi
+
+            if [ "$(git log $RANGE --oneline | wc -l | tr -d ' ')" -eq 0 ]; then
+              echo "No new commits since ${LAST_TAG:-the beginning} — nothing to release."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # Conventional commits decide the bump. SCOPES COUNT: `feat:*` does
+            # not match `feat(session):`, and a glob that misses scoped commits
+            # ships every feature in this repo as a patch.
+            BUMP="patch"
+            while IFS= read -r subject; do
+              case "$subject" in
+                feat\!:*|fix\!:*|refactor\!:*|chore\!:*|perf\!:*) BUMP="major"; break ;;
+                feat\(*\)\!:*|fix\(*\)\!:*|refactor\(*\)\!:*|chore\(*\)\!:*|perf\(*\)\!:*) BUMP="major"; break ;;
+                feat:*|feat\(*\):*) [ "$BUMP" != "major" ] && BUMP="minor" || true ;;
+              esac
+            done < <(git log "$RANGE" --pretty=format:%s)
+            if git log "$RANGE" --pretty=format:%B | grep -q "BREAKING CHANGE"; then BUMP="major"; fi
+
+            MAJOR="${CURRENT%%.*}"; REST="${CURRENT#*.}"
+            MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+            case "$BUMP" in
+              major) NEXT="$((MAJOR+1)).0.0" ;;
+              minor) NEXT="${MAJOR}.$((MINOR+1)).0" ;;
+              patch) NEXT="${MAJOR}.${MINOR}.$((PATCH+1))" ;;
+            esac
+
+            # A deliberate bump committed to the manifest (1.0.0, say) must win
+            # over tag arithmetic that would otherwise walk it back to 0.3.2.
+            HIGHEST="$(printf '%s\n%s\n' "$NEXT" "$MANIFEST" | sort -V | tail -1)"
+            if [ "$HIGHEST" != "$NEXT" ]; then
+              echo "manifest $MANIFEST is ahead of the computed $NEXT — releasing the manifest version"
+              NEXT="$MANIFEST"
+            fi
+            echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v$NEXT" >/dev/null; then
+            echo "::error::v$NEXT already exists"; exit 1
+          fi
+
+          echo "next=$NEXT"   >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEXT"   >> "$GITHUB_OUTPUT"
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+          echo "skip=false"   >> "$GITHUB_OUTPUT"
+          echo "▶ releasing v$NEXT (from ${LAST_TAG:-nothing}, range $RANGE)"
+        shell: bash
+
+      - name: Stamp the version onto every file that hardcodes it
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        run: bun run scripts/bump-version.ts "${{ steps.version.outputs.next }}"
+
       - name: Build all standalone targets
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         run: bun run scripts/build.ts
 
+      - name: Smoke test the host binary
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        env:
+          AIPE_NO_UPDATE_CHECK: "1"
+        run: |
+          V="$(./dist/aipe-linux-x64 --version)"
+          test "$V" = "${{ steps.version.outputs.next }}" \
+            || { echo "::error::binary reports '$V', expected ${{ steps.version.outputs.next }}"; exit 1; }
+          ./dist/aipe-linux-x64 --help >/dev/null
+
       - name: Checksums
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         working-directory: dist
         run: sha256sum aipe-* > SHA256SUMS.txt
 
-      - name: Publish release
+      - name: Release notes
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.next }}"
+          {
+            echo "## What's changed in v${VERSION}"
+            echo
+            git log "${{ steps.version.outputs.range }}" --pretty=format:'%s|%H' | while IFS='|' read -r subject sha; do
+              short="${sha:0:7}"
+              url="https://github.com/${{ github.repository }}/commit/${sha}"
+              case "$subject" in
+                chore\(release\):*) continue ;;
+                feat*)     echo "- ✨ ${subject} ([\`$short\`]($url))" ;;
+                fix*)      echo "- 🐛 ${subject} ([\`$short\`]($url))" ;;
+                perf*)     echo "- ⚡ ${subject} ([\`$short\`]($url))" ;;
+                refactor*) echo "- ♻️ ${subject} ([\`$short\`]($url))" ;;
+                docs*)     echo "- 📚 ${subject} ([\`$short\`]($url))" ;;
+                test*)     echo "- 🧪 ${subject} ([\`$short\`]($url))" ;;
+                ci*)       echo "- 👷 ${subject} ([\`$short\`]($url))" ;;
+                *)         echo "- ${subject} ([\`$short\`]($url))" ;;
+              esac
+            done
+            echo
+            echo "## Upgrade"
+            echo
+            echo '```bash'
+            echo "aipe upgrade   # installs, rehydrates every workspace, restarts the web console"
+            echo '```'
+            echo
+            echo "First install:"
+            echo
+            echo '```bash'
+            echo "curl -fsSL https://aipe.openvibes.tech/cli | sh"
+            echo '```'
+          } > /tmp/release-notes.md
+          cat /tmp/release-notes.md
+        shell: bash
+
+      - name: Commit the bump and tag it
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .claude-plugin/plugin.json src/cli.ts bin/aipe bin/aipe.cmd scripts/install.sh
+          # A forced re-release of the version already in the manifest has
+          # nothing to commit; the tag still has to be created.
+          git diff --cached --quiet || git commit -m "chore(release): v${{ steps.version.outputs.next }} [skip ci]"
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin HEAD:main "${{ steps.version.outputs.tag }}"
+
+      - name: Publish the release
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: v${{ steps.version.outputs.next }}
+          body_path: /tmp/release-notes.md
           files: |
             dist/aipe-*
             dist/SHA256SUMS.txt
             scripts/install.sh
             scripts/install.ps1
           fail_on_unmatched_files: true
-          generate_release_notes: true
