@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FLOW_SKILLS } from "./skills";
+import { FLOW_SKILLS, renderFlowSkills } from "./skills";
 import type { ContainmentHook, HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDelivery } from "./types";
 import { CONTAINMENT_COMMAND } from "./types";
 
@@ -93,7 +93,7 @@ export const claudeCodeAdapter: HarnessAdapter = {
     await ensureSessionStartHook(workspaceDir);
 
     // 2. write the onboarding/operation flow skills
-    for (const [name, body] of Object.entries(FLOW_SKILLS)) {
+    for (const [name, body] of Object.entries(renderFlowSkills(this))) {
       const { relDir, filename } = this.flowSkillTarget(name);
       const dir = join(workspaceDir, relDir);
       await mkdir(dir, { recursive: true });
@@ -111,6 +111,10 @@ export const claudeCodeAdapter: HarnessAdapter = {
       ],
     };
   },
+
+  // The workspace install and the per-repo install are the SAME hook write —
+  // `installIntegration` just also lays down the flow-skills.
+  ensureStartupHook: ensureSessionStartHook,
 
   startupDelivery(): StartupDelivery {
     // Claude Code injects context by running the hook command every session;
@@ -143,6 +147,12 @@ export const claudeCodeAdapter: HarnessAdapter = {
     return { relDir: join(".claude", "skills", slug), filename: "SKILL.md" };
   },
 
+  // Claude Code is the one harness with a subagent concept, so it is the one
+  // harness that gets an agent-type file.
+  agentTarget(slug: string): { relDir: string; filename: string } {
+    return { relDir: join(".claude", "agents"), filename: `${slug}.md` };
+  },
+
   flowSkillTarget(name: string): { relDir: string; filename: string } {
     return { relDir: join(".claude", "skills", name), filename: "SKILL.md" };
   },
@@ -153,6 +163,10 @@ export const claudeCodeAdapter: HarnessAdapter = {
     const unit = meta.package ? "package" : "repo";
     const description = `${ROLE_LABEL[meta.role]} for the ${scope} ${unit} (${stackLabel}). Dispatched by the coordinator for tasks scoped to ${scope}, or worn directly when a session opens inside the ${meta.repo} repo.${ROLE_NOTE[meta.role]}`;
     return `---\nname: ${meta.slug}\ndescription: ${description}\n---\n\n${body.trim()}\n`;
+  },
+
+  integrationPaths(): string[] {
+    return [".claude"];
   },
 
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string {

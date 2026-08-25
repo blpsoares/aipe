@@ -11,6 +11,7 @@ import { join } from "node:path";
 import type { Server } from "bun";
 import { buildSnapshot } from "../dashboard/snapshot";
 import { buildClient } from "./app/build-client";
+import { authorize, requiresAuth, unauthorized } from "./auth";
 import { handleRequest } from "./handler";
 import { startMonitor } from "./monitor";
 
@@ -18,11 +19,14 @@ export interface ServeOpts {
   workspace: string;
   port: number;
   host: string;
+  /** Required off loopback: the token every request must present. */
+  token?: string;
+  /** Deliberately serve an open console off loopback. Must be typed. */
+  insecure?: boolean;
 }
 
-export function isLoopback(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
-}
+// Re-exported from ./auth, where the rest of the access control lives.
+export { isLoopback } from "./auth";
 
 // Compilado: bundle pré-buildado embutido (gerado por scripts/build.ts antes do
 // `--compile`). Dev: rebuild on-the-fly com cache por mtime de main.tsx. The
@@ -162,6 +166,13 @@ function monitorStream(workspace: string): Response {
 export function startServer(opts: ServeOpts): Server<undefined> {
   const { workspace, port, host } = opts;
 
+  // Off loopback the console is reachable by anyone on the network, and it
+  // serves the whole workspace (/api/snapshot) plus the code specialists are
+  // writing, file contents included (/api/monitor). So off loopback, every
+  // request carries a token. On 127.0.0.1 — the default — nothing changes.
+  const guarded = requiresAuth(host, opts.insecure === true);
+  const token = opts.token ?? "";
+
   return Bun.serve({
     port,
     hostname: host,
@@ -172,15 +183,36 @@ export function startServer(opts: ServeOpts): Server<undefined> {
     async fetch(req) {
       const url = new URL(req.url);
 
+      let setCookie: string | undefined;
+      if (guarded) {
+        // An empty token with auth on would accept `?token=`-less requests
+        // against "" — refuse outright rather than serve wide open.
+        if (token === "") return unauthorized();
+        const decision = authorize(url, req.headers, token);
+        if (!decision.ok) return unauthorized();
+        setCookie = decision.setCookie;
+      }
+
+      // The checks run BEFORE the streams: an SSE response is committed the
+      // moment it is returned, so authorising afterwards would be too late.
       if (url.pathname === "/api/stream") {
-        return snapshotStream(workspace);
+        return withCookie(snapshotStream(workspace), setCookie);
       }
 
       if (url.pathname === "/api/monitor") {
-        return monitorStream(workspace);
+        return withCookie(monitorStream(workspace), setCookie);
       }
 
-      return handleRequest(req, { workspace, getHtml: getAppHtml });
+      return withCookie(await handleRequest(req, { workspace, getHtml: getAppHtml }), setCookie);
     },
   });
+}
+
+/** Promotes a one-time `?token=` into a session cookie, so the SPA's own
+ *  fetches and SSE streams keep working without carrying the secret. */
+function withCookie(res: Response, setCookie: string | undefined): Response {
+  if (!setCookie) return res;
+  const headers = new Headers(res.headers);
+  headers.append("set-cookie", setCookie);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
 }

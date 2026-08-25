@@ -10,7 +10,7 @@
 // stale skill. Idempotent: unchanged skills are left untouched (no rewrite).
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FLOW_SKILLS } from "../harness/skills";
+import { renderFlowSkills } from "../harness/skills";
 import { resolveAdapter } from "../harness/registry";
 
 export interface FlowSkillRow {
@@ -30,7 +30,10 @@ export async function rehydrateFlowSkills(workspaceDir: string): Promise<FlowSki
   const adapter = await resolveAdapter(workspaceDir);
   const rows: FlowSkillRow[] = [];
 
-  for (const [name, body] of Object.entries(FLOW_SKILLS)) {
+  // Rendered for THIS workspace's harness: the bodies carry path tokens, and a
+  // rehydrate that wrote the raw tokens would install literal "{{SKILL_DIR}}"
+  // into the coordinator's own instructions.
+  for (const [name, body] of Object.entries(renderFlowSkills(adapter))) {
     const { relDir, filename } = adapter.flowSkillTarget(name);
     const dir = join(workspaceDir, relDir);
     const path = join(dir, filename);

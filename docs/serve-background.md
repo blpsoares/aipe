@@ -74,3 +74,66 @@ inalterado.
 **não** é commitado aqui (ownership disjunto para evitar conflito de merge). A validação
 local usa uma cópia untracked de `monitor.ts` só para compilar. As duas PRs precisam ser
 integradas juntas para o build ficar verde.
+
+## Access control off loopback
+
+`aipe serve` binds `127.0.0.1` by default and on loopback nothing below
+applies — the console is reachable only from the machine already running it.
+
+Any other host is different. The console serves the entire workspace over
+`/api/snapshot` (repos, personas, journeys) and streams the code specialists
+are writing over `/api/monitor`, `Write` file contents included. Both were
+answering anyone on the network, unauthenticated: `isLoopback()` existed in
+`src/serve/server.ts` and was tested, and was never called.
+
+So off loopback every request carries a token:
+
+```sh
+aipe serve --host 0.0.0.0
+# aipe serve — web console at http://localhost:4317/?token=b0jU-xdf…
+# aipe serve — bound to 0.0.0.0 (reachable from the network), so a token is required.
+```
+
+The token is accepted from three places, because each is the only one that
+works for its caller:
+
+| Source | Who uses it |
+|---|---|
+| `?token=…` | The operator opening the printed URL, once |
+| `aipe_serve_token` cookie | The SPA's own fetches and SSE streams — they carry no query string |
+| `Authorization: Bearer …` | Scripts and `curl` |
+
+A correct URL token is promoted to an `HttpOnly`, `SameSite=Strict` cookie. It
+is deliberately **not** `Secure`: the console runs over plain HTTP on a LAN, and
+marking it Secure would make the browser silently never send it, locking the
+operator out rather than protecting anything.
+
+Comparison is constant-time, and a missing token and a wrong token get the
+identical 401 — distinguishing them is a free oracle.
+
+### Pinning the token
+
+```sh
+AIPE_SERVE_TOKEN=my-own-token aipe serve --host 0.0.0.0
+```
+
+Worth doing for a long-lived console. `aipe upgrade` restarts running consoles
+onto the new binary, and it reuses the recorded token precisely so that restart
+does not invalidate the cookie every open browser is holding — the restart is
+unattended, with nobody watching to re-open the printed URL. The token is
+persisted in `~/.aipe/serve/<pid>.json`, written `0600`, and passed to the
+restart through the environment, never an argv (an argv is visible in `ps` to
+every user on the machine).
+
+### Opting out
+
+```sh
+aipe serve --host 0.0.0.0 --insecure
+```
+
+For a genuinely trusted network. It has to be typed, and it warns:
+
+```
+aipe serve — WARNING: --insecure on 0.0.0.0: anyone who can reach this port can read
+aipe serve —          your workspace and the code your specialists are writing.
+```

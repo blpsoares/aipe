@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scaffoldWorkspace } from "../scaffold";
+import { claudeCodeAdapter } from "../../harness/claude-code";
 
 async function sh(cmd: string[], cwd: string): Promise<string> {
   const proc = Bun.spawn(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
@@ -14,7 +15,7 @@ async function sh(cmd: string[], cwd: string): Promise<string> {
 test("scaffoldWorkspace inits git and writes an allowlist .gitignore", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-scaf-"));
   try {
-    await scaffoldWorkspace(dir);
+    await scaffoldWorkspace(dir, claudeCodeAdapter);
     const gi = await readFile(join(dir, ".gitignore"), "utf8");
     expect(gi).toContain("/*");
     expect(gi).toContain("!/.aipe/");
@@ -30,7 +31,7 @@ test("scaffoldWorkspace inits git and writes an allowlist .gitignore", async () 
 test("cloned repos are ignored but .aipe/.claude are tracked", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-scaf-"));
   try {
-    await scaffoldWorkspace(dir);
+    await scaffoldWorkspace(dir, claudeCodeAdapter);
     await sh(["git", "config", "user.email", "t@e.com"], dir);
     await sh(["git", "config", "user.name", "t"], dir);
     // simulate a cloned repo + a brain file
@@ -51,7 +52,7 @@ test("cloned repos are ignored but .aipe/.claude are tracked", async () => {
 test("the per-machine toolchain stamp is ignored, the rest of .aipe stays tracked", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-scaf-"));
   try {
-    await scaffoldWorkspace(dir);
+    await scaffoldWorkspace(dir, claudeCodeAdapter);
     await Bun.write(join(dir, ".aipe", "toolchain.yaml"), "aipeVersion: 0.3.0\n");
     await Bun.write(join(dir, ".aipe", ".rehydrate.lock"), "");
     await Bun.write(join(dir, ".aipe", "brain.yaml"), "context: {}\n");
@@ -77,9 +78,9 @@ test("the per-machine toolchain stamp is ignored, the rest of .aipe stays tracke
 test("scaffoldWorkspace is idempotent and never clobbers a custom .gitignore", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-scaf-"));
   try {
-    await scaffoldWorkspace(dir);
+    await scaffoldWorkspace(dir, claudeCodeAdapter);
     await writeFile(join(dir, ".gitignore"), "custom\n", "utf8");
-    await scaffoldWorkspace(dir);
+    await scaffoldWorkspace(dir, claudeCodeAdapter);
     expect(await readFile(join(dir, ".gitignore"), "utf8")).toBe("custom\n");
   } finally {
     await rm(dir, { recursive: true, force: true });

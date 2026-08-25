@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { readBrain } from "../make-workspace/read";
 import { readToolbox, removeSkillEntry, upsertSkill, writeToolbox } from "./catalog";
 import type { SkillEntry, SkillRouting } from "./types";
+import { resolveAdapter } from "../harness/registry";
 
 export interface InstallSkillInput {
   name: string; // skill slug (directory + skill name)
@@ -73,6 +74,7 @@ export async function installSkillContent(
   workspaceDir: string,
   input: InstallSkillContent,
 ): Promise<InstallSkillResult> {
+  const adapter = await resolveAdapter(workspaceDir);
   const brain = await readBrain(workspaceDir);
   if (!brain.ok) return { ok: false, error: brain.error };
 
@@ -99,9 +101,12 @@ export async function installSkillContent(
       installedRepos.push(repoName); // still recorded in the catalog; rehydrate later
       continue;
     }
-    const destDir = join(repoAbs, ".claude", "skills", input.name);
+    // Through the adapter: a toolbox skill has to land where the workspace's
+    // harness looks for skills, not in a hardcoded `.claude/skills/`.
+    const target = adapter.flowSkillTarget(input.name);
+    const destDir = join(repoAbs, target.relDir);
     await mkdir(destDir, { recursive: true });
-    await writeFile(join(destDir, "SKILL.md"), content, "utf8");
+    await writeFile(join(destDir, target.filename), content, "utf8");
     rows.push({ repo: repoName, status: "installed" });
     installedRepos.push(repoName);
   }
@@ -137,6 +142,7 @@ export async function removeSkill(workspaceDir: string, name: string): Promise<R
   const entry = toolbox.skills.find((s) => s.name.toLowerCase() === name.toLowerCase());
   if (!entry) return { ok: false, error: `not-found skill "${name}"` };
 
+  const adapter = await resolveAdapter(workspaceDir);
   const brain = await readBrain(workspaceDir);
   const pathByRepo = new Map(brain.ok ? brain.brain.repos.map((r) => [r.name, r.path]) : []);
 
@@ -151,7 +157,9 @@ export async function removeSkill(workspaceDir: string, name: string): Promise<R
       rows.push({ repo: repoName, status: "unknown-repo" });
       continue;
     }
-    const dir = join(workspaceDir, repoPath, ".claude", "skills", entry.name);
+    // Same target the install used — a divergence here would leave the skill
+    // on disk while the catalog says it was removed.
+    const dir = join(workspaceDir, repoPath, adapter.flowSkillTarget(entry.name).relDir);
     const existed = await exists(dir);
     await rm(dir, { recursive: true, force: true });
     rows.push({ repo: repoName, status: existed ? "removed" : "not-present" });

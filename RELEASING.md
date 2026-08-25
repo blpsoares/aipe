@@ -1,58 +1,91 @@
 # Releasing AIPe
 
-Everything here is prepared so a release is copy-paste. The one step that needs
-the PE and is **not** done by any session is pushing the tag (a session has no
-tag-push permission). The download domain is decided: **`openvibes.tech`** (the
-open-source umbrella), overridable at runtime via `AIPE_DOWNLOAD_BASE`.
+**Releases are automatic.** Merging to `main` cuts one. Nobody bumps a version
+by hand and nobody pushes a tag — the two steps that used to need the PE (and
+tag-push permission a session does not have) are now the workflow's job.
 
-## What's automated
+The download domain is **`openvibes.tech`** (the open-source umbrella),
+overridable at runtime via `AIPE_DOWNLOAD_BASE`.
 
-- `bun run version:check` — asserts the version in `.claude-plugin/plugin.json`
-  (the single source of truth) matches `src/cli.ts`, `bin/aipe`, `bin/aipe.cmd`,
-  and `scripts/install.sh`. Run before every release; also runs in CI.
-- `.github/workflows/release.yml` — on a `v*` tag (or manual dispatch) it:
-  1. runs `version:check`,
-  2. asserts the tag equals `v<manifest version>`,
-  3. type-checks + tests,
-  4. cross-compiles all five standalone targets (`bun run scripts/build.ts`),
-  5. writes `SHA256SUMS.txt`,
-  6. publishes a GitHub Release with the binaries + `install.sh`/`install.ps1`
-     + checksums, and auto-generated notes.
+## What happens on a merge to `main`
 
-## Cutting a release (PE)
+`.github/workflows/release.yml` runs and:
 
-1. **Pick/confirm the version.** To bump, edit `.claude-plugin/plugin.json`
-   `version`, then propagate it to the four other files (or keep them in sync by
-   hand) and verify:
-   ```sh
-   bun run version:check      # must print "in sync"
-   bun test && bun run typecheck
-   ```
+1. **Skips its own bump commit.** The workflow commits `chore(release): vX.Y.Z`
+   to `main`; without this guard that push would trigger it again, forever.
+2. Runs `bun run version:check`, `bun run typecheck`, `bun test`.
+3. **Computes the next version** from the conventional-commit subjects since the
+   last `v*` tag: a `!` or `BREAKING CHANGE` → major, any `feat` → minor, else
+   patch. Scopes count — `feat(session): …` is a feature, not a patch. If there
+   are no new commits since the last tag it stops here.
+4. Takes the **higher** of that number and the version already in
+   `.claude-plugin/plugin.json`, so a deliberate bump committed to the manifest
+   (0.3.x → 1.0.0, say) wins over tag arithmetic that would walk it back.
+5. Stamps the version onto all five files with `bun run scripts/bump-version.ts`
+   and re-verifies with the same reader `version:check` uses.
+6. Cross-compiles all five standalone targets, boots the Linux binary and
+   asserts `--version` prints the version being released.
+7. Writes `SHA256SUMS.txt`.
+8. Commits the bump, tags `vX.Y.Z`, pushes both.
+9. Publishes the GitHub Release with the binaries + `install.sh`/`install.ps1` +
+   checksums and generated notes.
 
-2. **Merge to `main`.** `scripts/install.sh` must be reachable at the raw GitHub
-   URL used by the download domain — that alone needs `main`, not a release.
+`concurrency: release-main` serialises runs: two at once would each compute a
+version from a tag the other has not pushed yet.
 
-3. **Cut the release (needs tag-push permission — the PE, not a session):**
-   ```sh
-   git tag v0.1.0            # must match the manifest version exactly
-   git push origin v0.1.0
-   ```
-   CI builds every target and publishes the release. (Or trigger the
-   `release` workflow manually with the tag as input.)
+## Version single source of truth
+
+`.claude-plugin/plugin.json` holds the version; four other files hardcode it
+(`src/cli.ts`, `bin/aipe`, `bin/aipe.cmd`, `scripts/install.sh`). One list —
+`REFS` in `scripts/version.ts` — is shared by the writer
+(`scripts/bump-version.ts`) and the guard (`bun run version:check`), so the two
+can never disagree about which files to touch.
+
+```sh
+bun run version:check              # assert every file agrees
+bun run scripts/bump-version.ts 1.1.0   # stamp a version onto all of them
+```
+
+## Forcing a specific version
+
+The manual valve, for the one case the computation has no answer for: it got the
+number wrong. Run the `release` workflow via **workflow_dispatch** with
+`version: 1.1.0`. A forced version skips the tag arithmetic, the "no new
+commits" stop and the bump-commit guard entirely — a corrective release exists
+precisely because the automatic answer was wrong.
+
+## Marking a release critical
+
+Put a line containing only `[critical]` in the release notes (outside any code
+fence). `aipe check-update` then prints the loud banner instead of the ordinary
+one, and installs the release unattended on machines that opted in with
+`AIPE_AUTO_UPGRADE=1`. The marker lives in the **body**, never in the tag — the
+tag has to stay pure semver or the release stops being recognised.
+
+## How users get it
+
+```sh
+aipe upgrade   # downloads, verifies, swaps, rehydrates every workspace,
+               # restarts every running `aipe serve`
+```
+
+First install (or a machine with no `aipe` yet):
+
+```sh
+curl -fsSL https://aipe.openvibes.tech/cli | sh
+```
 
 ## Download domain
 
-The launcher (`bin/aipe`, `bin/aipe.cmd`) and installers (`scripts/install.sh`,
-`scripts/install.ps1`) fetch binaries from `AIPE_DOWNLOAD_BASE`, which defaults to
-**`https://aipe.openvibes.tech/cli`** — AIPe lives under the `openvibes.tech`
-open-source umbrella. Set
-`AIPE_DOWNLOAD_BASE` to point at a mirror or a local server.
+The launcher (`bin/aipe`, `bin/aipe.cmd`), the installers
+(`scripts/install.sh`, `scripts/install.ps1`) and the self-upgrade
+(`src/update/install.ts`) all fetch from `AIPE_DOWNLOAD_BASE`, defaulting to
+**`https://aipe.openvibes.tech/cli`**.
 
 Cloudflare **Redirect Rules** on `openvibes.tech` (repo slug `blpsoares/aipe`).
 Seven rules, all `URI Full URL` `equals` → `Static` 302 with *Preserve query
-string* on. Everything routes through `releases/latest/download` (the release
-attaches `install.sh`/`install.ps1` as assets too — see `release.yml`), so the
-rules never need touching on future releases:
+string* on. Everything routes through `releases/latest/download`, so the rules
+never need touching on future releases:
 
 | Rule name | Incoming (URI Full URL equals) | Redirect target |
 |-----------|--------------------------------|-----------------|
@@ -64,15 +97,12 @@ rules never need touching on future releases:
 | `aipe-bin-darwin-arm64`| `https://aipe.openvibes.tech/cli/aipe-darwin-arm64`  | `https://github.com/blpsoares/aipe/releases/latest/download/aipe-darwin-arm64` |
 | `aipe-bin-windows-x64` | `https://aipe.openvibes.tech/cli/aipe-windows-x64.exe` | `https://github.com/blpsoares/aipe/releases/latest/download/aipe-windows-x64.exe` |
 
-**Order matters:** publish the release first (step 3), *then* create the rules —
-they are redirects to release assets and 404 until the assets exist.
-
-## Verify
+## Verify a release
 
 ```sh
 curl -fsSL https://aipe.openvibes.tech/cli | sh   # installs the binary onto PATH
 aipe --version                                    # prints the released version
 ```
 
-Anyone can also skip the domain entirely and pull straight from the GitHub
-release, or build locally with `bun run build:host`.
+Anyone can also skip the domain and pull straight from the GitHub release, or
+build locally with `bun run build:host`.

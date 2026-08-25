@@ -6,7 +6,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const ROOT = join(import.meta.dir, "..");
+export const ROOT = join(import.meta.dir, "..");
 
 export interface VersionRef {
   file: string;
@@ -21,11 +21,11 @@ export interface VersionAudit {
 }
 
 // Each ref file + a regex whose first capture group is the version string.
-const REFS: { file: string; pattern: RegExp }[] = [
-  { file: "src/cli.ts", pattern: /export const VERSION\s*=\s*"([^"]+)"/ },
-  { file: "bin/aipe", pattern: /AIPE_VERSION="([^"]+)"/ },
-  { file: "bin/aipe.cmd", pattern: /set "AIPE_VERSION=([^"]+)"/ },
-  { file: "scripts/install.sh", pattern: /AIPE_VERSION="\$\{AIPE_VERSION:-([^"}]+)\}"/ },
+export const REFS: { file: string; pattern: RegExp; write: (version: string) => string }[] = [
+  { file: "src/cli.ts", pattern: /export const VERSION\s*=\s*"([^"]+)"/, write: (v) => `export const VERSION = "${v}"` },
+  { file: "bin/aipe", pattern: /AIPE_VERSION="([^"]+)"/, write: (v) => `AIPE_VERSION="${v}"` },
+  { file: "bin/aipe.cmd", pattern: /set "AIPE_VERSION=([^"]+)"/, write: (v) => `set "AIPE_VERSION=${v}"` },
+  { file: "scripts/install.sh", pattern: /AIPE_VERSION="\$\{AIPE_VERSION:-([^"}]+)\}"/, write: (v) => `AIPE_VERSION="\${AIPE_VERSION:-${v}}"` },
 ];
 
 async function extract(file: string, pattern: RegExp): Promise<string | null> {

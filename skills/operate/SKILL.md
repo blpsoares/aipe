@@ -310,7 +310,7 @@ digraph operate {
    ```
 
    c. **Dispatch the specialist as a subagent.** Read that repo's persona body
-   from `<repo>/.claude/skills/<slug>/SKILL.md` and start a subagent whose
+   from `<repo>/{{PERSONA_FILE}}` and start a subagent whose
    prompt is: that persona identity, followed by the **hiring brief** (below,
    carrying **its slice** of the approved Orientation Spec — this unit's scope +
    acceptance), and the instruction *"operate strictly inside `<worktree-path>`

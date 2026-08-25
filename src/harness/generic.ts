@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FLOW_SKILLS } from "./skills";
+import { FLOW_SKILLS, renderFlowSkills } from "./skills";
 import type { HarnessAdapter, InstallReport, PersonaMeta, StartupDelivery } from "./types";
 
 const AGENTS_HEADER = `# AIPe — coordinator instructions (generic harness)
@@ -42,7 +42,7 @@ export const genericAdapter: HarnessAdapter = {
     const agentsMd = AGENTS_HEADER + names.map((n) => `- \`${n}\` — see \`.aipe/flows/${n}.md\``).join("\n") + "\n";
     await writeFile(join(workspaceDir, "AGENTS.md"), agentsMd, "utf8");
 
-    for (const [name, body] of Object.entries(FLOW_SKILLS)) {
+    for (const [name, body] of Object.entries(renderFlowSkills(this))) {
       const { relDir, filename } = this.flowSkillTarget(name);
       await mkdir(join(workspaceDir, relDir), { recursive: true });
       await writeFile(join(workspaceDir, relDir, filename), body, "utf8");
@@ -56,6 +56,17 @@ export const genericAdapter: HarnessAdapter = {
         "EXPERIMENTAL: not yet validated in a live non-Claude session",
       ],
     };
+  },
+
+  // No hook event to register: this harness's "startup delivery" IS a file, so
+  // installing it means writing the AGENTS.md bootstrap into the target dir.
+  // A repo that already has its own AGENTS.md is left alone — overwriting a
+  // file the harness shares with the project would clobber the project's own
+  // instructions, which is worse than not installing.
+  async ensureStartupHook(targetDir: string): Promise<void> {
+    const path = join(targetDir, "AGENTS.md");
+    if (await Bun.file(path).exists()) return;
+    await writeFile(path, `${AGENTS_HEADER.split("## Flows")[0]}`, "utf8");
   },
 
   startupDelivery(awareness: string): StartupDelivery {
@@ -74,6 +85,12 @@ export const genericAdapter: HarnessAdapter = {
     return { relDir: ".aipe-personas", filename: `${slug}.md` };
   },
 
+  // No agent-type concept: a persona exists purely as a markdown file the PE
+  // points the harness at.
+  agentTarget(_slug: string): null {
+    return null;
+  },
+
   flowSkillTarget(name: string): { relDir: string; filename: string } {
     return { relDir: join(".aipe", "flows"), filename: `${name}.md` };
   },
@@ -87,6 +104,12 @@ export const genericAdapter: HarnessAdapter = {
         ? " Runs as the MUST delivery gate: dispatched after each dev delivery to verify it before anything is reported done."
         : "";
     return `# ${meta.slug}\n\n> ${role} for the ${scope} ${meta.package ? "package" : "repo"} (${stackLabel}).${roleNote}\n\n${body.trim()}\n`;
+  },
+
+  // `.aipe/flows/` lives under `.aipe/`, which is always published, so the only
+  // extra path this harness owns is the AGENTS.md bootstrap.
+  integrationPaths(): string[] {
+    return ["AGENTS.md"];
   },
 
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string {

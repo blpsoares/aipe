@@ -5,6 +5,8 @@ import { parse } from "yaml";
 import type { BrainFile, Phase, RepoEntry, StateFile } from "../context-brain/types";
 import { renderSessionContext } from "./awareness";
 import { readPersonaContext } from "./persona-context";
+import { personaLocations } from "../harness/persona-install";
+import { resolveAdapter } from "../harness/registry";
 import { VERSION } from "../cli";
 import { ensureRehydrated } from "./auto-rehydrate";
 
@@ -208,7 +210,8 @@ export async function runSessionContext(args: string[]): Promise<number> {
   }
   if (fields.repoAtCwd) {
     const ctx = await readPersonaContext(fields.root, fields.repoAtCwd.name);
-    console.log(renderSessionContext(fields, ctx));
+    const adapter = await resolveAdapter(fields.root);
+    console.log(renderSessionContext(fields, ctx, personaLocations(adapter)));
   } else {
     console.log(renderSessionContext(fields));
   }

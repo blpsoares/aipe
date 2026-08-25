@@ -9,6 +9,8 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { claudeCodeAdapter } from "../../harness/claude-code";
+import { geminiAdapter } from "../../harness/gemini";
 import { scaffoldWorkspace } from "../scaffold";
 import { run as gitRun } from "../../worktree/git";
 
@@ -21,7 +23,10 @@ async function staged(dir: string): Promise<string[]> {
 test("git add -A on an assembled workspace stages the brain and nothing else", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-gi-"));
   try {
-    await scaffoldWorkspace(dir);
+    // The adapter decides which paths the allowlist re-admits — `aipe start`
+    // always has one, and a hardcoded `.claude/` would leave every other
+    // harness's integration out of the published workspace.
+    await scaffoldWorkspace(dir, claudeCodeAdapter);
 
     // the brain
     await mkdir(join(dir, ".aipe"), { recursive: true });
@@ -44,6 +49,41 @@ test("git add -A on an assembled workspace stages the brain and nothing else", a
     expect(await staged(dir)).toEqual([
       ".aipe/brain.yaml",
       ".claude/hook.sh",
+      ".gitignore",
+      "README.md",
+    ]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the allowlist follows the harness — a Gemini workspace publishes .gemini/ and .agents/", async () => {
+  // Same guarantee, different harness: what must never happen is the
+  // integration being ignored (published workspace rehydrates into nothing)
+  // or the working folder's noise riding along.
+  const dir = await mkdtemp(join(tmpdir(), "aipe-gi-gemini-"));
+  try {
+    await scaffoldWorkspace(dir, geminiAdapter);
+
+    await mkdir(join(dir, ".aipe"), { recursive: true });
+    await mkdir(join(dir, ".gemini"), { recursive: true });
+    await mkdir(join(dir, ".agents", "skills"), { recursive: true });
+    await writeFile(join(dir, ".aipe", "brain.yaml"), "context: {}\n", "utf8");
+    await writeFile(join(dir, ".gemini", "settings.json"), "{}\n", "utf8");
+    await writeFile(join(dir, ".agents", "skills", "operate.md"), "flow\n", "utf8");
+
+    // a Claude folder left over from a previous harness must NOT ride along
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    await writeFile(join(dir, ".claude", "hook.sh"), "#!/bin/sh\n", "utf8");
+
+    await writeFile(join(dir, ".env"), "TOKEN=secret\n", "utf8");
+    await mkdir(join(dir, "repos", "platform"), { recursive: true });
+    await writeFile(join(dir, "repos", "platform", "main.ts"), "export {}\n", "utf8");
+
+    expect(await staged(dir)).toEqual([
+      ".agents/skills/operate.md",
+      ".aipe/brain.yaml",
+      ".gemini/settings.json",
       ".gitignore",
       "README.md",
     ]);

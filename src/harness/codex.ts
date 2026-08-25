@@ -74,7 +74,7 @@
 //    definition below for what would have to change for that to flip).
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FLOW_SKILLS } from "./skills";
+import { FLOW_SKILLS, renderFlowSkills } from "./skills";
 import type { ContainmentHook, HarnessAdapter, InstallReport, PersonaMeta, PersonaRole, StartupDelivery } from "./types";
 import { CONTAINMENT_COMMAND } from "./types";
 
@@ -178,7 +178,7 @@ export const codexAdapter: HarnessAdapter = {
     await ensureCodexHooks(workspaceDir);
 
     // 2. write the onboarding/operation flow skills under .agents/skills/.
-    for (const [name, body] of Object.entries(FLOW_SKILLS)) {
+    for (const [name, body] of Object.entries(renderFlowSkills(this))) {
       const { relDir, filename } = this.flowSkillTarget(name);
       const dir = join(workspaceDir, relDir);
       await mkdir(dir, { recursive: true });
@@ -195,6 +195,10 @@ export const codexAdapter: HarnessAdapter = {
       ],
     };
   },
+
+  // The workspace install and the per-repo install are the SAME hook write —
+  // `installIntegration` just also lays down the flow-skills.
+  ensureStartupHook: ensureCodexHooks,
 
   startupDelivery(): StartupDelivery {
     // Codex documents a SessionStart hook event, so — like Claude Code —
@@ -241,6 +245,12 @@ export const codexAdapter: HarnessAdapter = {
     return { relDir: join(".agents", "skills", slug), filename: "SKILL.md" };
   },
 
+  // No agent-type concept in this harness: a persona exists purely as a skill.
+  // Writing an `agents/` file here would look installed and be inert.
+  agentTarget(_slug: string): null {
+    return null;
+  },
+
   flowSkillTarget(name: string): { relDir: string; filename: string } {
     return { relDir: join(".agents", "skills", name), filename: "SKILL.md" };
   },
@@ -253,6 +263,11 @@ export const codexAdapter: HarnessAdapter = {
     const unit = meta.package ? "package" : "repo";
     const description = `${ROLE_LABEL[meta.role]} for the ${scope} ${unit} (${stackLabel}). Dispatched by the coordinator for tasks scoped to ${scope}, or worn directly when a session opens inside the ${meta.repo} repo.${ROLE_NOTE[meta.role]}`;
     return `---\nname: ${meta.slug}\ndescription: ${description}\n---\n\n${body.trim()}\n`;
+  },
+
+  // Codex reads project hooks from `.codex/` and skills from `.agents/`.
+  integrationPaths(): string[] {
+    return [".codex", ".agents"];
   },
 
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string {

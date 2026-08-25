@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ensureSessionStartHook } from "../harness/claude-code";
+import { installPersonaIntoRepo, personaSkillDir } from "../harness/persona-install";
+import { resolveAdapter } from "../harness/registry";
 import { readBrain } from "../make-workspace/read";
 import { renderAgentMd } from "./agent";
 import { dedupeReportsByName, resolveNames } from "./naming";
@@ -18,6 +19,7 @@ async function writePersonaFiles(
   brain: BrainFile,
   reports: PersonaReport[],
 ): Promise<void> {
+  const adapter = await resolveAdapter(workspaceDir);
   for (const report of reports) {
     const repo = brain.repos.find((r) => r.name === report.repo);
     if (!repo) continue;
@@ -25,20 +27,18 @@ async function writePersonaFiles(
     const stack = repo.stack ?? [];
     const content = renderSkillMd(report, stack);
     // The persona agent type: its frontmatter `name` is the real display name so
-    // dispatched subagents show as the persona, not "claude".
+    // dispatched subagents show as the persona, not "claude". Harnesses with no
+    // agent concept simply never receive it (see HarnessAdapter#agentTarget).
     const agent = renderAgentMd({ name: report.name, role: report.role, repo: report.repo, stack, body: report.body });
-    const skillDir = join(workspaceDir, repo.path, ".claude", "skills", slug);
-    await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), content, "utf8");
-    const agentDir = join(workspaceDir, repo.path, ".claude", "agents");
-    await mkdir(agentDir, { recursive: true });
-    await writeFile(join(agentDir, `${slug}.md`), agent, "utf8");
+    await installPersonaIntoRepo(adapter, join(workspaceDir, repo.path), slug, { skill: content, agent });
     // Source of truth (published, re-hydratable): keep both next to each other.
+    // Stored harness-neutrally — rehydrate re-targets them through whatever
+    // adapter the workspace declares, so a workspace can change harness and
+    // rehydrate the same personas into the new shape.
     const sourceDir = join(workspaceDir, ".aipe", "personas", report.repo, slug);
     await mkdir(sourceDir, { recursive: true });
     await writeFile(join(sourceDir, "SKILL.md"), content, "utf8");
     await writeFile(join(sourceDir, "agent.md"), agent, "utf8");
-    await ensureSessionStartHook(join(workspaceDir, repo.path));
   }
 }
 
@@ -97,7 +97,7 @@ export async function runHireSpecialists(workspaceDir: string): Promise<RunResul
 
   await writePersonaFiles(workspaceDir, brain, reports);
 
-  const registry = buildRegistry(brain, reports);
+  const registry = buildRegistry(brain, reports, await resolveAdapter(workspaceDir));
   await mkdir(join(workspaceDir, ".aipe"), { recursive: true });
   await writeFile(join(workspaceDir, ".aipe", "personas.yaml"), renderPersonasYaml(registry), "utf8");
 
@@ -130,7 +130,7 @@ export async function runHireSpecialistsMerge(workspaceDir: string): Promise<Run
 
   await writePersonaFiles(workspaceDir, brain, reports);
 
-  const merged = mergeRegistry(brain, existing, reports);
+  const merged = mergeRegistry(brain, existing, reports, await resolveAdapter(workspaceDir));
   await mkdir(join(workspaceDir, ".aipe"), { recursive: true });
   await writeFile(join(workspaceDir, ".aipe", "personas.yaml"), renderPersonasYaml(merged), "utf8");
 

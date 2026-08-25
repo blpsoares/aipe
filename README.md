@@ -1,9 +1,12 @@
 # AIPe — AI Product Engineer
 
-AIPe is a framework, distributed as a Claude Code **plugin**, that turns Claude
-into a general engineering coordinator and the user into a **Product Engineer
-(PE)**. The PE brings demands (bugs, features, tasks spanning different repos);
-the coordinator decomposes them, distributes them to specialists who work in
+AIPe is a framework that turns an agent harness into a general engineering
+coordinator and the user into a **Product Engineer (PE)**. It runs on Claude
+Code, Gemini CLI, Codex CLI, GitHub Copilot CLI, or any `AGENTS.md`-shaped
+harness — see [`docs/harnesses.md`](docs/harnesses.md).
+
+The PE brings demands (bugs, features, tasks spanning different repos); the
+coordinator decomposes them, distributes them to specialists who work in
 parallel, and returns deliverables (PRs) — always respecting the relationships
 between the repos.
 
@@ -122,7 +125,24 @@ It binds localhost by default.
 ```sh
 aipe serve                       # http://127.0.0.1:4317
 aipe serve --port 8080 --workspace ../aipe-opvibes
+aipe serve --host 0.0.0.0        # reachable from the LAN → token required
 ```
+
+**Binding off loopback requires a token.** The console serves the whole
+workspace (`/api/snapshot`) and streams the code your specialists are writing,
+file contents included (`/api/monitor`) — so any host other than
+`127.0.0.1`/`::1`/`localhost` makes every request carry a token. It is printed
+once in the URL and promoted to an `HttpOnly` cookie, so the SPA's own fetches
+and SSE streams keep working:
+
+```
+aipe serve — web console at http://localhost:4317/?token=b0jU-xdf…
+aipe serve — bound to 0.0.0.0 (reachable from the network), so a token is required.
+```
+
+Set `AIPE_SERVE_TOKEN` to pin your own (an upgrade restarts the console with the
+same token, so open browsers keep their session). `--insecure` opts out
+deliberately, with a warning. On loopback nothing changes — no token, no cookie.
 
 ### Execution-envelope recommendation — `aipe capabilities` / `aipe execution`
 
@@ -186,15 +206,15 @@ as a subagent, unaffected. See [dossier 15](docs/dossie/15-session-dispatch.md).
 | 12 | **`/handoff`** (portable `CLAUDE.md` export for a collaborator who won't install AIPe) | Built | [13](docs/dossie/13-handoff.md) |
 | 13 | **Execution-envelope recommendation** (`aipe capabilities probe\|show\|confirm`, `aipe execution propose\|plan`) | Built | [14](docs/dossie/14-execution-envelope.md) |
 | 14 | **Session-mode dispatch** (`aipe session dispatch\|collect\|grant\|doctor\|guard` via `agentop`) | Built | [15](docs/dossie/15-session-dispatch.md) |
+| 15 | **Multi-harness** (5 adapters behind one seam; per-repo install routed through it) | Built | [harnesses](docs/harnesses.md) |
+| 16 | **Automatic releases + verified self-upgrade** (`aipe upgrade` → install, rehydrate, restart) | Built | [upgrades](docs/upgrades.md) |
 
 ### Roadmap (pending)
 
 | Item | Notes |
 |---|---|
 | Persona load-order validation | Needs a live interactive session (persona identity surviving a third-party skill loaded on top). Can't be done autonomously. |
-| Harness adapters beyond Claude Code | The `aipe` CLI is already harness-agnostic; an adapter needs another harness to target + validate against. Deferred. |
-| Non-Claude-Code harness adapters | The `aipe` CLI is already harness-agnostic; only the skills are Claude-Code-shaped. Deferred (Claude Code suffices for now). |
-| Release + Cloudflare wiring | Deferred debt — see [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md). Publish the release, then create the redirect rules. |
+| Antigravity / Cursor adapters | The other five harnesses ship; these two are listed `coming-soon` in the picker and need a harness to target + validate against. See [`docs/harnesses.md`](docs/harnesses.md#adding-an-adapter). |
 | Codex/Copilot session-mode containment | Both CLIs gate on an interactive trust step (Codex: per-hook-hash `/hooks` trust; Copilot: directory trust) that AIPe's unattended dispatch cannot clear headlessly today, so their adapters return `containmentHook(): null` and stay ineligible. Needs a documented non-interactive bypass from either CLI. |
 | `aipe session grant` redemption | The quota machinery is implemented and tested, but consuming it requires `agentop` to stamp `AGENTOP_SESSION_ID` into the specialist's environment, which it does not do yet. Blocked on that agentop-side change. |
 
@@ -247,7 +267,7 @@ curl -fsSL https://aipe.openvibes.tech/cli | sh
 #    and probes this machine's harness binaries automatically — no separate
 #    step needed before the coordinator can propose a priced dispatch envelope.
 aipe start
-#    ? Choose your agent harness:  ❯ Claude Code
+#    ? Choose your agent harness:  ❯ Claude Code / Gemini CLI / Codex CLI / …
 #    ? Workspace name:  minha-empresa
 #    aipe: checked which harnesses are available on this machine:
 #    aipe:  - OK claude-code claude 2.1.4
@@ -263,6 +283,37 @@ cd aipe-minha-empresa && claude
 #    Once onboarded, bring a demand and it runs /operate.
 ```
 
+### Staying up to date
+
+Releases are cut automatically from `main`, and every `aipe` command tells you
+when a newer one is out:
+
+```sh
+aipe upgrade        # the whole job, in one command
+aipe check-update   # silent when current; prints the banner when not
+```
+
+`aipe upgrade` downloads the binary for this platform, **verifies it before it
+replaces anything** (size, executable magic, and the new binary's own
+`--version`), keeps the one it replaces at `<binary>.bak` and restores it if
+anything fails — then applies the new version to the machine: it runs
+`aipe rehydrate` in every workspace it knows about and restarts every running
+`aipe serve` console. It exits non-zero if any of that did not happen, so a
+half-applied upgrade never reports success.
+
+It deliberately does **not** re-run `curl … | sh` for this: the installer writes
+with `curl -o ~/.local/bin/aipe`, which truncates the executable you are running
+(`curl: (23) Failure writing output to destination`). The upgrade stages the
+download beside the target and renames it into place instead.
+
+A release whose notes carry a `[critical]` line on its own is flagged as
+critical. By default that only makes the banner louder; set
+`AIPE_AUTO_UPGRADE=1` to let such a release install itself in a detached
+background process (logged to `~/.aipe/auto-upgrade.log`). Set
+`AIPE_NO_UPDATE_CHECK=1` to silence update checks entirely. Full details —
+including the machine state under `~/.aipe/` and how the update cache avoids
+ever blocking a prompt — in [`docs/upgrades.md`](docs/upgrades.md).
+
 Two surfaces: **`aipe start`** (terminal, deterministic) picks the harness and
 creates the self-contained, publishable `aipe-<name>/` workspace; the
 **coordinator** (the LLM, inside the harness) runs onboarding and then operates.
@@ -274,13 +325,18 @@ same project-scoped integration is installed **inside each specialist repo** too
 directly in a repo gets that repo's persona-scoped context instead of the
 coordinator's.
 
-Today `aipe start` only offers **Claude Code** and the experimental
-**generic/AGENTS.md** adapter as a *workspace* harness — Codex, Gemini,
-Copilot, Antigravity and Cursor are listed but `coming-soon` there. That is a
-separate question from which harness a *unit* can be dispatched to under
-session mode (below): a claude-code workspace can still dispatch a QA unit to
-`gemini`, since that only needs the `gemini` binary present, not a supported
-`aipe start` integration for it.
+`aipe start` offers **Claude Code**, **Gemini CLI**, **OpenAI Codex CLI**,
+**GitHub Copilot CLI** and the experimental **generic/AGENTS.md** adapter;
+Antigravity and Cursor are listed but `coming-soon` (no adapter yet). Each
+installs its own native integration — hooks, skill paths, MCP config and model
+tiers all differ — and nothing outside `src/harness/` hardcodes a harness path.
+The full comparison, including which harnesses can be contained, is in
+[`docs/harnesses.md`](docs/harnesses.md).
+
+Which harness a workspace runs on is a separate question from which harness a
+*unit* can be dispatched to under session mode (below): a `claude-code`
+workspace can still dispatch a QA unit to `gemini`, since that only needs the
+`gemini` binary present.
 
 One more step becomes relevant once you are operating, and it's optional:
 
@@ -326,13 +382,15 @@ portable core is a single CLI (`aipe`):
   Windows) resolves the right binary: `$AIPE_BIN` → `dist/<host>` → cached
   download → **Bun dev fallback** (only when developing in this repo) →
   best-effort download from the GitHub release.
-- **Any harness.** Claude Code integration (the slash-command skills + the
-  `SessionStart` hook) is just one adapter over that CLI; another harness only
-  needs to call the `aipe` binary. The generated persona files are plain
-  Markdown skills.
+- **Any harness.** Five adapters ship today (Claude Code, Gemini, Codex,
+  Copilot, generic/`AGENTS.md`), each writing its own native integration behind
+  one interface; another harness only needs to call the `aipe` binary. The
+  generated persona files are plain Markdown skills. See
+  [`docs/harnesses.md`](docs/harnesses.md).
 - **Building the binaries:** `bun run build` (all targets) or
-  `bun run build:host`. CI (`.github/workflows/release.yml`) builds every target
-  on a `v*` tag and attaches them to a GitHub Release.
+  `bun run build:host`. Releases are automatic — merging to `main` computes the
+  next version, builds every target and publishes a GitHub Release
+  (`.github/workflows/release.yml`); see [`RELEASING.md`](RELEASING.md).
 
 Developers of AIPe itself still use Bun (see Development below).
 
@@ -346,11 +404,16 @@ src/<name>/                   # deterministic TS per capability (types, logic, c
   capabilities, execution, session                                                      # envelope recommendation + agentop dispatch
 bin/aipe, bin/aipe.cmd        # launchers: pick the standalone binary for the host (or Bun dev fallback)
 scripts/build.ts              # cross-platform `bun build --compile` into dist/ (gitignored)
+src/harness/<id>.ts           # one adapter per harness behind HarnessAdapter (see docs/harnesses.md)
+src/runtime/                  # machine-level state under ~/.aipe: workspace + running-serve registries
+src/update/                   # check-update / upgrade: verified self-install, then rehydrate + restart
 skills/<name>/SKILL.md        # coordinator-facing flows (Claude Code adapter):
                               #   onboarding (context-brain, make-workspace, relationship, hire-specialists)
                               #   operation  (operate, toolbox, aipe-add-repo)
 hooks/session-start           # SessionStart hook: injects coordinator awareness via `aipe session-context`
-.github/workflows/release.yml # builds all target binaries → GitHub Release
+.github/workflows/release.yml # automatic release on merge to main → GitHub Release
+docs/harnesses.md             # harness adapter reference: the seam, every harness, adding one
+docs/upgrades.md              # self-update + machine state under ~/.aipe/
 docs/superpowers/specs/       # design specs (brainstorming output), one per sub-project
 docs/superpowers/plans/       # implementation plans
 docs/dossie/                  # execution ledger: decisions, plan, review, final state per sub-project
@@ -360,7 +423,7 @@ A workspace using this plugin (e.g. `aipe-opvibes/`) is itself a git repo:
 
 ```
 aipe-opvibes/
-  ├── .gitignore                 # allowlist: publish .aipe/ + .claude/, ignore repos/secrets
+  ├── .gitignore                 # allowlist: publish .aipe/ + the harness's own paths, ignore repos/secrets
   ├── .aipe/
   │    ├── brain.yaml            # repos (URLs, paths, stacks)
   │    ├── state.yaml            # onboarding phases

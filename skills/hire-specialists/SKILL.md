@@ -7,7 +7,7 @@ description: Use in step 4 (last) of AIPe onboarding to hire the context's speci
 
 Hires the context's specialists: for every **hiring group**, one dev-fullstack
 persona and one QA persona, each installed as a two-mode skill inside its repo
-(`<repo>/.claude/skills/<name>/SKILL.md`). A **hiring group** is a node in the
+(`<repo>/{{SKILL_FILE}}`). A **hiring group** is a node in the
 relationship graph (`.aipe/relations/graph.yaml`) — a **whole repo** for a plain
 single-purpose repo, or a **package** (`repo/package`, an **fqid**) for each package
 of a monorepo. So a monorepo with 3 packages hires 3 dev + 3 QA, one pair per
@@ -123,7 +123,7 @@ scratch — never do that just to tweak one persona.
    - `STATE specialists=done|pending` → aggregated state.
 
 10. **Report the artifacts.** On `done`, point the PE to `.aipe/personas.yaml`
-    (the full roster) and to each `<repo>/.claude/skills/<name>/SKILL.md`.
+    (the full roster) and to each `<repo>/{{SKILL_FILE}}`.
     Mention that onboarding is now complete — opening a session directly
     inside a repo will load that repo's personas automatically.
 

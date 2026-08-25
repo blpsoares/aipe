@@ -3,6 +3,9 @@
 // harness-specific file installation is performed by installHarness(); the
 // rendering helpers below are pure and unit-tested.
 
+import { getAdapter, hasAdapter } from "../harness/registry";
+import { isContainable } from "../harness/types";
+
 export type HarnessStatus = "supported" | "coming-soon";
 
 export interface Harness {
@@ -11,14 +14,20 @@ export interface Harness {
   status: HarnessStatus;
 }
 
+// Every `supported` entry MUST have an adapter in src/harness/registry.ts —
+// `getAdapter` falls back to Claude Code for an unknown id, so listing a
+// harness here without one does not fail, it silently installs the WRONG
+// integration. `src/start/__tests__/harness-parity.test.ts` enforces this.
+//
+// `coming-soon` here means exactly one thing: no adapter exists yet.
 export const HARNESSES: Harness[] = [
   { id: "claude-code", label: "Claude Code", status: "supported" },
-  { id: "codex", label: "OpenAI Codex CLI", status: "coming-soon" },
-  { id: "gemini", label: "Gemini CLI", status: "coming-soon" },
-  { id: "copilot", label: "GitHub Copilot", status: "coming-soon" },
+  { id: "codex", label: "OpenAI Codex CLI", status: "supported" },
+  { id: "gemini", label: "Gemini CLI", status: "supported" },
+  { id: "copilot", label: "GitHub Copilot CLI", status: "supported" },
+  { id: "generic", label: "Generic / AGENTS.md harness (experimental)", status: "supported" },
   { id: "antigravity", label: "Antigravity", status: "coming-soon" },
   { id: "cursor", label: "Cursor", status: "coming-soon" },
-  { id: "generic", label: "Generic / AGENTS.md harness (experimental)", status: "supported" },
 ];
 
 const WORKSPACE_RULE =
@@ -29,11 +38,30 @@ export function renderIntro(): string[] {
   return ["", "aipe start — set up an AIPe workspace", "", WORKSPACE_RULE, ""];
 }
 
-export function renderHarnessList(): string[] {
+/**
+ * Pure: the suffix shown next to a harness in the picker.
+ *
+ * Containment is surfaced HERE, at the moment of choice, because it is not a
+ * cosmetic difference: a harness AIPe cannot contain is not eligible for
+ * session-mode dispatch at all (see `isContainable`), and finding that out
+ * after onboarding a whole context is far more expensive than reading it now.
+ */
+export function harnessTag(h: Harness, containable: boolean): string {
+  if (h.status === "coming-soon") return "  (coming soon)";
+  return containable ? "" : "  (no session-mode dispatch — cannot be contained)";
+}
+
+/** The real check, so both the interactive picker and this list annotate a
+ *  harness the same way. A default of `() => true` silently dropped the
+ *  containment note from the non-interactive surface. */
+export function realIsContainable(id: string): boolean {
+  return hasAdapter(id) && isContainable(getAdapter(id));
+}
+
+export function renderHarnessList(isContainableById: (id: string) => boolean = realIsContainable): string[] {
   const lines = ["Choose your agent harness:"];
   HARNESSES.forEach((h, i) => {
-    const tag = h.status === "supported" ? "" : "  (coming soon)";
-    lines.push(`  ${i + 1}) ${h.label}${tag}`);
+    lines.push(`  ${i + 1}) ${h.label}${harnessTag(h, isContainableById(h.id))}`);
   });
   return lines;
 }
@@ -71,6 +99,6 @@ export function renderNonInteractiveHelp(): string[] {
     ...renderHarnessList(),
     "",
     "No interactive terminal detected. Re-run with an explicit choice, e.g.:",
-    "  aipe start --harness claude-code",
+    "  aipe start --harness gemini",
   ];
 }

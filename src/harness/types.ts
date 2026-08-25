@@ -93,17 +93,55 @@ export interface HarnessAdapter {
   // the coordinator's own workspace the specialist's restrictions.
   containmentHook(role?: string): ContainmentHook | null;
 
+  // B2 — install the startup (awareness) delivery into ANY directory.
+  //
+  // `installIntegration` does this for the workspace; this does it for a single
+  // REPO, which is what `/hire-specialists` and `aipe rehydrate` need so a
+  // session opened directly inside a repo gets that repo's persona-scoped
+  // context instead of the coordinator's.
+  //
+  // It exists because those two call sites used to import
+  // `ensureSessionStartHook` straight from the Claude Code adapter. That is a
+  // hole in this seam, not a shortcut: choosing Gemini still wrote `.claude/`
+  // hooks into every repo — a path Gemini never reads — so the personas were
+  // installed and silently inert. Anything that installs into a repo goes
+  // through here.
+  //
+  // Idempotent, and preserves foreign entries already in the file.
+  ensureStartupHook(targetDir: string): Promise<void>;
+
   // C — where a persona file lives inside its repo, and how it is wrapped so
   //     THIS harness auto-loads it. `personaTarget` is relative to the repo root.
   personaTarget(slug: string): { relDir: string; filename: string };
   wrapPersona(body: string, meta: PersonaMeta): string;
 
-  // D — where a coordinator flow-skill (operate, context-brain, …) lives in the
-  //     workspace for THIS harness. `installIntegration` writes it there; `aipe
-  //     rehydrate` re-reads/refreshes it from the binary's embedded FLOW_SKILLS,
-  //     so an installed workspace never runs a stale skill after an upgrade.
-  //     Relative to the workspace root.
+  // C2 — where a persona's *agent type* file goes, or null when the harness has
+  //      no such concept.
+  //
+  // A skill is loaded into the session you are already in; an agent type is a
+  // thing the coordinator can DISPATCH as its own separate context. Only Claude
+  // Code models the second one. Everywhere else the persona exists purely as a
+  // skill, and `null` says so — rather than writing an `agents/` file the
+  // harness will never read, which would look installed and do nothing.
+  agentTarget(slug: string): { relDir: string; filename: string } | null;
+
+  // D — where a named skill file lives in the workspace (or a repo) for THIS
+  //     harness. Used for the coordinator flow-skills (operate, context-brain,
+  //     …) AND for toolbox skills installed into a repo: both are "a named
+  //     markdown skill this harness loads", and separate accessors would only
+  //     let the two drift apart per harness. `installIntegration` writes the
+  //     flow-skills there; `aipe rehydrate` refreshes them from the binary's
+  //     embedded FLOW_SKILLS, so an installed workspace never runs a stale
+  //     skill after an upgrade. Relative to the workspace (or repo) root.
   flowSkillTarget(name: string): { relDir: string; filename: string };
+
+  // D2 — the paths this harness owns inside a workspace, workspace-relative.
+  //
+  // Drives the publish allowlist and the scaffolded README, so a published
+  // workspace carries the integration the PE actually chose instead of a
+  // hardcoded `.claude`. `.aipe/` is always published and is deliberately NOT
+  // listed here — it is AIPe's own directory, not any harness's.
+  integrationPaths(): string[];
 
   // E — where MCP servers are registered for this harness.
   mcpConfigPath(scope: "workspace" | "repo", repo?: string): string;

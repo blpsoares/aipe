@@ -40,9 +40,10 @@ test("pickLatestSemver returns null when nothing qualifies", () => {
   expect(pickLatestSemver([{ tag_name: "latest" }, { tag_name: "v9.9.9", draft: true }])).toBeNull();
 });
 
-test("updateNotice only fires when newer, and points at the openvibes install", () => {
+test("updateNotice only fires when newer, and points at the self-installer", () => {
   expect(updateNotice({ current: "0.2.0", latest: "0.2.0", hasUpdate: false })).toBeNull();
   const n = updateNotice({ current: "0.1.0", latest: "0.2.0", hasUpdate: true });
   expect(n).toContain("0.2.0");
-  expect(n).toContain("aipe.openvibes.tech/cli");
+  // `aipe upgrade`, not `curl | sh` — the installer truncates the running binary.
+  expect(n).toContain("aipe upgrade");
 });

@@ -6,9 +6,11 @@
 // new machine their in-repo personas are gone — this rebuilds them without
 // re-running /hire-specialists (no LLM cost). Also the backfill path for personas
 // hired before agent types existed.
-import { access, copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ensureSessionStartHook } from "../harness/claude-code";
+import { installPersonaIntoRepo } from "../harness/persona-install";
+import { resolveAdapter } from "../harness/registry";
+import type { HarnessAdapter } from "../harness/types";
 import { extractBody, frontmatterName, renderAgentMd } from "../hire-specialists/agent";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { personaSlug } from "../hire-specialists/render";
@@ -56,32 +58,37 @@ function personaMeta(
 
 // Write <repo>/.claude/agents/<slug>.md. Prefers a stored agent.md (already has the
 // right display name); otherwise generates one from the SKILL body + the roster.
-async function restoreAgent(
+/**
+ * The persona's agent-type body: the stored one when `/hire-specialists` saved
+ * it, else re-rendered from the stored SKILL.md. Returns null when there is
+ * nothing to render from — the caller then installs the skill alone.
+ *
+ * It RETURNS the body rather than writing it: only harnesses with an agent
+ * concept get a file, and that decision belongs to the adapter, not here.
+ */
+async function agentBody(
   personasRoot: string,
-  repoAbs: string,
   roster: PersonaRegistryEntry[],
   stack: string[],
   repo: string,
   slug: string,
-): Promise<void> {
-  const agentDir = join(repoAbs, ".claude", "agents");
-  await mkdir(agentDir, { recursive: true });
-  const dest = join(agentDir, `${slug}.md`);
+): Promise<string | undefined> {
   const storedAgent = join(personasRoot, repo, slug, "agent.md");
   if (await exists(storedAgent)) {
-    await copyFile(storedAgent, dest);
-    return;
+    try {
+      return await readFile(storedAgent, "utf8");
+    } catch {
+      return undefined;
+    }
   }
   let skillMd = "";
   try {
     skillMd = await readFile(join(personasRoot, repo, slug, "SKILL.md"), "utf8");
   } catch {
-    // no SKILL.md — nothing to base an identity on; skip
-    return;
+    return undefined;
   }
   const { name, role } = personaMeta(roster, repo, slug, skillMd);
-  const md = renderAgentMd({ name, role, repo, stack, body: extractBody(skillMd) });
-  await writeFile(dest, md, "utf8");
+  return renderAgentMd({ name, role, repo, stack, body: extractBody(skillMd) });
 }
 
 export async function rehydratePersonas(workspaceDir: string): Promise<RehydrateRow[]> {
@@ -92,6 +99,7 @@ export async function rehydratePersonas(workspaceDir: string): Promise<Rehydrate
   const stackByRepo = new Map(brain.brain.repos.map((r) => [r.name, r.stack ?? []]));
   const roster = await readPersonas(workspaceDir);
   const personasRoot = join(workspaceDir, ".aipe", "personas");
+  const adapter: HarnessAdapter = await resolveAdapter(workspaceDir);
   const rows: RehydrateRow[] = [];
 
   for (const repoName of await subdirs(personasRoot)) {
@@ -110,12 +118,12 @@ export async function rehydratePersonas(workspaceDir: string): Promise<Rehydrate
         rows.push({ repo: repoName, slug, status: "repo-missing" });
         continue;
       }
-      const destDir = join(repoAbs, ".claude", "skills", slug);
-      await mkdir(destDir, { recursive: true });
-      await copyFile(src, join(destDir, "SKILL.md"));
-      await restoreAgent(personasRoot, repoAbs, roster, stackByRepo.get(repoName) ?? [], repoName, slug);
+      // Through the adapter, so a workspace on Gemini/Codex/Copilot gets its
+      // personas where that harness actually loads them.
+      const skill = await readFile(src, "utf8");
+      const agent = await agentBody(personasRoot, roster, stackByRepo.get(repoName) ?? [], repoName, slug);
+      await installPersonaIntoRepo(adapter, repoAbs, slug, { skill, ...(agent === undefined ? {} : { agent }) });
       rows.push({ repo: repoName, slug, status: "restored" });
-      await ensureSessionStartHook(repoAbs);
     }
   }
 

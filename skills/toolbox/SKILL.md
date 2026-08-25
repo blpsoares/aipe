@@ -60,7 +60,7 @@ here. This skill manages the **catalog + installs**, not runtime routing.
    `taskTypes` = only these; `skipFor` = never these; `minSize` =
    `small|medium|large` floor.
    Output: `INSTALLED <repo>` per repo, then `OK skill=<name>`. The content is
-   copied into each repo's `.claude/skills/<name>/` and into
+   copied into each repo's `{{SKILL_DIR}}` and into
    `.aipe/skills/<name>/` (the published source of truth).
 
 ## Adding an MCP server
@@ -114,7 +114,7 @@ Uninstall closes the loop (add → list → match → remove):
 ```bash
 aipe skill remove <name> --workspace <workspace>   # drops the catalog entry,
                                                    # .aipe/skills/<name>/ and each
-                                                   # repo's .claude/skills/<name>/
+                                                   # repo's {{SKILL_DIR}}
 aipe mcp remove <name> --workspace <workspace>     # drops the catalog entry and
                                                    # the server from every .mcp.json
 ```
@@ -149,7 +149,7 @@ demonstrably non-sensitive literal — never to silence the check on a real cred
   `aipe mcp` CLI. Envelope: the process-skills a kit installs run INSIDE the
   dispatched specialist, NEVER in you.
 - Determinism (MUST): never hand-write `.aipe/toolbox.yaml`, a repo's
-  `.claude/skills/<name>/`, or an `.mcp.json` — always through `aipe skill` / `aipe
+  `{{SKILL_DIR}}`, or an `.mcp.json` — always through `aipe skill` / `aipe
   mcp`, so the catalog and the installs stay in sync and survive publishing.
 - Right-sizing (MUST): ALWAYS give a framework a `routing` hint and honor it — a heavy
   kit (SDD) must NOT be routed onto a trivial task (a button colour, a one-liner);
