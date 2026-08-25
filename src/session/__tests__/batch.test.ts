@@ -113,6 +113,86 @@ test("a bare json array is accepted too", () => {
   expect(result.malformed).toBe(0);
 });
 
+// agentop 1.22.4 no longer returns `[...]` / `{"sessions":[...]}` for
+// `session batch --json` — it returns `{task, started, failed}`. The sessions
+// in `started` are ALREADY RUNNING by the time this parses, so a throw here
+// strands live sessions outside the ledger. Accept `started` as the session
+// list. This payload is the real 1.22.4 output, verbatim.
+test("the agentop 1.22.4 {task, started, failed} shape is parsed from `started`", () => {
+  const out = JSON.stringify({
+    task: "aipe/j-20260825-ot",
+    started: [
+      { id: "ade43e3ca6", harness: "claude", cwd: "/w/.worktrees/j-ot-jesse" },
+    ],
+    failed: [],
+  });
+  expect(parseBatchOutput(out)).toEqual({
+    sessions: [{ id: "ade43e3ca6", harness: "claude", cwd: "/w/.worktrees/j-ot-jesse" }],
+    malformed: 0,
+  });
+});
+
+// A `started` array with several entries maps them all, in agentop's order.
+test("the 1.22.4 shape maps every `started` entry, in order", () => {
+  const out = JSON.stringify({
+    task: "aipe/j1",
+    started: [
+      { id: "s-2", harness: "claude", cwd: "/w/.worktrees/j1-pedro" },
+      { id: "s-1", harness: "gemini", cwd: "/w/.worktrees/j1-joaquim" },
+    ],
+    failed: [],
+  });
+  expect(parseBatchOutput(out).sessions).toEqual([
+    { id: "s-2", harness: "claude", cwd: "/w/.worktrees/j1-pedro" },
+    { id: "s-1", harness: "gemini", cwd: "/w/.worktrees/j1-joaquim" },
+  ]);
+});
+
+// A `failed` entry is NOT a `started` session, so it never lands in the parsed
+// list — the unit that failed to start simply has no session, and the caller's
+// existing per-unit "no session for <fqid>" path reports it. A failed entry is
+// a legitimate outcome, not a malformed record: it must not inflate `malformed`.
+test("the 1.22.4 shape ignores `failed` entries (they are not started sessions, not malformed)", () => {
+  const out = JSON.stringify({
+    task: "aipe/j1",
+    started: [{ id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }],
+    failed: [{ harness: "claude", cwd: "/w/.worktrees/j1-pedro", error: "boom" }],
+  });
+  expect(parseBatchOutput(out)).toEqual({
+    sessions: [{ id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }],
+    malformed: 0,
+  });
+});
+
+// A well-formed but empty `started` (everything failed, or nothing requested)
+// is a legitimately-empty result, exactly like [] or {"sessions":[]} — it must
+// resolve normally, NOT throw as an unrecognised shape.
+test("the 1.22.4 shape with an empty `started` resolves as empty, not a throw", () => {
+  const out = JSON.stringify({ task: "aipe/j1", started: [], failed: [{ cwd: "/w/x", error: "boom" }] });
+  expect(parseBatchOutput(out)).toEqual({ sessions: [], malformed: 0 });
+});
+
+// The per-entry malformed rules still apply inside `started`.
+test("a malformed entry inside `started` is still counted as malformed", () => {
+  const out = JSON.stringify({
+    task: "aipe/j1",
+    started: [
+      { id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" },
+      { id: "s-2", harness: "claude" }, // missing cwd
+    ],
+    failed: [],
+  });
+  const result = parseBatchOutput(out);
+  expect(result.sessions).toEqual([{ id: "s-1", harness: "claude", cwd: "/w/.worktrees/j1-joaquim" }]);
+  expect(result.malformed).toBe(1);
+});
+
+// An object that has NEITHER `sessions` NOR `started` is still an unrecognised
+// shape and must still throw — accepting `started` must not loosen this.
+test("an object with neither a sessions nor a started array still throws", () => {
+  expect(() => parseBatchOutput(JSON.stringify({ task: "aipe/j1", failed: [] }))).toThrow(/unexpected shape/);
+});
+
 // RISK (see task report): startBatch's caller pairs the returned list
 // positionally with the requested units. parseBatchOutput does not restore
 // order or pad missing entries — it returns exactly what agentop reports, in

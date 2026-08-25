@@ -61,6 +61,35 @@ test("it writes a prompt file per unit and records the session id", async () => 
   expect(ledger!.dispatches[0]!.sessionId).toBe("s-1");
 });
 
+// D1 end-to-end (not just at the parseBatchOutput boundary): agentop 1.22.4
+// returns `{task, started, failed}` from `session batch --json`, and its
+// sessions are ALREADY RUNNING when dispatchCommand parses. Before the fix
+// this threw an "unrecognised shape" error, leaving the live session with no
+// sessionId in the ledger — invisible to `aipe session collect`. This proves
+// the whole dispatch path records the id from the real 1.22.4 shape.
+test("a dispatch whose agentop returns the 1.22.4 {started} shape records the running session id in the ledger", async () => {
+  const dir = await fixture();
+  const startedShapeRunner: AgentopRunner = async (args) => {
+    if (args[0] === "--version") return { code: 0, stdout: "agentop v1.22.4", stderr: "" };
+    const started = args
+      .filter((_, i) => args[i - 1] === "--session")
+      .map((flag, i) => {
+        const m = /^[^@]+@(.+): @.+$/.exec(flag);
+        if (!m) throw new Error(`startedShapeRunner: could not parse --session flag: ${flag}`);
+        return { id: `s-${i + 1}`, harness: "claude", cwd: m[1] };
+      });
+    // The exact 1.22.4 envelope: task + started + failed (not `sessions`).
+    return { code: 0, stdout: JSON.stringify({ task: "aipe/j1", started, failed: [] }), stderr: "" };
+  };
+
+  const r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: startedShapeRunner });
+  expect(r.code).toBe(0);
+  expect(r.lines).toContain("OK embark → s-1");
+
+  const ledger = await readLedger(dir, "j1");
+  expect(ledger!.dispatches[0]!.sessionId).toBe("s-1");
+});
+
 // Finding D (whole-branch review): dispatchCommand's post-batch write used to
 // replay the WHOLE dispatch entry read at the top of the function, before
 // `startBatch` — but every session in the wave is already running by the

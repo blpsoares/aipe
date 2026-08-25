@@ -120,22 +120,35 @@ export function parseBatchOutput(stdout: string): BatchParseResult {
     );
   }
   const parsedIsArray = Array.isArray(parsed);
-  const parsedHasSessionsArray =
-    !parsedIsArray && parsed !== null && typeof parsed === "object" && Array.isArray((parsed as any).sessions);
-  if (!parsedIsArray && !parsedHasSessionsArray) {
+  const asObject = !parsedIsArray && parsed !== null && typeof parsed === "object" ? (parsed as any) : null;
+  const parsedHasSessionsArray = asObject !== null && Array.isArray(asObject.sessions);
+  // agentop 1.22.4 changed `session batch --json` from `[...]` /
+  // `{"sessions":[...]}` to `{task, started, failed}` — `started` is the list
+  // of sessions it launched, `failed` the units it could not start. The
+  // sessions in `started` are ALREADY RUNNING when this parses; the old code's
+  // "unrecognised shape" throw here stranded them outside the ledger (worse
+  // than a parse error). `started` is treated exactly like the historical
+  // `sessions` list — same per-entry validation below. `failed` needs no
+  // handling here: a failed unit is simply absent from the session list, so
+  // the caller's existing per-unit "no session for <fqid>" path reports it
+  // (batch.ts never zips positionally — it pairs by cwd). A failed entry is a
+  // legitimate outcome, NOT a malformed record, so it never touches the
+  // `malformed` counter.
+  const parsedHasStartedArray = asObject !== null && Array.isArray(asObject.started);
+  if (!parsedIsArray && !parsedHasSessionsArray && !parsedHasStartedArray) {
     // Valid JSON, but a top-level shape we don't recognise (null, {}, an
     // error object, a bare number/string, ...) is the same ambiguity the
     // unparseable-JSON throw above exists to eliminate, one boundary later:
     // silently falling through to `list = []` would make it indistinguishable
-    // from a genuinely empty, well-formed result ([] or {"sessions":[]}). A
-    // caller can't act on "malformed: N" here — there's no list to have
-    // partially started sessions in, unlike the per-entry case below — so
-    // this throws exactly like the unparseable-JSON path.
+    // from a genuinely empty, well-formed result ([], {"sessions":[]} or
+    // {"started":[]}). A caller can't act on "malformed: N" here — there's no
+    // list to have partially started sessions in, unlike the per-entry case
+    // below — so this throws exactly like the unparseable-JSON path.
     throw new Error(
-      `agentop session batch printed valid JSON with an unexpected shape (not an array, and no "sessions" array) on a successful exit: ${previewStdout(stdout)}`,
+      `agentop session batch printed valid JSON with an unexpected shape (not an array, and no "sessions"/"started" array) on a successful exit: ${previewStdout(stdout)}`,
     );
   }
-  const list = parsedIsArray ? parsed : (parsed as any).sessions;
+  const list = parsedIsArray ? parsed : parsedHasSessionsArray ? asObject.sessions : asObject.started;
   const sessions: StartedSession[] = [];
   let malformed = 0;
   for (const entry of list) {
