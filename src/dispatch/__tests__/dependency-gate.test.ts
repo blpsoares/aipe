@@ -8,10 +8,10 @@ const edges = [
   { from: "prontuario/web", to: "prontuario/api", type: "imports" },
   { from: "embark", to: "billing", type: "shares-infra" }, // not a build-order dep
 ];
-const contextUnits = new Set(["embark", "prontuario/api", "prontuario/web", "billing"]);
+const demandUnits = new Set(["embark", "prontuario/api", "prontuario/web", "billing"]);
 
 function ctx(landed: string[]): DependencyContext {
-  return { edges, landed: new Set(landed), contextUnits };
+  return { edges, landed: new Set(landed), demandUnits };
 }
 
 test("consumer is blocked while its producer has not landed", () => {
@@ -43,7 +43,7 @@ test("external producers (not in-context) are not gated", () => {
   const external: DependencyContext = {
     edges: [{ from: "embark", to: "some-vendor-sdk", type: "consumes" }],
     landed: new Set(),
-    contextUnits: new Set(["embark"]),
+    demandUnits: new Set(["embark"]),
   };
   expect(checkDependenciesLanded(batch, external)).toEqual([]);
 });
@@ -54,6 +54,6 @@ test("a consumer with two unlanded producers reports each once", () => {
     { from: "embark", to: "billing", type: "imports" },
   ];
   const batch: Batch = [{ repo: "embark", specialist: "Joaquim" }];
-  const r = checkDependenciesLanded(batch, { edges: twoEdges, landed: new Set(), contextUnits });
+  const r = checkDependenciesLanded(batch, { edges: twoEdges, landed: new Set(), demandUnits });
   expect(r.sort()).toEqual(["dependency-not-landed embark needs billing", "dependency-not-landed embark needs prontuario/api"]);
 });

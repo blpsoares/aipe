@@ -220,6 +220,48 @@ test("createWorktree makes the worktree on the aipe branch with per-worktree ide
   }
 });
 
+// D2: the real invocation was `aipe worktree create --workspace .` run from
+// the workspace root, with brain `path: ./openvibes-embark`. That made the
+// resolved repo root a DOWNWARD relative path ("openvibes-embark"), so the
+// worktree path handed to `git -C <repoRoot> worktree add <repoRoot/.worktrees/…>`
+// was re-prefixed by git's own -C, doubling the repo segment:
+//   .../openvibes-embark/openvibes-embark/.worktrees/…
+// Reproduced faithfully by chdir-ing into the workspace and passing `.` as the
+// workspace, exactly as the CLI does with `--workspace .`. The created worktree
+// must land at ONE repo segment, at git's own absolute record.
+test("createWorktree with `--workspace .` (cwd == workspace) does not double the repo segment (D2)", async () => {
+  const { dir, repoAbs } = await makeWorkspace();
+  const originalCwd = process.cwd();
+  try {
+    process.chdir(dir);
+    const created = await createWorktree(".", { repo: "embark", specialist: "Joaquim", journey: "j1" });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    // The correct, single-segment absolute location.
+    const expectedAbs = join(repoAbs, ".worktrees", "j1-joaquim");
+    expect(created.path).toBe(expectedAbs);
+    expect(await exists(expectedAbs)).toBe(true);
+
+    // The doubled path the bug produced must NOT exist.
+    const doubled = join(repoAbs, "embark", ".worktrees", "j1-joaquim");
+    expect(await exists(doubled)).toBe(false);
+
+    // git's own record agrees on the single-segment path — no doubled segment.
+    const list = await sh(["git", "-C", repoAbs, "worktree", "list", "--porcelain"]);
+    expect(list.stdout).toContain(`worktree ${expectedAbs}`);
+    expect(list.stdout).not.toContain(join(repoAbs, "embark", ".worktrees"));
+
+    // And it round-trips: remove works with `--workspace .` too.
+    const removed = await removeWorktree(".", { repo: "embark", specialist: "Joaquim", journey: "j1" });
+    expect(removed.ok).toBe(true);
+    expect(await exists(expectedAbs)).toBe(false);
+  } finally {
+    process.chdir(originalCwd);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("createWorktree is idempotent for the same (repo, journey, specialist)", async () => {
   const { dir } = await makeWorkspace();
   try {

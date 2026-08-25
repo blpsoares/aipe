@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { grantedTiers, readLedger, recordAuthorization } from "../journey/ledger";
-import { resolveAdapter } from "../harness/registry";
+import { getAdapter, hasAdapter, resolveAdapter } from "../harness/registry";
 import { checkVolume, type VolumeCheck } from "./check";
 import { readPolicy } from "./policy";
 import { gateFor, resolveModel, type ResolvedModel } from "./resolve";
@@ -33,7 +33,19 @@ async function resolveCmd(args: string[]): Promise<number> {
     console.log("ERROR tier: --tier must be one of fast|standard|reasoning|frontier");
     return 1;
   }
-  const [policy, adapter] = [await readPolicy(workspace), await resolveAdapter(workspace)];
+  // `--harness` picks WHICH harness's tier→model table to resolve against.
+  // Each adapter has its own (geminiAdapter maps standard → gemini-3-flash-preview,
+  // claudeCodeAdapter → claude-sonnet-5, …); without this flag, resolveCmd used
+  // to always resolve against the workspace's adapter, so `--harness gemini`
+  // silently returned a Claude id (D4). An explicit but unknown harness is an
+  // error — never a silent fall-back to the Claude table.
+  const harness = getFlag(args, "--harness");
+  if (harness !== undefined && !hasAdapter(harness)) {
+    console.log(`ERROR harness: unknown harness '${harness}' — known: claude-code|codex|gemini|copilot|generic`);
+    return 1;
+  }
+  const policy = await readPolicy(workspace);
+  const adapter = harness !== undefined ? getAdapter(harness) : await resolveAdapter(workspace);
   const resolved = resolveModel(policy, adapter, tier);
 
   // With --journey, the gate accounts for any grant already recorded there.
