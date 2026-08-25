@@ -26,22 +26,26 @@ test("injectClient inserts css/js verbatim and never re-injects a marker (the $&
   expect(out).toContain("$&g.__e");
 });
 
-test("buildClient({minify:true}) — the module has no re-injected HTML-comment marker and mounts", async () => {
-  const html = await buildClient({ minify: true }); // production shape — where $& forms
-  // The exact defect: the marker must not survive anywhere in the output.
+test("buildClient({minify:true}) — no marker leaks into the real production bundle and it mounts", async () => {
+  // This test asserts a property of OUR injection over the real minified build:
+  // no marker survives, and the page is mountable. It deliberately does NOT
+  // assert that a `$&` sequence is present — whether the minifier emits `$&` is
+  // a property of the bundler, not of this code, and varies across environments
+  // (it did between a dev machine and the CI runner). The `$&` re-injection
+  // logic is proven deterministically in the injectClient test above, where we
+  // control the input. Here we only guard the production integration.
+  const html = await buildClient({ minify: true });
+  // The exact defect symptom: no marker may survive anywhere in the output.
   expect(html).not.toContain("<!--CLIENT-JS-->");
   expect(html).not.toContain("<!--CLIENT-CSS-->");
-  // The mount point and an inline module script are present.
+  // The mount point and an inline module script are present and non-trivial.
   expect(html).toContain('<div id="app">');
   const script = html.match(/<script type="module">([\s\S]*?)<\/script>/);
   expect(script).not.toBeNull();
   const body = script![1]!;
   expect(body.length).toBeGreaterThan(1000);
-  // A minified module carries no HTML-comment token; the ONLY way one enters is
-  // marker re-injection, so its absence proves the module parses (no
-  // "HTML comments are not allowed in modules" SyntaxError).
+  // A re-injected marker is the ONLY way an HTML-comment token enters the
+  // module, so its absence proves the module parses (no "HTML comments are not
+  // allowed in modules" SyntaxError).
   expect(body).not.toContain("<!--CLIENT");
-  // The bundle really does contain a `$&` sequence in production — this asserts
-  // the test is exercising the defect's precondition, not a lucky build.
-  expect(body).toContain("$&");
 });
