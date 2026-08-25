@@ -1,5 +1,5 @@
 import { access } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { readBrain } from "../make-workspace/read";
 import { personaSlug } from "../hire-specialists/render";
 import { readLedger } from "../journey/ledger";
@@ -50,7 +50,15 @@ async function repoAbsOf(
   if (!brain.ok) return { ok: false, error: brain.error };
   const repo = brain.brain.repos.find((r) => r.name === repoName);
   if (!repo) return { ok: false, error: `unknown-repo ${repoName}` };
-  return { ok: true, abs: join(workspaceDir, repo.path) };
+  // ABSOLUTE, not `join`. `git -C <repoRoot> worktree add <path>` interprets a
+  // RELATIVE <path> relative to <repoRoot> — so if the repo root itself is
+  // relative (the `--workspace .` + brain `path: ./repo` case), the worktree
+  // path built as `join(repoRoot, .worktrees/…)` gets re-prefixed by git's own
+  // -C and the repo segment doubles (`…/repo/repo/.worktrees/…`, D2). Resolving
+  // to an absolute repo root here makes the worktree path absolute too, so git
+  // uses it verbatim — no doubling, whether the workspace was passed relative
+  // or absolute.
+  return { ok: true, abs: resolve(workspaceDir, repo.path) };
 }
 
 export async function createWorktree(
@@ -90,7 +98,11 @@ export async function listWorktrees(workspaceDir: string, journey?: string): Pro
   if (!brain.ok) return [];
   const rows: WorktreeRow[] = [];
   for (const repo of brain.brain.repos) {
-    const repoAbs = join(workspaceDir, repo.path);
+    // Absolute for the same reason as repoAbsOf (D2): a relative repo root here
+    // would make git operations depend on the process cwd. listPorcelain reads
+    // git's own absolute records either way, but resolving keeps the whole
+    // module consistent about repo roots being absolute.
+    const repoAbs = resolve(workspaceDir, repo.path);
     for (const w of await listPorcelain(repoAbs)) {
       const m = /^aipe\/([^/]+)\/(.+)$/.exec(w.branch);
       if (!m) continue;
