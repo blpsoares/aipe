@@ -125,7 +125,24 @@ It binds localhost by default.
 ```sh
 aipe serve                       # http://127.0.0.1:4317
 aipe serve --port 8080 --workspace ../aipe-opvibes
+aipe serve --host 0.0.0.0        # reachable from the LAN → token required
 ```
+
+**Binding off loopback requires a token.** The console serves the whole
+workspace (`/api/snapshot`) and streams the code your specialists are writing,
+file contents included (`/api/monitor`) — so any host other than
+`127.0.0.1`/`::1`/`localhost` makes every request carry a token. It is printed
+once in the URL and promoted to an `HttpOnly` cookie, so the SPA's own fetches
+and SSE streams keep working:
+
+```
+aipe serve — web console at http://localhost:4317/?token=b0jU-xdf…
+aipe serve — bound to 0.0.0.0 (reachable from the network), so a token is required.
+```
+
+Set `AIPE_SERVE_TOKEN` to pin your own (an upgrade restarts the console with the
+same token, so open browsers keep their session). `--insecure` opts out
+deliberately, with a warning. On loopback nothing changes — no token, no cookie.
 
 ### Execution-envelope recommendation — `aipe capabilities` / `aipe execution`
 

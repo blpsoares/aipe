@@ -21,6 +21,17 @@ export interface ServeEntry {
   workspace: string;
   version: string;
   startedAt: number;
+  /**
+   * The access token, when this console is bound off loopback.
+   *
+   * Persisted so `aipe upgrade` can restart it with the SAME token: a fresh
+   * one would silently invalidate the cookie every open browser is holding,
+   * and the restart happens unattended, with nobody watching to re-open the
+   * printed URL. The file is written 0600 for this reason.
+   */
+  token?: string;
+  /** Whether this console was started with --insecure, so a restart keeps it. */
+  insecure?: boolean;
 }
 
 export function serveDir(): string {
@@ -44,6 +55,8 @@ export function parseServeEntry(raw: string): ServeEntry | null {
       workspace: o.workspace,
       version: typeof o.version === "string" ? o.version : "",
       startedAt: typeof o.startedAt === "number" && Number.isFinite(o.startedAt) ? o.startedAt : 0,
+      ...(typeof o.token === "string" && o.token !== "" ? { token: o.token } : {}),
+      ...(o.insecure === true ? { insecure: true } : {}),
     };
   } catch {
     return null;
@@ -63,8 +76,9 @@ export function pidAlive(pid: number): boolean {
 /** Records this server while it runs, and arms removal on every exit path. */
 export async function registerServe(entry: ServeEntry): Promise<void> {
   try {
-    await mkdir(serveDir(), { recursive: true });
-    await writeFile(serveEntryPath(entry.pid), JSON.stringify(entry), "utf8");
+    await mkdir(serveDir(), { recursive: true, mode: 0o700 });
+    // 0600: the entry can carry this console's access token.
+    await writeFile(serveEntryPath(entry.pid), JSON.stringify(entry), { encoding: "utf8", mode: 0o600 });
     const drop = () => unregisterServe(entry.pid);
     process.on("exit", drop);
     // A killed server must not leave a ghost entry behind: the upgrade would

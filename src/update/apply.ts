@@ -15,6 +15,7 @@
 // swallowed failure leaves the user on the old behaviour while the CLI claims
 // success, which is precisely the case that hides a bad upgrade.
 import { runningServes, unregisterServe, type ServeEntry } from "../runtime/serve-registry";
+import { TOKEN_ENV } from "../serve/auth";
 import { knownWorkspaces } from "../runtime/workspaces";
 
 export interface ApplyOutcome {
@@ -29,8 +30,10 @@ export interface ApplyDeps {
   serves: () => Promise<ServeEntry[]>;
   /** Runs a command to completion, returning its exit code. */
   run: (cmd: string[]) => Promise<number>;
-  /** Spawns a detached command; returns its pid, or null. */
-  spawnDetached: (cmd: string[]) => number | null;
+  /** Spawns a detached command; returns its pid, or null. `env` carries the
+   *  restarted console's access token, which must never reach an argv (it
+   *  would be visible in `ps` to every user on the machine). */
+  spawnDetached: (cmd: string[], env?: Record<string, string>) => number | null;
   /** Stops a running server. Returns false when the signal could not be sent. */
   stop: (pid: number) => boolean;
   log: (line: string) => void;
@@ -49,9 +52,15 @@ const defaults: ApplyDeps = {
       return 1;
     }
   },
-  spawnDetached: (cmd) => {
+  spawnDetached: (cmd, env) => {
     try {
-      const child = Bun.spawn(cmd, { stdin: "ignore", stdout: "ignore", stderr: "ignore", detached: true });
+      const child = Bun.spawn(cmd, {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+        detached: true,
+        ...(env ? { env: { ...process.env, ...env } } : {}),
+      });
       child.unref();
       return typeof child.pid === "number" ? child.pid : null;
     } catch {
@@ -70,9 +79,23 @@ const defaults: ApplyDeps = {
   wait: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
 
-/** Pure: the argv that restarts a server from `bin` with the same shape it had. */
+/** Pure: the argv that restarts a server from `bin` with the same shape it had.
+ *  The token is deliberately absent — it travels in the environment. */
 export function serveRestartCommand(bin: string, entry: ServeEntry): string[] {
-  return [bin, "serve", "--workspace", entry.workspace, "--port", String(entry.port), "--host", entry.host];
+  const argv = [bin, "serve", "--workspace", entry.workspace, "--port", String(entry.port), "--host", entry.host];
+  if (entry.insecure) argv.push("--insecure");
+  return argv;
+}
+
+/**
+ * Pure: the environment a restarted console needs.
+ *
+ * Reusing the same token is the point: minting a fresh one would silently
+ * invalidate the cookie every open browser holds, and this restart happens
+ * unattended — nobody is watching to re-open the printed URL.
+ */
+export function serveRestartEnv(entry: ServeEntry): Record<string, string> | undefined {
+  return entry.token ? { [TOKEN_ENV]: entry.token } : undefined;
 }
 
 /** Pure: the argv that rehydrates one workspace with `bin`. */
@@ -112,7 +135,7 @@ export async function applyUpgrade(bin: string, deps: Partial<ApplyDeps> = {}): 
     // still-bound port is how a "successful" upgrade ends with no server at all.
     unregisterServe(s.pid);
     await d.wait(500);
-    const pid = d.spawnDetached(serveRestartCommand(bin, s));
+    const pid = d.spawnDetached(serveRestartCommand(bin, s), serveRestartEnv(s));
     if (pid === null) failures.push(`web console on :${s.port}: could not be restarted`);
     else restarted.push(pid);
   }

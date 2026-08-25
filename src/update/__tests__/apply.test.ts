@@ -109,3 +109,39 @@ test("a registry that cannot be read degrades to doing nothing", async () => {
   );
   expect(out.ok).toBe(true);
 });
+
+test("a restarted console keeps its token, and it never reaches the argv", async () => {
+  // A fresh token would silently invalidate the cookie every open browser
+  // holds, and this restart is unattended — nobody is watching to re-open the
+  // printed URL. It travels by env because an argv is visible in `ps` to every
+  // user on the machine.
+  const calls: { cmd: string[]; env?: Record<string, string> }[] = [];
+  const entry = serve({ host: "0.0.0.0", token: "secret-token", insecure: false });
+  await applyUpgrade(
+    BIN,
+    deps({ serves: async () => [entry], spawnDetached: (cmd, env) => (calls.push({ cmd, env }), 1) }),
+  );
+  expect(calls[0]!.env).toEqual({ AIPE_SERVE_TOKEN: "secret-token" });
+  expect(calls[0]!.cmd.join(" ")).not.toContain("secret-token");
+});
+
+test("an --insecure console is restarted --insecure, not silently locked down", async () => {
+  // Silently adding auth on restart would break a console the operator
+  // deliberately opened, with no message anywhere.
+  const calls: string[][] = [];
+  await applyUpgrade(
+    BIN,
+    deps({
+      serves: async () => [serve({ host: "0.0.0.0", insecure: true })],
+      spawnDetached: (cmd) => (calls.push(cmd), 1),
+    }),
+  );
+  expect(calls[0]).toContain("--insecure");
+});
+
+test("a loopback console carries no token and no env", async () => {
+  const calls: { cmd: string[]; env?: Record<string, string> }[] = [];
+  await applyUpgrade(BIN, deps({ serves: async () => [serve()], spawnDetached: (c, e) => (calls.push({ cmd: c, env: e }), 1) }));
+  expect(calls[0]!.env).toBeUndefined();
+  expect(calls[0]!.cmd).not.toContain("--insecure");
+});

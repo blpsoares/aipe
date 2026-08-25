@@ -4,12 +4,16 @@
 // as a responsive desktop+mobile web app, live over SSE.
 //
 //   aipe serve [--port <n>] [--host <addr>] [--workspace <dir>]
-//              [--background|-d|--detached]
+//              [--background|-d|--detached] [--insecure]
 //
-// Binds 127.0.0.1 by default; nothing leaves the machine.
+// Binds 127.0.0.1 by default; nothing leaves the machine. Any other host makes
+// the console reachable from the network, and it serves the whole workspace
+// plus the code specialists are writing — so off loopback it requires a token,
+// printed once in the URL. `--insecure` opts out deliberately.
 //
 // --background/-d/--detached spawns the server as a detached child, prints its
 // PID + how to stop it, and returns immediately so it outlives the shell.
+import { isLoopback, requiresAuth, resolveToken, TOKEN_ENV } from "./auth";
 import { startServer } from "./server";
 import { registerServe } from "../runtime/serve-registry";
 import { VERSION } from "../cli";
@@ -83,17 +87,44 @@ export function spawnDetached(
   return pid;
 }
 
+/**
+ * Pure: what to tell the operator about who can reach this console.
+ *
+ * Silence on loopback (nothing to say), the token rule off loopback, and a
+ * blunt warning for `--insecure` — an open console exposes the workspace and
+ * the code specialists are writing, so that choice should never be quiet.
+ */
+export function accessNotice(host: string, insecure: boolean, tokenEnv: string): string[] {
+  if (isLoopback(host)) return [];
+  if (insecure) {
+    return [
+      `aipe serve — WARNING: --insecure on ${host}: anyone who can reach this port can read`,
+      "aipe serve —          your workspace and the code your specialists are writing.",
+    ];
+  }
+  return [
+    `aipe serve — bound to ${host} (reachable from the network), so a token is required.`,
+    `aipe serve — open the URL above; set ${tokenEnv} to pin your own token.`,
+  ];
+}
+
 export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const port = Math.max(0, Number(getFlag(args, "--port") ?? "4317") || 4317);
   const host = getFlag(args, "--host") ?? "127.0.0.1";
+  const insecure = args.includes("--insecure");
 
   if (wantsBackground(args)) {
     spawnDetached(args);
     return 0;
   }
 
-  const server = startServer({ workspace, port, host });
+  const guarded = requiresAuth(host, insecure);
+  // Reused from the environment when present, so an upgrade can restart this
+  // console without invalidating the cookie every open browser is holding.
+  const token = guarded ? resolveToken() : "";
+
+  const server = startServer({ workspace, port, host, token, insecure });
   // Announce this server on the machine registry so `aipe upgrade` can bounce
   // it onto the new binary — a detached console otherwise serves the old code
   // until someone notices and kills it by hand.
@@ -104,10 +135,14 @@ export async function run(args: string[]): Promise<number> {
     workspace,
     version: VERSION,
     startedAt: Date.now(),
+    ...(token !== "" ? { token } : {}),
+    ...(insecure ? { insecure: true } : {}),
   });
   const shown = host === "0.0.0.0" ? "localhost" : host;
-  console.log(`aipe serve — web console at http://${shown}:${server.port}`);
+  const suffix = guarded ? `/?token=${token}` : "";
+  console.log(`aipe serve — web console at http://${shown}:${server.port}${suffix}`);
   console.log(`aipe serve — workspace ${workspace}`);
+  for (const line of accessNotice(host, insecure, TOKEN_ENV)) console.log(line);
   console.log("aipe serve — Ctrl-C to stop");
 
   const stop = () => {
