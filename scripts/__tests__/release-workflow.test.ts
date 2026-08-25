@@ -71,13 +71,14 @@ test("runs are serialised, so two merges cannot compute the same version", () =>
 
 // ── The bump must actually see every commit in the range ────────────────────
 //
-// `--pretty=format:` omits the trailing newline after the last commit, and
-// `while read` returns non-zero on an unterminated line — so the newest commit
-// is silently dropped from the loop. Since every merge to main releases, the
-// usual range holds exactly ONE commit, which means the only commit was the one
-// being dropped: v1.0.1 shipped `feat(update): …` as a patch.
+// `--pretty=format:` omits the trailing newline after its last line, and
+// `while read` returns non-zero on an unterminated line — so that line is
+// silently dropped. `git log` prints newest-first, so what is lost is the
+// range's OLDEST commit. Since every merge to main releases, the usual range
+// holds exactly ONE commit, which means the only commit was the one being
+// dropped: v1.0.1 shipped `feat(update): …` as a patch.
 
-test("no read loop consumes a `format:` stream — it would drop the newest commit", () => {
+test("no read loop consumes a `format:` stream — it would drop a commit", () => {
   // Command substitution (`$(git log -1 --pretty=format:%s)`) and `grep` are
   // both fine with a missing terminator; a `while read` loop is not.
   const loops = RAW.split("\n").filter((l) => /while\s+IFS.*read\b/.test(l) || /done\s*<\s*<\(/.test(l));
