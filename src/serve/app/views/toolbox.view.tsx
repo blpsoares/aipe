@@ -69,6 +69,6 @@ function ToolboxView() {
 
 export const route: Route = {
   path: "/toolbox",
-  nav: { label: "nav_toolbox", icon: "⬡", order: 4 },
+  nav: { label: "nav_toolbox", icon: "toolbox", order: 4 },
   component: ToolboxView,
 };

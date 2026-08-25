@@ -23,7 +23,7 @@ afterEach(() => {
 
 test("route contract: path/order/icon preserved", () => {
   expect(route.path).toBe("/org");
-  expect(route.nav).toEqual({ label: "nav_org", icon: "◈", order: 1 });
+  expect(route.nav).toEqual({ label: "nav_org", icon: "org", order: 1 });
 });
 
 test("empty snapshot -> org_nomatch in both the SVG wrap and the mobile tree", () => {

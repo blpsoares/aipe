@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { Icon } from "../components/Icon";
 import { useState } from "preact/hooks";
 import { t, lang } from "../runtime/i18n";
 import { NOTIF, saveNotif, notify } from "../runtime/notify";
@@ -137,7 +138,7 @@ function SettingsView() {
         {erow("merged", t("ev_merged"), "merged")}
         <div style={{ marginTop: "16px" }}>
           <button type="button" class="btn btn-primary" data-act="test" onClick={sendTest}>
-            🔔 {t("set_test")}
+            <Icon name="bell" size={15} /> {t("set_test")}
           </button>
         </div>
       </div>
@@ -154,6 +155,6 @@ function SettingsView() {
 
 export const route: Route = {
   path: "/settings",
-  nav: { label: "nav_settings", icon: "⚙", order: 7 },
+  nav: { label: "nav_settings", icon: "settings", order: 7 },
   component: SettingsView,
 };

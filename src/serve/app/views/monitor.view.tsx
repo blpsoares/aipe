@@ -90,6 +90,6 @@ function MonitorView() {
 
 export const route: Route = {
   path: "/monitor",
-  nav: { label: "nav_monitor", icon: "◉", order: 6 },
+  nav: { label: "nav_monitor", icon: "monitor", order: 6 },
   component: MonitorView,
 };

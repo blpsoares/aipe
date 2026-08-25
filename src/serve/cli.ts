@@ -15,7 +15,16 @@
 // PID + how to stop it, and returns immediately so it outlives the shell.
 import { isLoopback, requiresAuth, resolveToken, TOKEN_ENV } from "./auth";
 import { startServer } from "./server";
-import { registerServe } from "../runtime/serve-registry";
+import { registerServe, runningServes, unregisterServe } from "../runtime/serve-registry";
+import {
+  isHelpRequest,
+  serveSubcommand,
+  selectForWorkspace,
+  statusExitCode,
+  stopPlan,
+  portHolder,
+} from "./lifecycle";
+import { renderBanner, renderHelp, renderStatus, renderStop, liveLine, supportsColor } from "./present";
 import { VERSION } from "../cli";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -108,8 +117,61 @@ export function accessNotice(host: string, insecure: boolean, tokenEnv: string):
   ];
 }
 
+function print(lines: string[]): void {
+  for (const line of lines) console.log(line);
+}
+
+// `aipe serve status` — is a console running for THIS workspace? Reports port,
+// PID, host, uptime; exit 0 when running, NOT_RUNNING_CODE (3) when not.
+export async function statusCommand(workspace: string, out: (l: string[]) => void = print): Promise<number> {
+  const color = supportsColor(process.stdout, process.env);
+  const matched = selectForWorkspace(await runningServes(), workspace);
+  out(renderStatus(matched, workspace, Date.now(), color));
+  return statusExitCode(matched);
+}
+
+// `aipe serve stop` — stop the detached console(s) for this workspace. Idempotent
+// (exit 0 even when nothing was running) and explicit about a no-op.
+export async function stopCommand(
+  workspace: string,
+  out: (l: string[]) => void = print,
+  kill: (pid: number) => void = (pid) => process.kill(pid, "SIGTERM"),
+): Promise<number> {
+  const color = supportsColor(process.stdout, process.env);
+  const pids = stopPlan(await runningServes(), workspace);
+  const stopped: number[] = [];
+  for (const pid of pids) {
+    try {
+      kill(pid);
+      // The console removes its own registry entry on SIGTERM, but a slow or
+      // already-gone process could leave a stale file — clear it either way so
+      // `stop` is idempotent and `status` is immediately correct.
+      unregisterServe(pid);
+      stopped.push(pid);
+    } catch {
+      // ESRCH (already gone) or EPERM (not ours) — drop its stale entry anyway.
+      unregisterServe(pid);
+    }
+  }
+  out(renderStop(stopped, workspace, color));
+  return 0;
+}
+
 export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
+
+  // `--help` prints help and exits WITHOUT binding the port — the whole reason
+  // it was broken before was that binding happened first and threw on a busy
+  // port. Help must never touch the network.
+  if (isHelpRequest(args)) {
+    print(renderHelp(supportsColor(process.stdout, process.env)));
+    return 0;
+  }
+
+  const sub = serveSubcommand(args);
+  if (sub === "status") return statusCommand(workspace);
+  if (sub === "stop") return stopCommand(workspace);
+
   const port = Math.max(0, Number(getFlag(args, "--port") ?? "4317") || 4317);
   const host = getFlag(args, "--host") ?? "127.0.0.1";
   const insecure = args.includes("--insecure");
@@ -124,7 +186,23 @@ export async function run(args: string[]): Promise<number> {
   // console without invalidating the cookie every open browser is holding.
   const token = guarded ? resolveToken() : "";
 
-  const server = startServer({ workspace, port, host, token, insecure });
+  const color = supportsColor(process.stdout, process.env);
+
+  let server: ReturnType<typeof startServer>;
+  try {
+    server = startServer({ workspace, port, host, token, insecure, onClients: updateLiveLine });
+  } catch (err) {
+    // Bun throws EADDRINUSE synchronously. Name who holds the port instead of
+    // re-throwing a bare "is port in use?".
+    const holder = portHolder(await runningServes(), port, host);
+    if (holder) {
+      console.log(`ERROR aipe serve — port ${port} is already held by an aipe console (PID ${holder.pid}, workspace ${holder.workspace}).`);
+      console.log(`ERROR aipe serve — stop it with:  aipe serve stop   (from that workspace)  or  kill ${holder.pid}`);
+    } else {
+      console.log(`ERROR aipe serve — could not bind ${host}:${port} — ${(err as Error).message}. Is another process using it? Pick another with --port.`);
+    }
+    return 1;
+  }
   // Announce this server on the machine registry so `aipe upgrade` can bounce
   // it onto the new binary — a detached console otherwise serves the old code
   // until someone notices and kills it by hand.
@@ -140,10 +218,12 @@ export async function run(args: string[]): Promise<number> {
   });
   const shown = host === "0.0.0.0" ? "localhost" : host;
   const suffix = guarded ? `/?token=${token}` : "";
-  console.log(`aipe serve — web console at http://${shown}:${server.port}${suffix}`);
-  console.log(`aipe serve — workspace ${workspace}`);
-  for (const line of accessNotice(host, insecure, TOKEN_ENV)) console.log(line);
-  console.log("aipe serve — Ctrl-C to stop");
+  const url = `http://${shown}:${server.port}${suffix}`;
+  print(renderBanner({ url, workspace, notice: accessNotice(host, insecure, TOKEN_ENV) }, color));
+  // The live line is the last thing printed, so it can be rewritten in place as
+  // SSE clients connect/disconnect (TTY only; when piped we print it once).
+  liveLinePrinted = true;
+  process.stdout.write(liveLine(0, color) + "\n");
 
   const stop = () => {
     server.stop(true);
@@ -155,6 +235,21 @@ export async function run(args: string[]): Promise<number> {
   // Keep the process alive; the server runs until interrupted.
   await new Promise<void>(() => {});
   return 0;
+}
+
+// ── Live line (attached, TTY) ────────────────────────────────────────────────
+// A single line at the bottom of the banner, rewritten in place as SSE clients
+// come and go. Only rewrites on a TTY (where cursor control works); when piped
+// the initial line stands and updates are suppressed to avoid log spam.
+let liveLinePrinted = false;
+function updateLiveLine(count: number): void {
+  if (!liveLinePrinted) return;
+  const color = supportsColor(process.stdout, process.env);
+  if (process.stdout.isTTY) {
+    // Move to line start, clear it, rewrite. Safe because the live line is the
+    // last thing written and nothing else prints after the banner.
+    process.stdout.write("\r\x1b[2K" + liveLine(count, color));
+  }
 }
 
 if (import.meta.main) {

@@ -24,8 +24,9 @@ afterEach(() => {
   location.hash = "";
 });
 
-test("routes.generated.ts has all 8 view stubs, order-sorted, no terminal", () => {
+test("routes.generated.ts has all view stubs, order-sorted, the Floor first, no terminal", () => {
   expect(appRoutes.map((r) => r.path)).toEqual([
+    "/", // The Floor — the activity-oriented landing (nav.order -1)
     "/overview",
     "/org",
     "/pipeline",
@@ -34,6 +35,7 @@ test("routes.generated.ts has all 8 view stubs, order-sorted, no terminal", () =
     "/activity",
     "/monitor",
     "/settings",
+    "/status",
   ]);
   expect(appRoutes.some((r) => r.path === "/terminal")).toBe(false);
 });
@@ -42,7 +44,13 @@ test("Sidebar renders one nav-i per route.nav, in nav.order — settings in the 
   const { container } = render(<Sidebar />);
   const mainLabels = [...container.querySelectorAll(".sidebar > .nav-i")].map((b) => b.textContent);
   const nonSettings = appRoutes.filter((r) => r.path !== "/settings");
-  expect(mainLabels).toEqual(nonSettings.map((r) => r.nav.icon + t(r.nav.label)));
+  expect(mainLabels).toEqual(nonSettings.map((r) => t(r.nav.label)));
+  // Icons are inline SVGs now (5.2) — every nav item carries one with an accessible name.
+  for (const btn of container.querySelectorAll(".sidebar > .nav-i")) {
+    const svg = btn.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg!.getAttribute("aria-label")).toBeTruthy();
+  }
   // Settings lives in .sb-foot, alongside Collapse.
   const footButtons = [...container.querySelectorAll(".sb-foot > button")];
   expect(footButtons.length).toBe(2);
@@ -84,7 +92,7 @@ test("BottomNav lists only overview/pipeline/team/activity/monitor, in that orde
   const labels = [...container.querySelectorAll("#tabbar button")].map((b) => b.textContent);
   const expected = ["overview", "pipeline", "team", "activity", "monitor"].map((p) => {
     const r = appRoutes.find((x) => x.path === "/" + p)!;
-    return r.nav.icon + t(r.nav.label);
+    return t(r.nav.label);
   });
   expect(labels).toEqual(expected);
 });
@@ -100,7 +108,8 @@ test("BottomNav shows the attention dot on Activity only when there is attention
 
 test("LangSwitch reads the lang signal and calls setLang; Sidebar labels update reactively (no manual re-render)", () => {
   const { container } = render(<Sidebar />);
-  expect(container.querySelector(".nav-i")!.textContent).toContain("Overview");
+  const navLabels = () => [...container.querySelectorAll(".nav-i")].map((b) => b.textContent).join("|");
+  expect(navLabels()).toContain("Overview");
 
   const langEl = render(<LangSwitch />).container;
   fireEvent.click(langEl.querySelector('[data-lang="pt"]')!);
@@ -108,8 +117,8 @@ test("LangSwitch reads the lang signal and calls setLang; Sidebar labels update 
 
   // No rerender() call: @preact/signals re-renders the already-mounted Sidebar
   // because its render body reads t()/lang.value. If reactivity were broken this
-  // assertion would fail (label would still read "Overview").
-  expect(container.querySelector(".nav-i")!.textContent).toContain("Visão geral");
+  // assertion would fail (the Overview label would still read "Overview").
+  expect(navLabels()).toContain("Visão geral");
   expect(t("nav_overview")).toBe("Visão geral");
 });
 

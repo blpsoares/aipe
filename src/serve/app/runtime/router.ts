@@ -27,7 +27,7 @@ const STORAGE_KEY = "aipe-view";
 // modules are still resolving. Since the 8 views are fixed (routes.generated.ts
 // only ever globs views/*.view.tsx, and no new view files are added mid-task),
 // this list is stable; update it if a views/*.view.tsx path ever changes.
-const KNOWN_PATHS = ["/overview", "/org", "/pipeline", "/team", "/toolbox", "/activity", "/monitor", "/settings"];
+const KNOWN_PATHS = ["/", "/overview", "/status", "/org", "/pipeline", "/team", "/toolbox", "/activity", "/monitor", "/settings"];
 
 function isValidPath(p: string | null | undefined): p is string {
   return !!p && KNOWN_PATHS.includes(p);
@@ -53,10 +53,14 @@ function resolveInitialPath(): string {
   if (isValidPath(fromHash)) return fromHash;
   const fromStorage = pathFromStorage();
   if (isValidPath(fromStorage)) return fromStorage;
-  return "/overview";
+  return "/"; // The Floor is the landing route.
 }
 
 export const currentPath: Signal<string> = signal(resolveInitialPath());
+
+// An in-view anchor to scroll to after navigation (e.g. a status chip opening the
+// status guide at its own card). Consumed and cleared by the target view.
+export const focusAnchor: Signal<string | null> = signal(null);
 
 export function navigate(path: string): void {
   const p = isValidPath(path) ? path : "/overview";

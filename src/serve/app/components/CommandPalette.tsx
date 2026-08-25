@@ -20,6 +20,7 @@ import { navigate } from "../runtime/router";
 import { snapshot, openWorkerName } from "../runtime/store";
 import { fqid } from "../runtime/dom";
 import { cycleTheme } from "./ThemeToggle";
+import { Icon } from "./Icon";
 
 const appRoutes = routes as Route[];
 
@@ -80,13 +81,13 @@ export function commands(): CmdItem[] {
     ...gotoCmds,
     {
       g: A,
-      ic: "✎",
+      ic: "edit",
       label: t("c_writespec"),
       // Mock kept for parity with the monolith's `alert("(mock)")` — no real
       // spec-writing feature is implemented here.
       run: () => {},
     },
-    { g: A, ic: "◐", label: t("c_theme"), run: () => cycleTheme() },
+    { g: A, ic: "theme", label: t("c_theme"), run: () => cycleTheme() },
   ];
 }
 
@@ -94,7 +95,7 @@ export function cmdList(q: string): CmdItem[] {
   const needle = q.toLowerCase();
   const workers: CmdItem[] = snapshot.value.workers.map((w) => ({
     g: t("g_workers"),
-    ic: "◑",
+    ic: "worker",
     label: `${w.name} · ${fqid(w)}`,
     run: () => {
       openWorkerName.value = w.name;
@@ -180,7 +181,7 @@ export function CommandPalette() {
                     sel.value = i;
                   }}
                 >
-                  <span class="ic">{o.ic}</span>
+                  {o.ic ? <Icon name={o.ic} size={16} /> : <span class="ic" />}
                   {o.label}
                   {i === selection && <span class="kbd k2">↵</span>}
                 </div>

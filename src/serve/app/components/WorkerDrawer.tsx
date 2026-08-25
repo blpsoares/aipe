@@ -6,6 +6,7 @@
 import { openWorkerName, snapshot, type Dispatch } from "../runtime/store";
 import { t } from "../runtime/i18n";
 import { fqid } from "../runtime/dom";
+import { Icon } from "./Icon";
 import { Avatar } from "./Avatar";
 import { Chip } from "./Chip";
 import { CompChips } from "./CompChips";
@@ -77,8 +78,8 @@ export function WorkerDrawer() {
                 {cv.title || w.role} · {fqid(w)}
               </div>
             </div>
-            <button class="icon-btn" onClick={close}>
-              ✕
+            <button class="icon-btn" onClick={close} title={t("close")} aria-label={t("close")}>
+              <Icon name="close" />
             </button>
           </header>
           <div class="body">

@@ -15,7 +15,7 @@ test("Chip carries a plain-language tooltip + aria-label, keeps its text and cla
   const { container } = render(<Chip status="verified" />);
   const chip = container.querySelector(".chip")!;
   // class + text contract preserved (icon is an SVG → no textContent)
-  expect(chip.className).toBe("chip verified");
+  expect(chip.className).toBe("chip chip-link verified");
   expect(chip.textContent).toBe("verified");
   // accessible description
   expect(chip.getAttribute("title")).toContain("QA checked it against the diff");
@@ -39,11 +39,9 @@ test("every status resolves an icon (no crash on unknown → fallback)", () => {
 test("Chip for redirected: amber tone, its own label, not the available/idle icon", () => {
   const { container } = render(<Chip status="redirected" />);
   const chip = container.querySelector(".chip")!;
-  expect(chip.className).toBe("chip redirected");
+  expect(chip.className).toBe("chip chip-link redirected");
   expect(chip.textContent).toBe("redirected");
-  expect(chip.getAttribute("title")).toBe(
-    "You talked to this specialist mid-flight and changed its direction — the coordinator needs to reconcile the spec before this ships.",
-  );
+  expect(chip.getAttribute("title")).toContain("You talked to this specialist mid-flight and changed its direction");
 });
 
 test("StatusLegend lists all seven stages (dispatched → redirected → … → merged) with plain-language descriptions", () => {

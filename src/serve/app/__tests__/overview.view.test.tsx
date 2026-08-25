@@ -4,7 +4,7 @@ import { render, cleanup } from "@testing-library/preact";
 import { route } from "../views/overview.view";
 import { snapshot, counts, dispatches, activity, applySnapshot } from "../runtime/store";
 import { currentPath, navigate } from "../runtime/router";
-import { setLang } from "../runtime/i18n";
+import { setLang, t } from "../runtime/i18n";
 import { loadFixture } from "./fixtures";
 
 const OverviewView = route.component;
@@ -23,7 +23,7 @@ afterEach(() => {
 
 test("route contract: path/order/icon preserved", () => {
   expect(route.path).toBe("/overview");
-  expect(route.nav).toEqual({ label: "nav_overview", icon: "◎", order: 0 });
+  expect(route.nav).toEqual({ label: "nav_overview", icon: "overview", order: 0 });
 });
 
 test("AttentionStrip: hidden on a clean board", () => {
@@ -81,7 +81,7 @@ test("hero warn: counts.escalated>0 with a matching escalated worker", () => {
   const hero = container.querySelector(".hero")!;
   expect(hero.classList.contains("warn")).toBe(true);
   expect(hero.classList.contains("ok")).toBe(false);
-  expect(hero.querySelector(".orb")!.textContent).toBe("⚠");
+  expect(hero.querySelector(".orb svg")!.getAttribute("aria-label")).toBe(t("att_warning"));
   expect(hero.querySelector("h2")!.textContent).toBe("1 escalation needs you");
   // fixture's escalated worker is Carla, in core/ui
   expect(hero.querySelector("p")!.textContent).toBe("Carla escalated a change on core/ui — review and approve the next wave.");
@@ -111,7 +111,7 @@ test("hero ok: counts.escalated===0", () => {
   const hero = container.querySelector(".hero")!;
   expect(hero.classList.contains("ok")).toBe(true);
   expect(hero.classList.contains("warn")).toBe(false);
-  expect(hero.querySelector(".orb")!.textContent).toBe("✓");
+  expect(hero.querySelector(".orb svg")!.getAttribute("aria-label")).toBe(t("ok_h"));
   expect(hero.querySelector("h2")!.textContent).toBe("All systems nominal");
   expect(hero.querySelector("p")!.textContent).toBe("Every dispatch is progressing. Nothing is blocked.");
   expect(hero.querySelector(".cta button")!.textContent).toBe("View activity →");

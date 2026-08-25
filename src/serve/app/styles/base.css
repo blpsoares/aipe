@@ -30,7 +30,10 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .brand .mark { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(140deg, var(--accent-2), var(--accent)); display: grid; place-items: center; color: #04120c; font-family: var(--mono); font-weight: 800; font-size: 16px; flex: 0 0 auto; box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
 .brand .name { font-weight: 750; letter-spacing: -.02em; font-size: 15px; white-space: nowrap; }
 .brand .name small { display: block; font-weight: 500; font-size: 11px; color: var(--ink-3); letter-spacing: 0; }
-.app.collapsed .brand .name, .app.collapsed .nav-i span, .app.collapsed .sb-foot .lbl, .app.collapsed .sb-sec { display: none; }
+/* Collapsed: hide the LABELS only. `span:not(.ic)` keeps the icon span (.ic) —
+   collapsing exists precisely for icon-only navigation, so hiding every span
+   (which included the icon) left an empty rail. See build-client/sidebar tests. */
+.app.collapsed .brand .name, .app.collapsed .nav-i span:not(.ic), .app.collapsed .sb-foot .lbl, .app.collapsed .sb-sec { display: none; }
 .sb-sec { padding: 14px 10px 6px; }
 .nav-i { position: relative; display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 10px; color: var(--ink-2); font-weight: 550; font-size: 13.5px; width: 100%; text-align: left; transition: background .15s, color .15s; white-space: nowrap; }
 .nav-i .ic { width: 18px; height: 18px; flex: 0 0 18px; display: grid; place-items: center; color: var(--ink-3); }

@@ -1,5 +1,7 @@
 import { signal, computed, type Signal, type ReadonlySignal } from "@preact/signals";
 import { dkey, fqidOf } from "./dom";
+import { openJourneyOf, buildDecisionInbox, type JourneyLike, type DecisionItem } from "./floor";
+import type { SessionInfo } from "../../sessions";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 // These mirror the shapes produced/consumed by src/serve/app.html's setSnap
@@ -86,10 +88,16 @@ export interface RawSnapshot {
     mcps?: { name: string; scope?: string }[];
   };
   worktreeRows?: unknown[];
-  journeys?: { id: string; dispatches?: Dispatch[] }[];
+  journeys?: { id: string; updatedAt?: string; spec?: { path: string; version: number; approved: boolean }; authorizations?: { tier: string; grantedBy: string }[]; dispatches?: Dispatch[] }[];
   personaCVs?: unknown[];
   counts?: { hired?: number; active?: number; delivered?: number; escalated?: number; available?: number; redirected?: number };
   attention?: AttentionItem[];
+  // Live agentop session activity, folded in server-side (serve/payload.ts).
+  // Absent when no dispatch runs as a session, or when agentop is unavailable.
+  sessions?: SessionInfo[];
+  // The coordinator's own open sessions (rooted at the workspace) — a fact about
+  // sessions, not multiple coordinators (5.5).
+  coordinatorSessions?: SessionInfo[];
   [key: string]: unknown;
 }
 
@@ -116,6 +124,8 @@ export interface Snapshot {
   journeys: RawSnapshot["journeys"];
   cvs: unknown[];
   attention: AttentionItem[];
+  sessions: SessionInfo[];
+  coordinatorSessions: SessionInfo[];
 }
 
 type Translator = (k: string) => string;
@@ -253,6 +263,8 @@ const EMPTY_SNAPSHOT: Snapshot = {
   journeys: [],
   cvs: [],
   attention: [],
+  sessions: [],
+  coordinatorSessions: [],
 };
 
 export const snapshot: Signal<Snapshot> = signal(EMPTY_SNAPSHOT);
@@ -277,6 +289,35 @@ export const attentionHasCritical: ReadonlySignal<boolean> = computed(() =>
   attentionItems.value.some((a) => a.severity === "critical"),
 );
 
+// ── The Floor (activity-oriented landing) ────────────────────────────────────
+// The dispatch pinned into the coordinator wizard's body (null ⇒ the wizard
+// shows the journey's own resting body). Set by clicking a specialist accordion
+// or a decision-inbox row; cleared by ESC / clicking the pinned row again.
+export const pinnedDispatch: Signal<Dispatch | null> = signal(null);
+
+// The journey the Floor pins its coordinator wizard to.
+export const floorJourney: ReadonlySignal<JourneyLike | null> = computed(() =>
+  openJourneyOf((snapshot.value.journeys ?? []) as JourneyLike[]),
+);
+
+// The live agentop sessions folded into the snapshot (empty when none / agentop
+// absent). Used to derive a session-mode dispatch's true phase + activity.
+export const sessions: ReadonlySignal<SessionInfo[]> = computed(() => snapshot.value.sessions ?? []);
+
+// The coordinator's own open sessions — a fact about sessions, not multiple
+// coordinators (5.5). There is one coordinator identity: snapshot.context.coordinator.
+export const coordinatorSessionCount: ReadonlySignal<number> = computed(() => (snapshot.value.coordinatorSessions ?? []).length);
+
+// Everything waiting on the PE, ranked. The empty list IS the success state.
+export const decisionInbox: ReadonlySignal<DecisionItem[]> = computed(() =>
+  buildDecisionInbox({
+    attention: snapshot.value.attention ?? [],
+    journeys: (snapshot.value.journeys ?? []) as JourneyLike[],
+    sessions: snapshot.value.sessions ?? [],
+    now: Date.now(),
+  }),
+);
+
 // Module-level previous-dispatch map, equivalent to the monolith's `PREV`.
 let prevMap: Map<string, Dispatch> | null = null;
 
@@ -298,6 +339,8 @@ export function applySnapshot(raw: RawSnapshot, now: number, t: Translator = (k)
     journeys: raw.journeys || [],
     cvs: raw.personaCVs || [],
     attention: raw.attention || [],
+    sessions: raw.sessions || [],
+    coordinatorSessions: raw.coordinatorSessions || [],
   };
   snapshot.value = next;
 

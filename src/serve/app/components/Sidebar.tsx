@@ -4,6 +4,7 @@ import { t } from "../runtime/i18n";
 import { attentionCount, attentionHasCritical, brandCtx } from "../runtime/store";
 import { currentPath, navigate } from "../runtime/router";
 import { toggleCollapsed } from "../runtime/ui";
+import { Icon } from "./Icon";
 
 const appRoutes = routes as Route[];
 const settingsRoute = appRoutes.find((r) => r.path === "/settings");
@@ -25,7 +26,7 @@ export function Sidebar() {
       </div>
       {mainRoutes.map((r) => (
         <button type="button" key={r.path} class={`nav-i${path === r.path ? " on" : ""}`} onClick={() => navigate(r.path)}>
-          <span class="ic">{r.nav.icon}</span>
+          <Icon name={r.nav.icon} title={t(r.nav.label)} />
           <span>{t(r.nav.label)}</span>
           {r.nav.badge === "escalation" && attention > 0 && (
             <span class={`badge${crit ? " crit" : ""}`} id="navBadge" title={t("needs_attention")}>
@@ -41,12 +42,12 @@ export function Sidebar() {
             class={`nav-i${path === settingsRoute.path ? " on" : ""}`}
             onClick={() => navigate(settingsRoute.path)}
           >
-            <span class="ic">{settingsRoute.nav.icon}</span>
+            <Icon name={settingsRoute.nav.icon} title={t(settingsRoute.nav.label)} />
             <span>{t(settingsRoute.nav.label)}</span>
           </button>
         )}
         <button type="button" class="nav-i" id="collapseBtn" onClick={toggleCollapsed}>
-          <span class="ic">⇤</span>
+          <Icon name="collapse" title={t("collapse")} />
           <span class="lbl">{t("collapse")}</span>
         </button>
       </div>

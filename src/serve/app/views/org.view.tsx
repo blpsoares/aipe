@@ -8,6 +8,7 @@ import { ConnBadge } from "../components/ConnBadge";
 import { OrgChart } from "../components/OrgChart";
 import { OrgTree } from "../components/OrgTree";
 import { OrgLegend } from "../components/OrgLegend";
+import { Icon } from "../components/Icon";
 import type { Route } from "../route-types";
 
 // app.html:1021-1027 — the toolbar's zoom buttons read the wrap element's
@@ -47,9 +48,8 @@ function OrgView() {
       </div>
       <div class="org-toolbar">
         <label class="org-search">
-          <span class="ic" aria-hidden="true">
-            🔍
-          </span>
+          <Icon name="search" size={15} />
+
           <input
             id="orgSearch"
             type="search"
@@ -68,16 +68,16 @@ function OrgView() {
         </label>
         <div class="org-ctrls" role="group" aria-label={t("org_zoom")}>
           <button class="icon-btn" onClick={() => handleZoom(-1)} title={t("org_zoom_out")} aria-label={t("org_zoom_out")}>
-            −
+            <Icon name="minus" />
           </button>
           <button class="icon-btn" onClick={() => handleZoom(1)} title={t("org_zoom_in")} aria-label={t("org_zoom_in")}>
-            +
+            <Icon name="plus" />
           </button>
           <button class="icon-btn" onClick={() => handleZoom(0)} title={t("org_reset")} aria-label={t("org_reset")}>
-            ⟲
+            <Icon name="reset" />
           </button>
           <button class="icon-btn" onClick={handleFullscreen} title={t("org_fullscreen")} aria-label={t("org_fullscreen")}>
-            ⛶
+            <Icon name="fullscreen" />
           </button>
         </div>
       </div>
@@ -96,6 +96,6 @@ function OrgView() {
 
 export const route: Route = {
   path: "/org",
-  nav: { label: "nav_org", icon: "◈", order: 1 },
+  nav: { label: "nav_org", icon: "org", order: 1 },
   component: OrgView,
 };
