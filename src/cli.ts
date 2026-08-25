@@ -22,6 +22,7 @@ import { run as session } from "./session/cli";
 import { run as rehydrate } from "./rehydrate/cli";
 import { runSkill, runMcp } from "./toolbox/cli";
 import { run as addRepo } from "./add-repo/cli";
+import { run as workspaceCmd } from "./migrate-layout/cli";
 import { run as dashboard } from "./dashboard/cli";
 import { run as serve } from "./serve/cli";
 import { run as detectPackages } from "./detect-packages/cli";
@@ -53,6 +54,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   skill: runSkill,
   mcp: runMcp,
   "add-repo": addRepo,
+  workspace: workspaceCmd,
   dashboard: dashboard,
   serve: serve,
   "detect-packages": detectPackages,
@@ -75,6 +77,7 @@ const HELP = [
   "  context-brain      Declare the context's repos → .aipe/brain.yaml",
   "  make-workspace     Clone the declared repos on disk",
   "  add-repo           Add one repo to an existing context (incremental)",
+  "  workspace          Workspace maintenance (migrate-layout: move repos into repos/)",
   "  detect-packages     Propose a monorepo's packages from its workspace manifests",
   "  relationship       Discover cross-repo relations + backfill stack",
   "  handoff            Generate a portable CLAUDE.md handoff for a non-AIPe collaborator",

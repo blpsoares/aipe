@@ -7,9 +7,20 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const GITIGNORE = `# AIPe workspace — publish the brain, never the cloned repos or secrets.
+#
+# This is an ALLOWLIST, and it must stay one. The \`/*\` line makes "ignored" the
+# default for everything at the top level, so a file that shows up in the
+# workspace root without anyone planning for it (a .env, a scratch note, an
+# editor folder) cannot ride along into a \`git add -A\`. Listing what to ignore
+# instead of what to publish would invert that, and the workspace is a thing the
+# PE commits by hand.
+#
 # Everything at the top level is ignored (all cloned repos, whatever their
 # path, and their nested .worktrees/) ...
 /*
+# ... the clones explicitly, so the intent survives someone relaxing the rule
+# above (redundant while \`/*\` stands — deliberately so):
+/repos/
 # ... except the AIPe working files that make the workspace portable:
 !/.aipe/
 !/.claude/

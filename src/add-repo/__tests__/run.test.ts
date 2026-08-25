@@ -59,3 +59,26 @@ test("addRepo errors without a brain", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("a repo added without a path lands in repos/<name>, not at the root", async () => {
+  const dir = await ws();
+  try {
+    const result = await addRepo(dir, { name: "billing", url: "git@github.com:opvibes/billing.git" });
+    expect(result.ok).toBe(true);
+    const brain = parse(await readFile(join(dir, ".aipe", "brain.yaml"), "utf8")) as BrainFile;
+    expect(brain.repos.find((r) => r.name === "billing")?.path).toBe("./repos/billing");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an explicit --path still wins, so a legacy workspace can stay consistent", async () => {
+  const dir = await ws();
+  try {
+    await addRepo(dir, { name: "billing", url: "git@github.com:opvibes/billing.git", path: "./billing" });
+    const brain = parse(await readFile(join(dir, ".aipe", "brain.yaml"), "utf8")) as BrainFile;
+    expect(brain.repos.find((r) => r.name === "billing")?.path).toBe("./billing");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

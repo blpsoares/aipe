@@ -34,3 +34,21 @@ test("valid input writes the files and returns the paths", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("context-brain fills the default path itself — the skill's prose no longer decides", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-"));
+  try {
+    const result = await initContextBrain(
+      {
+        context: { name: "opvibes", coordinator: "Nicolas" },
+        repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git" }],
+      },
+      dir,
+    );
+    expect(result.ok).toBe(true);
+    const brain = await Bun.file(join(dir, ".aipe", "brain.yaml")).text();
+    expect(brain).toContain("path: ./repos/embark");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

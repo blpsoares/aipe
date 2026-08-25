@@ -18,6 +18,15 @@ export interface RepoEntry {
   kind?: string; // functional category of the repo: api | web | lib | service | …
 }
 
+/**
+ * A repo as DECLARED by the PE (via `/context-brain` or `aipe add-repo`).
+ *
+ * `path` is optional here and required in `RepoEntry`: what the PE hands in may
+ * omit it, what is written to brain.yaml never does. `normalizeRepoPaths()`
+ * (src/context-brain/layout.ts) is the only thing that bridges the two.
+ */
+export type RepoInput = Omit<RepoEntry, "path"> & { path?: string };
+
 export interface ContextMeta {
   name: string;
   coordinator: string;
@@ -44,7 +53,7 @@ export interface StateFile {
 
 export interface ContextInput {
   context: ContextMeta;
-  repos: RepoEntry[];
+  repos: RepoInput[];
 }
 
 export interface ValidationError {
