@@ -376,10 +376,28 @@ aipe-opvibes/
   │    ├── capabilities.yaml     # what this machine can run (probed automatically by `aipe start`; `aipe capabilities probe|show|confirm`)
   │    └── execution-policy.yaml # wave-level spending limits (optional; conservative defaults if absent)
   ├── .claude/                   # SessionStart hook + AIPe skills
-  └── <repo>/                    # cloned repo (NOT published), with:
+  └── repos/<repo>/              # cloned repo (NOT published), with:
        ├── .claude/skills/<persona>/SKILL.md   # installed persona (rehydratable)
        └── .worktrees/<journey>-<slug>/        # isolated dispatch working trees
 ```
+
+The clones live under `repos/` so the brain and the team's code never share a
+namespace — a repo called `docs` or `README.md` used to collide with a workspace
+file. `repo.path` in `brain.yaml` is the single source of truth, so the **legacy
+layout** (repos as direct children of the workspace) stays valid forever and
+nothing at runtime assumes the prefix. A PE who wants to move an old workspace
+over runs it explicitly:
+
+```bash
+aipe workspace migrate-layout              # prints the plan, changes nothing
+aipe workspace migrate-layout --apply      # moves repos/ + rewrites brain.yaml
+```
+
+It refuses while any repo has a registered git worktree or a journey has work in
+flight — a worktree records an absolute path, so moving the repo out from under
+a running dispatch would break it. `aipe rehydrate` never migrates anything: it
+runs unattended (SessionStart, and after a self-upgrade across every known
+workspace) and only ever writes derived files.
 
 ## Development
 

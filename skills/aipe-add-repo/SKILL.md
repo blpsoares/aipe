@@ -29,13 +29,18 @@ the new repo's personas; it MUST NOT re-hire or rename existing ones.
 
 ## Flow
 
-1. **Collect the repo from the PE.** Ask for its `name`, `url`, intended `path`
-   (relative to the workspace), and optional `stack`.
+1. **Collect the repo from the PE.** Ask for its `name`, `url` and optional
+   `stack`. Do **not** ask for a path: it defaults to `./repos/<name>`, matching
+   where the other repos of the context live.
 
 2. **Append it to the context:**
    ```bash
-   aipe add-repo --name <name> --url <url> --path <path> [--stack a,b] --workspace <workspace>
+   aipe add-repo --name <name> --url <url> [--path <path>] [--stack a,b] --workspace <workspace>
    ```
+   Pass `--path` only when this workspace is on the **legacy root layout** (its
+   other repos are direct children of the workspace, e.g. `./embark`) — then use
+   `./<name>` so the new repo stays consistent with its neighbours. `aipe
+   workspace migrate-layout` is how a PE moves such a workspace to `repos/`.
    `OK added <name>` + `STATE relationship=pending specialists=pending`. On
    `ERROR duplicate-name`/`duplicate-path`, fix with the PE and retry.
 

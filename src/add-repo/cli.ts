@@ -17,14 +17,14 @@ export async function run(args: string[]): Promise<number> {
   const name = getFlag(args, "--name");
   const url = getFlag(args, "--url");
   const path = getFlag(args, "--path");
-  if (!name || !url || !path) {
-    console.log("ERROR args: --name, --url and --path are required");
+  if (!name || !url) {
+    console.log("ERROR args: --name and --url are required");
     return 1;
   }
   const stackFlag = getFlag(args, "--stack");
   const stack = stackFlag ? stackFlag.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
 
-  const result = await addRepo(workspace, { name, url, path, stack });
+  const result = await addRepo(workspace, { name, url, ...(path ? { path } : {}), stack });
   if (!result.ok) {
     console.log(`ERROR ${result.error}`);
     return 1;

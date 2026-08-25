@@ -4,12 +4,14 @@ import { stringify } from "yaml";
 import { readBrain } from "../make-workspace/read";
 import { updateRelationshipPhase } from "../relationship/state";
 import { updateSpecialistsPhase } from "../hire-specialists/state";
+import { defaultRepoPath } from "../context-brain/layout";
 import type { RepoEntry } from "../context-brain/types";
 
 export interface AddRepoInput {
   name: string;
   url: string;
-  path: string;
+  /** Optional: defaults to `./repos/<name>` — see context-brain/layout.ts. */
+  path?: string;
   stack?: string[];
 }
 
@@ -25,8 +27,10 @@ export type AddRepoResult =
 export async function addRepo(workspaceDir: string, input: AddRepoInput): Promise<AddRepoResult> {
   const name = input.name.trim();
   const url = input.url.trim();
-  const path = input.path.trim();
-  if (!name || !url || !path) return { ok: false, error: "name, url and path are required" };
+  if (!name || !url) return { ok: false, error: "name and url are required" };
+  // Same default as `/context-brain`, so a repo added later lands beside the
+  // ones added at onboarding instead of at the workspace root.
+  const path = input.path?.trim() || defaultRepoPath(name);
 
   const brainResult = await readBrain(workspaceDir);
   if (!brainResult.ok) return { ok: false, error: brainResult.error };

@@ -37,9 +37,13 @@ analyzing code — this skill records **factual knowledge only**; it never reads
      later to personalize awareness when a session opens directly inside a
      specialist's repo ("you work for `<pe>`"). Do not push for it if the PE
      doesn't offer one — leave `pe` out of the JSON entirely rather than guessing.
-   - The **repositories**: for each one, `name`, `url` (git@, https with `.git`
-     optional, **or a local filesystem path** for a local-only repo) and a relative `path`
-     (starting with `./`). `stack` is optional — only fill it in if the PE knows it;
+   - The **repositories**: for each one, `name` and `url` (git@, https with `.git`
+     optional, **or a local filesystem path** for a local-only repo). `path` is
+     **optional and you should normally omit it**: the CLI fills in
+     `./repos/<name>`, which is where a workspace keeps its clones. Only pass a
+     `path` when the PE asks for a specific one (e.g. an existing workspace whose
+     repos already sit somewhere else) — it is a relative path starting with `./`.
+     `stack` is optional — only fill it in if the PE knows it;
      otherwise leave it out (it will be filled in during later phases). The PE may paste a
      whole list at once. `kind` is also optional — the functional category of the
      unit (`api`, `web`, `lib`, `service`), shown as the "type" in the web console;
@@ -50,7 +54,7 @@ analyzing code — this skill records **factual knowledge only**; it never reads
    ```json
    {
      "context": { "name": "<folder-name-without-aipe->", "coordinator": "<name>", "pe": "<optional>" },
-     "repos": [ { "name": "...", "url": "...", "path": "./...", "stack": ["..."] } ]
+     "repos": [ { "name": "...", "url": "...", "stack": ["..."] } ]
    }
    ```
 
@@ -58,7 +62,7 @@ analyzing code — this skill records **factual knowledge only**; it never reads
    below the repo (each gets its own specialists, worktree, PR and dispatch, and
    distinct packages run in parallel):
    ```json
-   { "name": "platform", "url": "...", "path": "./platform", "kind": "web", "packages": [
+   { "name": "platform", "url": "...", "kind": "web", "packages": [
        { "name": "core",    "path": "packages/core",    "stack": ["TypeScript"], "kind": "lib" },
        { "name": "billing", "path": "services/billing", "stack": ["Go"], "group": "backend", "kind": "api" }
    ] }
