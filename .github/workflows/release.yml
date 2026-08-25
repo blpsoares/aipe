@@ -40,18 +40,32 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # The workflow's own bump commit lands on main and would trigger this
-      # again, forever. A FORCED release is never skipped — the head of main is
-      # always that commit, so honouring the guard on a manual dispatch would
-      # refuse every corrective release outright.
+      # EVERY merge to main releases. This guard exists for exactly one case —
+      # the workflow's OWN bump commit re-triggering itself — and it must never
+      # be able to swallow a human merge.
+      #
+      # Matching the subject alone did exactly that: a squash-merged PR titled
+      # "chore(release): …", or a rebase-merged branch ending in that commit,
+      # looked identical to the bot's own push and was silently skipped. So the
+      # author must ALSO be github-actions[bot], which no human merge can be.
+      #
+      # This is already the third line of defence and should never fire: pushes
+      # made with GITHUB_TOKEN do not trigger workflows at all, and the bump
+      # commit additionally carries [skip ci]. It stays as cheap insurance for
+      # the day someone swaps in a PAT to chain downstream workflows.
       - name: Skip the workflow's own bump commit
         id: guard
         run: |
-          MSG="$(git log -1 --pretty=format:%s)"
+          SUBJECT="$(git log -1 --pretty=format:%s)"
+          AUTHOR="$(git log -1 --pretty=format:%an)"
+          echo "head: '$SUBJECT' by '$AUTHOR'"
           if [ -n "${{ github.event.inputs.version }}" ]; then
+            # A forced release is never skipped: it exists because the
+            # automatic answer was wrong, so consulting it again would refuse
+            # the correction.
             echo "skip=false" >> "$GITHUB_OUTPUT"
-          elif printf '%s' "$MSG" | grep -q '^chore(release): '; then
-            echo "Head is the release bump commit — nothing to do."
+          elif [ "$AUTHOR" = "github-actions[bot]" ] && printf '%s' "$SUBJECT" | grep -q '^chore(release): '; then
+            echo "Head is this workflow's own bump commit — nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
