@@ -3,6 +3,21 @@ import shell from "./shell.html" with { type: "text" };
 
 const ENTRY = new URL("./main.tsx", import.meta.url).pathname;
 
+// Inject the built CSS + JS into the shell. The replacements MUST be functions,
+// not strings: a string replacement interprets `$` patterns in the replacement,
+// and minified JS routinely contains `$&` (Bun names a helper `$`, so `$&g.__e`
+// appears). In String.prototype.replace, `$&` means "insert the matched
+// substring" — which re-injects the marker `<!--CLIENT-JS-->` itself into the
+// `<script type="module">`. HTML comment tokens are illegal in an ES module, so
+// the module fails to parse (`SyntaxError: HTML comments are not allowed in
+// modules`) and NOTHING renders. Deterministic in every minified (published)
+// build. A function replacement returns its value verbatim, `$` untouched.
+export function injectClient(shell: string, css: string, js: string): string {
+  return shell
+    .replace("/*<!--CLIENT-CSS-->*/", () => css)
+    .replace("<!--CLIENT-JS-->", () => js);
+}
+
 export async function buildClient(opts: { minify?: boolean } = {}): Promise<string> {
   const result = await Bun.build({
     entrypoints: [ENTRY],
@@ -19,9 +34,7 @@ export async function buildClient(opts: { minify?: boolean } = {}): Promise<stri
     if (out.kind === "entry-point" || out.kind === "chunk") js += await out.text();
     else if (out.path.endsWith(".css")) css += await out.text();
   }
-  return (shell as unknown as string)
-    .replace("/*<!--CLIENT-CSS-->*/", css)
-    .replace("<!--CLIENT-JS-->", js);
+  return injectClient(shell as unknown as string, css, js);
 }
 
 // AUTO-GERADO: escreve src/serve/app/routes.generated.ts a partir de
