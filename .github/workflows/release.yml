@@ -131,12 +131,13 @@ jobs:
             # ships every feature in this repo as a patch.
             #
             # TFORMAT, NOT FORMAT: `--pretty=format:` omits the trailing newline
-            # after the LAST commit, and `while read` returns non-zero on a line
-            # with no terminator — so the last commit of every range is never
-            # seen by this loop. With one commit in the range (what "release on
-            # every merge to main" produces) that is the ONLY commit, and every
-            # release computes `patch` no matter what it contains. `tformat:`
-            # terminates each line, including the last.
+            # after its last LINE, and `while read` returns non-zero on a line
+            # with no terminator — so that line is never seen by this loop.
+            # `git log` prints newest-first, so the line lost is the OLDEST
+            # commit of the range. With one commit in the range (what "release
+            # on every merge to main" produces) that is the ONLY commit, and
+            # every such release computes `patch` no matter what it contains.
+            # `tformat:` terminates every line, including the last.
             BUMP="patch"
             while IFS= read -r subject; do
               case "$subject" in
@@ -207,7 +208,7 @@ jobs:
             echo "## What's changed in v${VERSION}"
             echo
             # tformat: for the same reason as the bump loop above — with format:
-            # the newest commit is missing from every release's notes.
+            # the range's oldest commit is missing from every release's notes.
             git log "${{ steps.version.outputs.range }}" --pretty=tformat:'%s|%H' | while IFS='|' read -r subject sha; do
               short="${sha:0:7}"
               url="https://github.com/${{ github.repository }}/commit/${sha}"
