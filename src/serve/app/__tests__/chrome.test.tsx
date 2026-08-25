@@ -24,8 +24,9 @@ afterEach(() => {
   location.hash = "";
 });
 
-test("routes.generated.ts has all 8 view stubs, order-sorted, no terminal", () => {
+test("routes.generated.ts has all view stubs, order-sorted, the Floor first, no terminal", () => {
   expect(appRoutes.map((r) => r.path)).toEqual([
+    "/", // The Floor — the activity-oriented landing (nav.order -1)
     "/overview",
     "/org",
     "/pipeline",
@@ -100,7 +101,8 @@ test("BottomNav shows the attention dot on Activity only when there is attention
 
 test("LangSwitch reads the lang signal and calls setLang; Sidebar labels update reactively (no manual re-render)", () => {
   const { container } = render(<Sidebar />);
-  expect(container.querySelector(".nav-i")!.textContent).toContain("Overview");
+  const navLabels = () => [...container.querySelectorAll(".nav-i")].map((b) => b.textContent).join("|");
+  expect(navLabels()).toContain("Overview");
 
   const langEl = render(<LangSwitch />).container;
   fireEvent.click(langEl.querySelector('[data-lang="pt"]')!);
@@ -108,8 +110,8 @@ test("LangSwitch reads the lang signal and calls setLang; Sidebar labels update 
 
   // No rerender() call: @preact/signals re-renders the already-mounted Sidebar
   // because its render body reads t()/lang.value. If reactivity were broken this
-  // assertion would fail (label would still read "Overview").
-  expect(container.querySelector(".nav-i")!.textContent).toContain("Visão geral");
+  // assertion would fail (the Overview label would still read "Overview").
+  expect(navLabels()).toContain("Visão geral");
   expect(t("nav_overview")).toBe("Visão geral");
 });
 

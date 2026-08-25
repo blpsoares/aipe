@@ -3,6 +3,7 @@ import { useEffect } from "preact/hooks";
 import { LocationProvider, Router, Route } from "preact-iso";
 import "./styles/tokens.css";
 import "./styles/base.css";
+import "./styles/floor.css";
 import { routes } from "./routes.generated";
 import type { Route as RouteContract } from "./route-types";
 import { Sidebar } from "./components/Sidebar";

@@ -2,7 +2,7 @@
 // embedded SPA, return a Response. No sockets, no streaming — so it is
 // unit-testable in isolation. The live server (server.ts) wraps this with the
 // SSE snapshot and monitor streams.
-import { buildSnapshot } from "../dashboard/snapshot";
+import { buildServePayload } from "./payload";
 
 export interface HandlerCtx {
   workspace: string;
@@ -19,7 +19,7 @@ export async function handleRequest(req: Request, ctx: HandlerCtx): Promise<Resp
   }
 
   if (req.method === "GET" && url.pathname === "/api/snapshot") {
-    const snapshot = await buildSnapshot(ctx.workspace);
+    const snapshot = await buildServePayload(ctx.workspace);
     return Response.json(snapshot, { headers: { "cache-control": "no-store" } });
   }
 
