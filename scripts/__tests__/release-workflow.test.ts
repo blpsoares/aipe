@@ -68,3 +68,67 @@ test("runs are serialised, so two merges cannot compute the same version", () =>
   expect(RAW).toContain("concurrency:");
   expect(RAW).toContain("release-main");
 });
+
+// ── The bump must actually see every commit in the range ────────────────────
+//
+// `--pretty=format:` omits the trailing newline after the last commit, and
+// `while read` returns non-zero on an unterminated line — so the newest commit
+// is silently dropped from the loop. Since every merge to main releases, the
+// usual range holds exactly ONE commit, which means the only commit was the one
+// being dropped: v1.0.1 shipped `feat(update): …` as a patch.
+
+test("no read loop consumes a `format:` stream — it would drop the newest commit", () => {
+  // Command substitution (`$(git log -1 --pretty=format:%s)`) and `grep` are
+  // both fine with a missing terminator; a `while read` loop is not.
+  const loops = RAW.split("\n").filter((l) => /while\s+IFS.*read\b/.test(l) || /done\s*<\s*<\(/.test(l));
+  expect(loops.length).toBeGreaterThan(0);
+  for (const line of loops) {
+    expect(line).not.toMatch(/--pretty=format:/);
+  }
+});
+
+test("both git-log loops that feed a read use tformat", () => {
+  const version = STEPS.find((s) => s.id === "version")!;
+  expect(version.run).toContain("--pretty=tformat:%s");
+  const notes = STEPS.find((s) => s.run?.includes("What's changed in v"))!;
+  expect(notes.run).toContain("--pretty=tformat:");
+});
+
+test("REGRESSION: a lone `feat(scope):` in the range computes minor, not patch", async () => {
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const dir = await mkdtemp(join(tmpdir(), "aipe-semver-"));
+  try {
+    const git = async (...args: string[]) => {
+      const p = Bun.spawn(["git", "-C", dir, ...args], { stdout: "pipe", stderr: "pipe" });
+      await p.exited;
+      return (await new Response(p.stdout).text()).trim();
+    };
+    await Bun.spawn(["git", "init", "-q", "-b", "main", dir]).exited;
+    await writeFile(join(dir, "a.txt"), "a\n", "utf8");
+    await git("add", "-A");
+    await git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "chore: base");
+    await git("tag", "v1.0.0");
+    await writeFile(join(dir, "b.txt"), "b\n", "utf8");
+    await git("add", "-A");
+    await git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "feat(update): a lone feature");
+
+    // The workflow's own loop, run for real against that range.
+    const script = `
+      BUMP="patch"
+      while IFS= read -r subject; do
+        case "$subject" in
+          feat\\!:*|fix\\!:*) BUMP="major"; break ;;
+          feat\\(*\\)\\!:*|fix\\(*\\)\\!:*) BUMP="major"; break ;;
+          feat:*|feat\\(*\\):*) [ "$BUMP" != "major" ] && BUMP="minor" || true ;;
+        esac
+      done < <(git -C "${dir}" log v1.0.0..HEAD --pretty=tformat:%s)
+      echo "$BUMP"
+    `;
+    const proc = Bun.spawn(["bash", "-c", script], { stdout: "pipe", stderr: "pipe" });
+    await proc.exited;
+    expect((await new Response(proc.stdout).text()).trim()).toBe("minor");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
