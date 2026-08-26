@@ -34,7 +34,7 @@ import { checkUpdate, upgrade } from "./update/cli";
 import { maybeOfferUpdate } from "./update/notify";
 import { recordWorkspace } from "./runtime/workspaces";
 
-export const VERSION = "1.1.0";
+export const VERSION = "1.2.0";
 
 type Subcommand = (args: string[]) => Promise<number>;
 
