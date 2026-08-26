@@ -9,6 +9,7 @@ import { rehydrateFlowSkills } from "./flow-skills";
 import { rehydratePersonas } from "./personas";
 import { rebuildRegistryFromSources } from "./registry";
 import { rehydrateToolbox } from "./toolbox";
+import { looksLikeWorkspace } from "../runtime/workspaces";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -20,6 +21,21 @@ function getFlag(args: string[], name: string): string | undefined {
 
 export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
+
+  // Refuse anything that is not an AIPe workspace.
+  //
+  // Rehydrating writes the coordinator flow-skills into the harness's skill
+  // directory, relative to `workspace`. Run from `$HOME` — by hand, or because
+  // something registered `$HOME` as a workspace — that directory is
+  // `~/.claude/skills/`, the user's GLOBAL harness config, loaded by every
+  // session on the machine. AIPe installs into a workspace, never globally,
+  // and this is the command that has to enforce it.
+  if (!looksLikeWorkspace(workspace)) {
+    console.log(`ERROR workspace: ${workspace} is not an AIPe workspace (no .aipe/harness or .aipe/brain.yaml)`);
+    console.log("Run this inside a workspace, or pass --workspace <dir>.");
+    return 1;
+  }
+
   const personas = await rehydratePersonas(workspace);
   for (const r of personas) console.log(`${r.status.toUpperCase()} persona ${r.repo} ${r.slug}`);
   // Rebuild the durable roster (.aipe/personas.yaml) from the same sources —
