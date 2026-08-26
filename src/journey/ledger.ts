@@ -201,6 +201,7 @@ export type LedgerGateCode =
   | "unit-immutable"
   | "redispatch-needs-reason"
   | "redirect-needs-reason"
+  | "blocked-needs-reason"
   | "ci-red"
   | "ci-pending"
   | "ci-none"
@@ -219,7 +220,7 @@ function unitStatus(ledger: JourneyLedger, repo: string, pkg: string | null): Jo
   // comment): `redirected` ranks with `failed`/`escalated` — a live redirect
   // must outrank a stale `dispatched` record from another specialist on the
   // same unit when judging the unit's most-advanced state.
-  const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, redirected: 2, delivered: 3, verified: 4, merged: 5 };
+  const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, redirected: 2, blocked: 2, delivered: 3, verified: 4, merged: 5 };
   return ledger.dispatches
     .filter((d) => d.repo === repo && (d.package ?? null) === pkg)
     .sort((a, b) => (rank[b.status] ?? 0) - (rank[a.status] ?? 0))[0];
@@ -277,6 +278,16 @@ export async function recordDispatchGuarded(
       ok: false,
       code: "redirect-needs-reason",
       message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} is being recorded "redirected" — --reason is required (what the PE asked for, live), so the coordinator can reconcile the Orientation Spec instead of silently drifting from what is actually being built.`,
+    };
+  }
+  // 4b — a blocked signal is worthless without what it needs. The whole point of
+  // `blocked` is to tell the coordinator what to answer, so a blocked record
+  // with no reason is refused exactly as a reasonless redirect is.
+  if (dispatch.status === "blocked" && !opts.reason?.trim()) {
+    return {
+      ok: false,
+      code: "blocked-needs-reason",
+      message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} is being recorded "blocked" — --reason is required (what you are stuck on and what you need), so the coordinator can act on it without reading your terminal.`,
     };
   }
 
@@ -345,9 +356,11 @@ export async function recordDispatchGuarded(
     ? { ...dispatch, sessionId: undefined, redispatchReason: opts.reason!.trim() }
     : dispatch.status === "redirected"
       ? { ...dispatch, redirectReason: opts.reason!.trim() }
-      : ciBypass
-        ? { ...dispatch, ciBypass }
-        : dispatch;
+      : dispatch.status === "blocked"
+        ? { ...dispatch, blockedReason: opts.reason!.trim() }
+        : ciBypass
+          ? { ...dispatch, ciBypass }
+          : dispatch;
 
   const path = await recordDispatch(workspaceDir, id, toWrite);
   return { ok: true, path };

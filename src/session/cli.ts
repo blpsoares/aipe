@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // `aipe session <dispatch|collect|guard|doctor>`.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { packageFqid } from "../context-brain/packages";
 import { readLedger, recordDispatch } from "../journey/ledger";
 import type { JourneyDispatch } from "../journey/types";
@@ -13,7 +13,7 @@ import { buildRenameArgs, startBatch, type BatchUnit } from "./batch";
 import { composePrompt } from "./prompt";
 import { classify, pollOnce } from "./poll";
 import { probe, realRunner } from "./runner";
-import type { AgentopRunner, UnitState } from "./types";
+import type { AgentopRunner, UnitPhase, UnitState } from "./types";
 import { decide } from "./guard";
 import { consumeGrant, issueGrant } from "./grants";
 
@@ -288,7 +288,7 @@ const FIELD_FLAGS = {
   mode: "--mode",
   intensity: "--intensity",
   harness: "--harness",
-} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason" | "ciBypass">, string>;
+} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason" | "blockedReason" | "ciBypass">, string>;
 
 function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: JourneyDispatch, sessionId: string): string {
   const parts = ["aipe journey record", `--journey ${shQuote(journeyId)}`, `--workspace ${shQuote(workspace)}`];
@@ -343,27 +343,42 @@ export async function dispatchCommand(
   opts: DispatchOptions,
 ): Promise<{ code: number; lines: string[] }> {
   const lines: string[] = [];
+  // D7 — the specialist's cwd is its worktree, not the coordinator's. Resolve
+  // the workspace to ABSOLUTE once, here, so every path this command emits (the
+  // prompt file handed to agentop as `@<file>`, and every --workspace/--worktree
+  // inside the recorded example commands) resolves from wherever the specialist
+  // actually stands. A relative `--workspace .` used to write a relative prompt
+  // path that agentop, running with cwd at the worktree, could never find — the
+  // session booted blind. `resolve` is a no-op on an already-absolute workspace.
+  const workspace = resolve(opts.workspace);
   const probed = await probe(opts.runner);
   if (!probed.ok) {
     lines.push(`ERROR agentop: ${probed.reason ?? "unavailable"} — install or upgrade agentop, or dispatch in subagent mode`);
     return { code: 1, lines };
   }
 
-  const ledger = await readLedger(opts.workspace, opts.journeyId);
+  const ledger = await readLedger(workspace, opts.journeyId);
   if (!ledger) {
     lines.push(`ERROR journey: no ledger for ${opts.journeyId}`);
     return { code: 1, lines };
   }
 
-  const pending = ledger.dispatches.filter(
-    (d) => d.mode === "session" && d.status === "dispatched" && !d.sessionId,
-  );
+  // Normalise each pending unit's worktree to ABSOLUTE up front, so the value we
+  // send to agentop as the session cwd, the value we embed in the prompt, the
+  // value we key the cwd-pairing on, and the value the recovery command prints
+  // are all the same absolute path. `createWorktree` already records absolute
+  // worktrees, so this is the safety net for a hand-typed relative one; it never
+  // rewrites the stored ledger field (the sessionId write below layers only onto
+  // the unit's fresh record, matched by repo/package/specialist, not worktree).
+  const pending = ledger.dispatches
+    .filter((d) => d.mode === "session" && d.status === "dispatched" && !d.sessionId)
+    .map((d) => ({ ...d, worktree: resolve(workspace, d.worktree) }));
   if (pending.length === 0) {
     lines.push("OK nothing to dispatch");
     return { code: 0, lines };
   }
 
-  const journeyDir = join(opts.workspace, ".aipe", "journeys", opts.journeyId);
+  const journeyDir = join(workspace, ".aipe", "journeys", opts.journeyId);
   const promptsDir = join(journeyDir, "prompts");
 
   let orientation = "";
@@ -382,7 +397,7 @@ export async function dispatchCommand(
     return { code: 1, lines };
   }
 
-  const adapter = await resolveAdapter(opts.workspace);
+  const adapter = await resolveAdapter(workspace);
 
   // Pass 1: resolve every unit's persona body before writing anything. A
   // prompt file is the audit trail of what a specialist was told, so a
@@ -436,7 +451,7 @@ export async function dispatchCommand(
 
     const target = adapter.personaTarget(personaSlug(d.specialist));
     try {
-      const personaBody = await readFile(join(opts.workspace, d.repo, target.relDir, target.filename), "utf8");
+      const personaBody = await readFile(join(workspace, d.repo, target.relDir, target.filename), "utf8");
       resolved.push({ d, fqid, personaBody, agentopHarness, unitAdapter });
     } catch {
       lines.push(`ERROR persona: could not read the persona for ${d.specialist}@${d.repo}`);
@@ -476,7 +491,7 @@ export async function dispatchCommand(
       branch: d.branch,
       repo: d.repo,
       journeyId: opts.journeyId,
-      workspace: opts.workspace,
+      workspace: workspace,
       fqid,
       intensity: d.intensity === "ultracode" ? "ultracode" : "normal",
     });
@@ -550,15 +565,15 @@ export async function dispatchCommand(
       // writing, and layer just that onto it. `current` falls back to the
       // stale `d` only in the (should-be-impossible) case the unit vanished
       // from the ledger between the top-of-command read and now.
-      const freshLedger = await readLedger(opts.workspace, opts.journeyId);
+      const freshLedger = await readLedger(workspace, opts.journeyId);
       const current =
         freshLedger?.dispatches.find(
           (x) => x.repo === d.repo && (x.package ?? null) === (d.package ?? null) && x.specialist === d.specialist,
         ) ?? d;
-      await recordDispatch(opts.workspace, opts.journeyId, { ...current, sessionId: session.id });
+      await recordDispatch(workspace, opts.journeyId, { ...current, sessionId: session.id });
       lines.push(`OK ${fqid} → ${session.id}`);
     } catch (err) {
-      const recordCmd = recoveryRecordCommand(opts.journeyId, opts.workspace, d, session.id);
+      const recordCmd = recoveryRecordCommand(opts.journeyId, workspace, d, session.id);
       lines.push(
         `ERROR ledger: session ${session.id} for ${fqid} is running but could not be recorded (${err instanceof Error ? err.message : String(err)}) — record it manually: ${recordCmd}`,
       );
@@ -574,6 +589,11 @@ export async function dispatchCommand(
       if (d.redirectReason) {
         lines.push(
           `WARN ledger: ${fqid}'s redirectReason (${JSON.stringify(d.redirectReason)}) cannot be represented by the recovery command above and will be lost if it is run verbatim — restore it manually`,
+        );
+      }
+      if (d.blockedReason) {
+        lines.push(
+          `WARN ledger: ${fqid}'s blockedReason (${JSON.stringify(d.blockedReason)}) cannot be represented by the recovery command above and will be lost if it is run verbatim — restore it manually`,
         );
       }
     }
@@ -675,7 +695,10 @@ export async function collectCommand(
 
   const outstanding = new Set<string>();
   for (const d of sessionUnits) if (d.sessionId) outstanding.add(d.sessionId);
-  const fallback = () => classify(ledger, outstanding);
+  // A thrown pollOnce means we could not even ask agentop — liveness is NOT
+  // reliable, so classify with `reliable: false`: in-flight units degrade to
+  // `unknown`, never a guessed `running` and never a false `dead-silent`.
+  const fallback = () => classify(ledger, outstanding, false);
 
   let states: UnitState[] = fallback();
   for (;;) {
@@ -684,7 +707,13 @@ export async function collectCommand(
     } catch {
       states = fallback();
     }
-    const settled = states.every((s) => s.phase !== "running");
+    // Keep polling while any unit is `running` OR `unknown`: both are
+    // non-terminal. `unknown` in particular must be retried, not treated as
+    // settled — a transient `session list` failure recovers to `running` on the
+    // next tick; only a persistent one still reads `unknown` once the deadline
+    // passes. Everything else (landed / dead-silent / redirected / waiting) is a
+    // final state this loop cannot improve by waiting.
+    const settled = states.every((s) => s.phase !== "running" && s.phase !== "unknown");
     if (settled || now() >= deadline) break;
     await sleep(opts.intervalMs);
   }
@@ -717,7 +746,23 @@ export async function collectCommand(
         break;
       case "running":
         lines.push(
-          `RUNNING ${s.fqid} session ${s.sessionId} — still working past the timeout; the PE decides whether to wait or kill it`,
+          `RUNNING ${s.fqid} session ${s.sessionId} — the session is alive (progress not independently verified); still working past the timeout, the PE decides whether to wait or kill it`,
+        );
+        break;
+      case "waiting":
+        // The specialist declared itself blocked — the whole point of the
+        // signal is that the coordinator learns this WITHOUT reading a terminal.
+        // The reason (what it needs) is surfaced right here.
+        lines.push(
+          `WAITING-ON-COORDINATOR ${s.fqid} session ${s.sessionId} reason=${JSON.stringify(s.reason)} — the specialist recorded itself blocked and is waiting on you. Answer what it needs, then it continues`,
+        );
+        break;
+      case "unknown":
+        // Liveness could not be established (session list unreadable). Never
+        // asserted as running (a liveness we cannot verify) nor dead (the
+        // dangerous direction) — the coordinator must look before acting.
+        lines.push(
+          `UNKNOWN ${s.fqid} session ${s.sessionId ?? "-"} branch ${s.branch} — liveness could not be established (agentop session list was unreadable past the timeout). NOT running, NOT dead: look before you re-dispatch`,
         );
         break;
       case "dead-silent":
@@ -731,8 +776,30 @@ export async function collectCommand(
       }
     }
   }
-  const clean = states.every((s) => s.phase === "landed");
-  return { code: clean ? 0 : 2, lines, states };
+  return { code: worstExit(states), lines, states };
+}
+
+// D6 — the exit code matches the WORST finding, never a blanket "not clean".
+// `0` is reserved for a wave where every unit truly landed; anything that needs
+// the coordinator's eyes exits non-zero, and the magnitude ranks how urgent.
+//   2 — needs attention but no work is at risk: a session still running, or a
+//       unit redirected (reconcile the spec — the divergence is visible, the
+//       work is not lost).
+//   4 — can't tell: liveness is unknown.
+//   5 — work may be lost: a session ended without recording (dead-silent).
+//   6 — a live human is blocked on the coordinator right now (waiting).
+// The command exits the max over all units, so the worst finding wins.
+const PHASE_EXIT: Record<UnitPhase, number> = {
+  landed: 0,
+  running: 2,
+  redirected: 2,
+  unknown: 4,
+  "dead-silent": 5,
+  waiting: 6,
+};
+
+function worstExit(states: UnitState[]): number {
+  return states.reduce((worst, s) => Math.max(worst, PHASE_EXIT[s.phase]), 0);
 }
 
 export interface GrantOptions {

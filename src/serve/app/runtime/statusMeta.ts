@@ -20,6 +20,9 @@ const META: Record<string, StatusMeta> = {
   failed: { tone: "rose", labelKey: "st_failed", descKey: "sd_failed" },
   escalated: { tone: "amber", labelKey: "st_escalated", descKey: "sd_escalated" },
   escalate: { tone: "amber", labelKey: "st_escalated", descKey: "sd_escalated" },
+  // The specialist declared itself stuck and waiting on the coordinator — amber
+  // (the same "needs a look" tone as escalated), never slate (which reads idle).
+  blocked: { tone: "amber", labelKey: "st_blocked", descKey: "sd_blocked" },
   // A human talked to this specialist mid-flight and changed its direction —
   // amber (the same "needs a look" tone as escalated), never `slate`: `slate`
   // reads as idle/off, which is the exact opposite of a specialist whose work

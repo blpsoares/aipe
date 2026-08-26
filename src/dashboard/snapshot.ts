@@ -109,11 +109,14 @@ export interface AttentionItem {
 function computeAttention(
   journeys: JourneyLedger[],
   edges: { from: string; to: string; type: string }[],
-  contextUnits: Set<string>,
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
   for (const j of journeys) {
-    for (const f of verifyJourney(j, edges, contextUnits)) {
+    // D5-twin — verifyJourney's landing gate is now scoped to each journey's own
+    // units (the ledger's), so a producer outside the demand (a graph node the
+    // journey merely consumes) no longer becomes a false `dependency-not-landed`
+    // critical flooding the PE's decision inbox.
+    for (const f of verifyJourney(j, edges)) {
       // surface only what is actionable for the PE right now
       if (f.severity !== "critical" && f.code !== "escalated-open") continue;
       const owner = j.dispatches.find((d) => packageFqid(d.repo, d.package) === f.unit);
@@ -367,7 +370,6 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
     attention: computeAttention(
       journeys,
       graph.edges.map((e) => ({ from: e.from, to: e.to, type: e.type })),
-      new Set(graph.nodes.map((n) => n.fqid)),
     ),
     generatedAt,
   };

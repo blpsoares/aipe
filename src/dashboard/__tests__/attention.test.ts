@@ -76,9 +76,15 @@ test("a consumer shipped before its producer landed surfaces as critical (depend
       }),
       "utf8",
     );
+    // Both units belong to THIS journey (D5-twin): embark shipped (verified),
+    // prontuario is a unit of the same demand that has NOT landed yet — a
+    // genuine in-journey unmet dependency, which must still surface.
     await writeFile(
       join(dir, ".aipe", "journeys", "j1.yaml"),
-      stringify({ id: "j1", dispatches: [{ repo: "embark", specialist: "Ana", branch: "b", worktree: "w", status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "ok" } }] }),
+      stringify({ id: "j1", dispatches: [
+        { repo: "embark", specialist: "Ana", branch: "b", worktree: "w", status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "ok" } },
+        { repo: "prontuario", specialist: "Pat", branch: "b2", worktree: "w2", status: "dispatched" },
+      ] }),
       "utf8",
     );
     const att = (await buildSnapshot(dir)).attention;

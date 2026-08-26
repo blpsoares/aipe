@@ -10,6 +10,7 @@ import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from 
 import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
 import { closeSessions, sessionsToClose } from "./session-close";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
+import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
 import { DISPATCH_STATUSES } from "./types";
 import type { DispatchEvidence, DispatchStatus, JourneyDispatch } from "./types";
 import { auditPrChecks, verifyJourney } from "./verify";
@@ -66,7 +67,16 @@ async function startCommand(args: string[]): Promise<number> {
 }
 
 async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<number> {
-  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  // D8 — a record aimed at a worktree must never create a phantom ledger there.
+  // classifyRecordTarget resolves the real workspace (or refuses); a bare dir is
+  // left untouched so first-run and test fixtures keep working.
+  const target = await classifyRecordTarget(getFlag(args, "--workspace") ?? process.cwd());
+  if (!target.ok) {
+    console.log(`REJECT worktree-workspace — ${target.message}`);
+    return 1;
+  }
+  const workspace = target.workspace;
+  if (target.note) console.log(`NOTE ${target.note}`);
   const id = getFlag(args, "--journey");
   const repo = getFlag(args, "--repo");
   const specialist = getFlag(args, "--specialist");
@@ -314,16 +324,23 @@ async function verifyCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
     return 1;
   }
   const graph = await readGraph(workspace);
-  const contextUnits = new Set(graph.nodes.map((n) => n.fqid));
   const edges = graph.edges.map((e) => ({ from: e.from, to: e.to, type: e.type }));
   // The offline invariant lint, plus the CI audit (talks to the forge). Both
   // feed the same finding list so a red-CI unit reads exactly like any other
   // critical. The CI resolver is injectable (tests) and defaults to real gh.
-  const findings = verifyJourney(ledger, edges, contextUnits);
+  const findings = verifyJourney(ledger, edges);
   findings.push(...(await auditPrChecks(ledger, deps.resolveChecks ?? ghPrChecks)));
   findings.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "critical" ? -1 : 1));
   for (const f of findings) {
     console.log(`FINDING ${f.severity.toUpperCase()} ${f.code} ${f.unit} — ${f.detail}`);
+  }
+  // D8 — surface any phantom ledgers already sitting inside a worktree so the
+  // coordinator can reconcile and remove them. A warning (not a critical): it is
+  // a misdirected write to clean up, not a broken invariant in THIS ledger.
+  for (const phantom of await findPhantomLedgers(workspace)) {
+    console.log(
+      `FINDING WARNING phantom-ledger ${phantom.worktree} — a ledger was written inside this worktree (${phantom.path}); reconcile its records into the workspace ledger and remove it`,
+    );
   }
   const critical = findings.filter((f) => f.severity === "critical").length;
   console.log(`STATE journey=${id} clean=${critical === 0} findings=${findings.length} critical=${critical}`);
