@@ -1,7 +1,7 @@
 import { expect, mock, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { dispatchCommand } from "../cli";
 import * as ledgerModule from "../../journey/ledger";
 import { readLedger, recordDispatch, startJourney } from "../../journey/ledger";
@@ -162,6 +162,51 @@ test("a unit already carrying a session id is not dispatched twice", async () =>
   // agentop was asked to start a second real session for the same unit.
   const files = await readdir(join(dir, ".aipe", "journeys", "j1", "prompts"));
   expect(files).toEqual(["embark.md"]);
+});
+
+// D7: the specialist's cwd is its worktree, not the coordinator's cwd. When the
+// coordinator dispatches with a RELATIVE --workspace (the documented `.` habit),
+// a relative prompt-file path handed to `agentop session batch` as `@<file>`
+// resolves against the worktree and is never found — the session boots blind
+// ("nenhuma demanda chegou até mim"). Every path the specialist is told to read,
+// and every --workspace/--worktree it is told to run, must be ABSOLUTE.
+test("a dispatch given a relative --workspace still emits absolute coordinates the worktree can resolve", async () => {
+  const dir = await fixture();
+  const rel = relative(process.cwd(), dir) || ".";
+  // Sanity: we really are handing dispatchCommand a relative workspace.
+  expect(isAbsolute(rel)).toBe(false);
+
+  let sessionFlags: string[] = [];
+  const capturing: AgentopRunner = async (args) => {
+    if (args[0] === "--version") return { code: 0, stdout: "agentop v1.9.0", stderr: "" };
+    const flags = args.filter((_, i) => args[i - 1] === "--session");
+    if (flags.length > 0) sessionFlags = flags; // don't let the later rename call clobber it
+    const sessions = flags.map((flag, i) => {
+      const m = /^[^@]+@(.+): @.+$/.exec(flag);
+      if (!m) throw new Error(`capturing: could not parse --session flag: ${flag}`);
+      return { id: `s-${i + 1}`, harness: "claude", cwd: m[1] };
+    });
+    return { code: 0, stdout: JSON.stringify({ sessions }), stderr: "" };
+  };
+
+  const r = await dispatchCommand({ workspace: rel, journeyId: "j1", runner: capturing });
+  expect(r.code).toBe(0);
+
+  // The `@<file>` prompt path agentop is handed must be absolute — otherwise it
+  // resolves against the session cwd (the worktree) and the brief is unreachable.
+  const flag = sessionFlags[0]!;
+  const promptAt = /: @(.+)$/.exec(flag)![1]!;
+  expect(isAbsolute(promptAt)).toBe(true);
+  // The cwd (worktree) agentop is told to start in is absolute too.
+  const cwd = /@(.+): @/.exec(flag)![1]!;
+  expect(isAbsolute(cwd)).toBe(true);
+
+  // The commands the specialist is told to run must not carry a relative
+  // --workspace (which, from the worktree cwd, would create a phantom ledger).
+  const prompt = await readFile(promptAt, "utf8");
+  expect(prompt).not.toContain("--workspace .");
+  expect(prompt).toContain(`--workspace ${dir}`);
+  expect(prompt).toContain(`--worktree ${join(dir, ".worktrees", "j1-joaquim")}`);
 });
 
 test("an orientation.md that exists but is blank is treated as missing, and nothing is recorded or written", async () => {

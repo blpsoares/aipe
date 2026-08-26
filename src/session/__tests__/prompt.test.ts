@@ -22,8 +22,14 @@ test("the prompt carries persona, spec slice and the return contract", () => {
   expect(p).toContain("--journey j1");
   expect(p).toContain("/w/.worktrees/j1-joaquim");
   expect(p).toContain("aipe/j1/joaquim");
-  // All three blocks (delivered, escalated, redirected) must emit --repo correctly
-  expect((p.match(/--repo aipe/g) || []).length).toBe(3);
+  // All four blocks (delivered, escalated, blocked, redirected) must emit --repo correctly
+  expect((p.match(/--repo aipe/g) || []).length).toBe(4);
+});
+
+test("the prompt gives the specialist a first-class way to declare itself blocked", () => {
+  const p = composePrompt(base);
+  expect(p).toContain("--status blocked");
+  expect(p).toContain("do not simply stop and wait silently");
 });
 
 test("ultracode appears if and only if the intensity says so", () => {

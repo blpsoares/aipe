@@ -118,20 +118,45 @@ async function ledgerDir(): Promise<string> {
   return dir;
 }
 
-test("a nonzero exit from the list call reports the outstanding unit as running, not dead-silent", async () => {
+test("a nonzero exit from the list call reports the outstanding unit as unknown, not dead-silent and not a guessed running", async () => {
   const dir = await ledgerDir();
   const failing: AgentopRunner = async () => ({ code: 1, stdout: "", stderr: "daemon down" });
   const states = await pollOnce(dir, "j1", failing);
   expect(states).toHaveLength(1);
-  expect(states[0]!.phase).toBe("running");
+  // D6: liveness could not be established. We must not flip a live unit to dead
+  // (the dangerous direction), and we must not assert a `running` we cannot
+  // verify. `unknown` is the honest state.
+  expect(states[0]!.phase).toBe("unknown");
 });
 
-test("unparseable stdout on a successful exit also fails open to running", async () => {
+test("unparseable stdout on a successful exit also degrades to unknown, not a guessed running", async () => {
   const dir = await ledgerDir();
   const garbled: AgentopRunner = async () => ({ code: 0, stdout: "{not json", stderr: "" });
   const states = await pollOnce(dir, "j1", garbled);
   expect(states).toHaveLength(1);
-  expect(states[0]!.phase).toBe("running");
+  expect(states[0]!.phase).toBe("unknown");
+});
+
+test("classify defaults to a reliable list, but an unreliable one degrades an in-flight unit to unknown", () => {
+  const reliable = classify(ledger, new Set(["s-2"])); // default reliable=true
+  expect(reliable.find((s) => s.fqid === "prontuario")!.phase).toBe("running");
+  const unreliable = classify(ledger, new Set(["s-2"]), false);
+  expect(unreliable.find((s) => s.fqid === "prontuario")!.phase).toBe("unknown");
+  // a landed unit stays landed regardless of liveness reliability
+  expect(unreliable.find((s) => s.fqid === "embark")!.phase).toBe("landed");
+});
+
+test("a blocked unit is classified waiting and carries its reason, regardless of liveness", () => {
+  const blocked: JourneyLedger = {
+    id: "jb",
+    dispatches: [
+      { repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "blocked", mode: "session", sessionId: "s-1", blockedReason: "need the API key" },
+    ],
+  };
+  // even with the session gone from a reliable list, blocked → waiting
+  const states = classify(blocked, new Set(), true);
+  expect(states[0]!.phase).toBe("waiting");
+  expect(states[0]!.reason).toBe("need the API key");
 });
 
 test("a genuinely empty, well-formed list from a successful exit still yields dead-silent", async () => {

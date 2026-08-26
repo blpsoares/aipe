@@ -35,12 +35,11 @@ test("a CLEAN journey (dispatched→delivered→verified→merged, producer land
     d({ repo: "embark", package: "api", status: "verified", evidence: qaEv }),
   );
   const edges = [{ from: "embark/worker", to: "embark/api", type: "consumes" }];
-  const contextUnits = new Set(["embark/worker", "embark/api"]);
-  expect(verifyJourney(ledger, edges, contextUnits)).toEqual([]);
+  expect(verifyJourney(ledger, edges)).toEqual([]);
 });
 
 test("no-evidence (critical): a delivered record with no evidence", () => {
-  const findings = verifyJourney(ledgerOf(d({ status: "delivered" })), [], new Set());
+  const findings = verifyJourney(ledgerOf(d({ status: "delivered" })), []);
   // most-advanced is delivered → also warns delivered-not-verified; the critical is first
   expect(findings[0]).toMatchObject({ severity: "critical", code: "no-evidence", unit: "embark" });
   expect(findings.map((f) => f.code)).toContain("no-evidence");
@@ -48,7 +47,7 @@ test("no-evidence (critical): a delivered record with no evidence", () => {
 
 test("no-evidence (critical): blank summary is not proof", () => {
   const bad = d({ status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "  " } });
-  const findings = verifyJourney(ledgerOf(bad), [], new Set());
+  const findings = verifyJourney(ledgerOf(bad), []);
   expect(findings.map((f) => f.code)).toContain("no-evidence");
 });
 
@@ -66,7 +65,6 @@ test("redirected: not shipped, not done, produces no findings by itself", () => 
   const findings = verifyJourney(
     ledgerOf(d({ status: "redirected", redirectReason: "PE changed direction mid-flight" })),
     [{ from: "embark", to: "embark", type: "consumes" }],
-    new Set(["embark"]),
   );
   expect(findings).toEqual([]);
 });
@@ -83,19 +81,19 @@ test("redirected does not mask a stale dispatched record from another specialist
   // real assertion is that this doesn't throw and stays silent, proving
   // `redirected` participates in rank comparison rather than being coerced
   // to 0 (which used to tie it with `removed`, the lowest possible rank).
-  expect(verifyJourney(ledger, [], new Set())).toEqual([]);
+  expect(verifyJourney(ledger, [])).toEqual([]);
 });
 
 test("failed-open (critical): QA failed and never re-dispatched", () => {
   // the delivered record was upserted to failed (same specialist), so the unit's
   // most-advanced — and only — record is failed: QA rejected it, never redone
-  const findings = verifyJourney(ledgerOf(d({ status: "failed" })), [], new Set());
+  const findings = verifyJourney(ledgerOf(d({ status: "failed" })), []);
   expect(findings).toHaveLength(1);
   expect(findings[0]).toMatchObject({ severity: "critical", code: "failed-open", unit: "embark" });
 });
 
 test("delivered-not-verified (warning): most-advanced is exactly delivered", () => {
-  const findings = verifyJourney(ledgerOf(d({ status: "delivered", evidence: devEv })), [], new Set());
+  const findings = verifyJourney(ledgerOf(d({ status: "delivered", evidence: devEv })), []);
   expect(findings).toHaveLength(1);
   expect(findings[0]).toMatchObject({ severity: "warning", code: "delivered-not-verified" });
 });
@@ -106,7 +104,7 @@ test("merged-skipped-qa (warning): merged with no verified record anywhere", () 
     d({ status: "delivered", evidence: devEv }),
     d({ status: "merged", pr: "http://pr/1" }),
   );
-  const findings = verifyJourney(ledger, [], new Set());
+  const findings = verifyJourney(ledger, []);
   expect(findings.map((f) => f.code)).toContain("merged-skipped-qa");
 });
 
@@ -115,7 +113,7 @@ test("merged WITH a verified record is not flagged", () => {
     d({ status: "verified", evidence: qaEv }),
     d({ status: "merged", pr: "http://pr/1" }),
   );
-  expect(verifyJourney(ledger, [], new Set())).toEqual([]);
+  expect(verifyJourney(ledger, [])).toEqual([]);
 });
 
 test("a REAL (collapsed) merged unit carrying QA evidence is not flagged merged-skipped-qa", () => {
@@ -125,7 +123,7 @@ test("a REAL (collapsed) merged unit carrying QA evidence is not flagged merged-
   // verified record. There is NO surviving `verified` record — the QA signal lives
   // in `evidence.by`, which is what the check must key on.
   const ledger = ledgerOf(d({ status: "merged", evidence: qaEv, pr: "http://pr/1" }));
-  expect(verifyJourney(ledger, [], new Set()).map((f) => f.code)).not.toContain("merged-skipped-qa");
+  expect(verifyJourney(ledger, []).map((f) => f.code)).not.toContain("merged-skipped-qa");
 });
 
 test("dependency-not-landed (critical): shipped consumer, in-context producer never landed", () => {
@@ -135,8 +133,7 @@ test("dependency-not-landed (critical): shipped consumer, in-context producer ne
     d({ repo: "embark", package: "api", status: "dispatched" }),
   );
   const edges = [{ from: "embark/worker", to: "embark/api", type: "consumes" }];
-  const contextUnits = new Set(["embark/worker", "embark/api"]);
-  const findings = verifyJourney(ledger, edges, contextUnits);
+  const findings = verifyJourney(ledger, edges);
   const dep = findings.filter((f) => f.code === "dependency-not-landed");
   expect(dep).toHaveLength(1);
   expect(dep[0]).toMatchObject({ severity: "critical", unit: "embark/worker" });
@@ -146,14 +143,35 @@ test("dependency-not-landed (critical): shipped consumer, in-context producer ne
 test("dependency on an EXTERNAL producer (not in context) is not gated", () => {
   const ledger = ledgerOf(d({ repo: "embark", package: "worker", status: "verified", evidence: qaEv }));
   const edges = [{ from: "embark/worker", to: "third-party/lib", type: "imports" }];
-  const contextUnits = new Set(["embark/worker"]);
-  expect(verifyJourney(ledger, edges, contextUnits)).toEqual([]);
+  expect(verifyJourney(ledger, edges)).toEqual([]);
+});
+
+// D5-twin — the regression. The graph is context-wide, so a producer can be a
+// real graph node the demand merely CONSUMES (e.g. the agentop binary from
+// agentistics) without being a unit of THIS journey. Gating on graph-node
+// membership fired a permanent false critical for exactly that edge; gating on
+// the journey's own units (the ledger's units) must leave it silent — while a
+// genuine in-journey producer still fires (previous test).
+test("D5-twin: a producer that is a graph node but NOT a unit of this journey is not gated", () => {
+  const ledger = ledgerOf(d({ repo: "aipe", status: "verified", evidence: qaEv }));
+  // aipe consumes agentistics — a real repo in the workspace graph, but not a
+  // unit of this demand, so it can never reach verified/merged here.
+  const edges = [{ from: "aipe", to: "agentistics", type: "consumes" }];
+  const findings = verifyJourney(ledger, edges);
+  expect(findings.filter((f) => f.code === "dependency-not-landed")).toEqual([]);
 });
 
 test("escalated-open (warning): waiting on the PE", () => {
-  const findings = verifyJourney(ledgerOf(d({ status: "escalated" })), [], new Set());
+  const findings = verifyJourney(ledgerOf(d({ status: "escalated" })), []);
   expect(findings).toHaveLength(1);
   expect(findings[0]).toMatchObject({ severity: "warning", code: "escalated-open" });
+});
+
+test("blocked-open (warning): a specialist waiting on the coordinator, with its reason", () => {
+  const findings = verifyJourney(ledgerOf(d({ status: "blocked", blockedReason: "need the API key" })), []);
+  expect(findings).toHaveLength(1);
+  expect(findings[0]).toMatchObject({ severity: "warning", code: "blocked-open", unit: "embark" });
+  expect(findings[0]!.detail).toContain("need the API key");
 });
 
 test("findings are ordered critical-first, then by unit", () => {
@@ -161,7 +179,7 @@ test("findings are ordered critical-first, then by unit", () => {
     d({ repo: "embark", package: "web", status: "escalated" }), // warning
     d({ repo: "embark", package: "api", status: "delivered" }), // critical (no-evidence) + warning (delivered-not-verified)
   );
-  const findings = verifyJourney(ledger, [], new Set());
+  const findings = verifyJourney(ledger, []);
   expect(findings[0]!.severity).toBe("critical");
   // criticals come before warnings
   const firstWarning = findings.findIndex((f) => f.severity === "warning");

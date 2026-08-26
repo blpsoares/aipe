@@ -6,7 +6,7 @@ import { collectCommand } from "../cli";
 import { recordDispatch, startJourney } from "../../journey/ledger";
 import type { AgentopRunner } from "../types";
 
-async function ledgerWith(status: "dispatched" | "delivered"): Promise<string> {
+async function ledgerWith(status: "dispatched" | "delivered" | "blocked"): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "aipe-sess-collect-"));
   await startJourney(dir, "j1");
   await recordDispatch(dir, "j1", {
@@ -15,6 +15,7 @@ async function ledgerWith(status: "dispatched" | "delivered"): Promise<string> {
     ...(status === "delivered"
       ? { evidence: { by: "dev" as const, commands: ["bun test"], summary: "green" } }
       : {}),
+    ...(status === "blocked" ? { blockedReason: "need the staging DB url" } : {}),
   });
   return dir;
 }
@@ -32,10 +33,10 @@ test("a landed wave exits 0", async () => {
   expect(r.lines).toEqual(["LANDED embark"]);
 });
 
-test("a dead-silent unit exits 2 and names its branch", async () => {
+test("a dead-silent unit exits 5 (worst finding) and names its branch", async () => {
   const dir = await ledgerWith("dispatched");
   const r = await collectCommand({ workspace: dir, journeyId: "j1", runner: gone, timeoutMs: 1000, intervalMs: 10, sleep: async () => {} });
-  expect(r.code).toBe(2);
+  expect(r.code).toBe(5);
   expect(r.lines).toEqual([
     "DEAD-SILENT embark branch b worktree w — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind",
   ]);
@@ -52,7 +53,31 @@ test("a still-running unit at timeout exits 2 without killing anything", async (
   });
   expect(r.code).toBe(2);
   expect(r.lines).toEqual([
-    "RUNNING embark session s-1 — still working past the timeout; the PE decides whether to wait or kill it",
+    "RUNNING embark session s-1 — the session is alive (progress not independently verified); still working past the timeout, the PE decides whether to wait or kill it",
+  ]);
+});
+
+test("a blocked unit is WAITING-ON-COORDINATOR, exits 6 (the worst finding), and carries its reason", async () => {
+  const dir = await ledgerWith("blocked");
+  const r = await collectCommand({ workspace: dir, journeyId: "j1", runner: live, timeoutMs: 1000, intervalMs: 10, sleep: async () => {} });
+  expect(r.code).toBe(6);
+  expect(r.lines).toEqual([
+    'WAITING-ON-COORDINATOR embark session s-1 reason="need the staging DB url" — the specialist recorded itself blocked and is waiting on you. Answer what it needs, then it continues',
+  ]);
+});
+
+test("a persistently-unreadable session list surfaces UNKNOWN at the deadline, exits 4 — never a false dead-silent", async () => {
+  const dir = await ledgerWith("dispatched");
+  let ticks = 0;
+  const r = await collectCommand({
+    workspace: dir, journeyId: "j1", runner: explodes,
+    timeoutMs: 30, intervalMs: 10,
+    now: () => (ticks += 20),
+    sleep: async () => {},
+  });
+  expect(r.code).toBe(4);
+  expect(r.lines).toEqual([
+    "UNKNOWN embark session s-1 branch b — liveness could not be established (agentop session list was unreadable past the timeout). NOT running, NOT dead: look before you re-dispatch",
   ]);
 });
 
@@ -70,8 +95,8 @@ test("exit code is exactly 0 with two units only when BOTH landed", async () => 
   });
   const r = await collectCommand({ workspace: dir, journeyId: "j1", runner: gone, timeoutMs: 1000, intervalMs: 10, sleep: async () => {} });
   // One unit landed, the other is dead-silent: the wave as a whole is NOT
-  // clean, so the exit code must be exactly 2, not 0.
-  expect(r.code).toBe(2);
+  // clean, and the exit code matches the WORST finding (dead-silent = 5), not 0.
+  expect(r.code).toBe(5);
   expect(r.lines).toEqual([
     "LANDED embark",
     "DEAD-SILENT kart branch b2 worktree w2 — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind",
@@ -136,7 +161,7 @@ test("a ledger with no session-mode units is reported, not silently treated as c
   expect(r.lines).toEqual(["ERROR journey: j1 has no session-mode units to collect"]);
 });
 
-test("pollOnce throwing (runner rejects outright) fails open to RUNNING, not a false landed/dead-silent", async () => {
+test("pollOnce throwing (runner rejects outright) degrades to UNKNOWN, never a false landed/dead-silent/running", async () => {
   const dir = await ledgerWith("dispatched");
   let ticks = 0;
   const r = await collectCommand({
@@ -145,17 +170,18 @@ test("pollOnce throwing (runner rejects outright) fails open to RUNNING, not a f
     now: () => (ticks += 20),
     sleep: async () => {},
   });
-  // A thrown pollOnce must never be read as "nobody is out there" (code 0)
-  // nor as "everyone died" (dead-silent). The unit still carries a recorded
-  // sessionId, so the fail-open fallback must report it RUNNING and exit 2
-  // — asking the PE to look, never re-dispatching over possibly-live work.
-  expect(r.code).toBe(2);
+  // A thrown pollOnce must never be read as "nobody is out there" (code 0), nor
+  // as "everyone died" (dead-silent), nor as a guessed "running" (a liveness we
+  // cannot verify). The unit carries a sessionId but liveness is unestablished
+  // → UNKNOWN, exit 4 — asking the coordinator to look, never re-dispatching
+  // over possibly-live work.
+  expect(r.code).toBe(4);
   expect(r.lines).toEqual([
-    "RUNNING embark session s-1 — still working past the timeout; the PE decides whether to wait or kill it",
+    "UNKNOWN embark session s-1 branch b — liveness could not be established (agentop session list was unreadable past the timeout). NOT running, NOT dead: look before you re-dispatch",
   ]);
 });
 
-test("pollOnce throwing on a unit with no recorded sessionId still reports dead-silent, not a false landed", async () => {
+test("a unit that never even got a sessionId is dead-silent regardless of liveness reliability", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-sess-collect-"));
   await startJourney(dir, "j1");
   await recordDispatch(dir, "j1", {
@@ -169,7 +195,10 @@ test("pollOnce throwing on a unit with no recorded sessionId still reports dead-
     now: () => (ticks += 20),
     sleep: async () => {},
   });
-  expect(r.code).toBe(2);
+  // No sessionId → there is no session for liveness to describe: it never
+  // launched. That is dead-silent (worst finding = 5) whether or not agentop
+  // was reachable — NOT unknown.
+  expect(r.code).toBe(5);
   expect(r.lines).toEqual([
     "DEAD-SILENT embark branch b worktree w — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind",
   ]);
@@ -210,7 +239,7 @@ test("the wave never settling terminates the loop at the deadline instead of spi
   });
   expect(r.code).toBe(2);
   expect(r.lines).toEqual([
-    "RUNNING embark session s-1 — still working past the timeout; the PE decides whether to wait or kill it",
+    "RUNNING embark session s-1 — the session is alive (progress not independently verified); still working past the timeout, the PE decides whether to wait or kill it",
   ]);
   // deadline = now()@call1 (10) + 100 = 110. now() is also called once per
   // iteration for the deadline check, so ticks climbs by 20 per loop pass.

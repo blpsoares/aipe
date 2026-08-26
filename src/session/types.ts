@@ -24,7 +24,20 @@ export interface StartedSession {
   cwd: string;
 }
 
-export type UnitPhase = "landed" | "running" | "dead-silent" | "redirected";
+// The five states collect must keep distinct (D6), plus `redirected`:
+//   landed       — the unit recorded its delivery.
+//   running      — the session is verifiably alive (present in a RELIABLE live
+//                  list). We assert aliveness only, never independently-verified
+//                  "progress".
+//   waiting       — the specialist declared itself `blocked` (ledger-backed):
+//                  alive-or-not, it is waiting on the coordinator.
+//   unknown       — liveness could not be established (the live list was
+//                  unreadable). Never falls through to dead.
+//   dead-silent   — a reliable live list was obtained and the session is absent,
+//                  or the unit never got a session id at all: ended/never-was
+//                  without recording.
+//   redirected    — the PE changed the unit's direction live.
+export type UnitPhase = "landed" | "running" | "waiting" | "unknown" | "dead-silent" | "redirected";
 
 export interface UnitState {
   fqid: string; // repo or repo/package
@@ -32,9 +45,9 @@ export interface UnitState {
   phase: UnitPhase;
   branch: string;
   worktree: string;
-  // The PE's reason for a `redirected` unit (see JourneyDispatch.redirectReason
-  // in journey/types.ts) — null for every other phase, and also null for a
-  // `redirected` record written before the reason was required/persisted, so
-  // a legacy ledger still reads without throwing.
+  // The reason attached to the unit's current state — the PE's redirect reason
+  // for `redirected`, or the specialist's blocked reason for `waiting`. Null for
+  // every other phase, and also null for a record written before the reason was
+  // required/persisted, so a legacy ledger still reads without throwing.
   reason: string | null;
 }

@@ -6,16 +6,23 @@
 //   dispatched → delivered → verified → merged      (happy path)
 //   delivered  → failed → (re)dispatched → …        (QA rejected the delivery)
 //   dispatched → escalated                          (cross-repo need, PE decides)
+//   dispatched → blocked                             (stuck, waiting on the coordinator)
 //   * → redirected                                 (PE redirected it live via attach)
 //   * → removed                                     (worktree torn down)
 // `verified` = a dev delivery that PASSED its QA gate (the only "cleared for PE"
 // non-merged state). `failed` = QA rejected it; the unit is NOT done.
+// `blocked` = the specialist declared itself stuck and is waiting on the
+// coordinator — distinct from `escalated` (a cross-repo scope decision the PE
+// owns) and from `delivered` (work done). It is the first-class "I cannot
+// proceed, I need an answer" signal the coordinator can discover without reading
+// a terminal (surfaced by `session collect` and `journey verify`).
 export type DispatchStatus =
   | "dispatched"
   | "delivered"
   | "verified"
   | "failed"
   | "escalated"
+  | "blocked"
   | "merged"
   | "removed"
   | "redirected";
@@ -26,6 +33,7 @@ export const DISPATCH_STATUSES: DispatchStatus[] = [
   "verified",
   "failed",
   "escalated",
+  "blocked",
   "merged",
   "removed",
   "redirected",
@@ -74,6 +82,12 @@ export interface JourneyDispatch {
   // recordDispatchGuarded in ledger.ts); absent on legacy ledgers written
   // before this field existed.
   redirectReason?: string;
+  // Why a specialist declared itself `blocked` — what it is stuck on and what it
+  // needs from the coordinator. Required by the ledger gate whenever
+  // `status: "blocked"` is recorded (recordDispatchGuarded), so a blocked record
+  // always says what would unblock it; absent on every other status. A
+  // per-transition annotation, NOT sticky — it never leaks onto a later write.
+  blockedReason?: string;
   // Model-policy audit (optional; absent on legacy ledgers): the tier the
   // coordinator assigned and the concrete model the specialist ran on.
   tier?: string;

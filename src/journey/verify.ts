@@ -32,6 +32,7 @@ const RANK: Record<string, number> = {
   failed: 2,
   escalated: 2,
   redirected: 2,
+  blocked: 2,
   delivered: 3,
   verified: 4,
   merged: 5,
@@ -51,7 +52,6 @@ function hasEvidence(d: JourneyDispatch): boolean {
 export function verifyJourney(
   ledger: JourneyLedger,
   edges: { from: string; to: string; type: string }[],
-  contextUnits: Set<string>,
 ): VerifyFinding[] {
   const findings: VerifyFinding[] = [];
 
@@ -63,6 +63,15 @@ export function verifyJourney(
     list.push(d);
     byUnit.set(unit, list);
   }
+
+  // D5-twin — the journey's OWN units are exactly the units present in this
+  // ledger. The dependency-landing gate below fires only for a producer that is
+  // one of them, mirroring what PR #18 did in `dispatch validate`: an edge to a
+  // repo outside the demand (a context-wide graph node the demand merely
+  // consumes, e.g. the agentop binary from `agentistics`) is NOT an unmet
+  // dependency — it can never reach verified/merged in this journey, so gating
+  // on graph-node membership made it a permanent false critical.
+  const journeyUnits = new Set(byUnit.keys());
 
   // 1 — no-evidence: a done-claim (delivered/verified) with no valid proof.
   for (const d of ledger.dispatches) {
@@ -127,6 +136,19 @@ export function verifyJourney(
         detail: "escalated — waiting on the PE",
       });
     }
+
+    // 7 — blocked-open: the specialist declared itself stuck and is still
+    // waiting on the coordinator. A warning, not a critical: it is unfinished
+    // work needing an answer, not a broken invariant — but a journey is not
+    // done while a unit sits blocked.
+    if (status === "blocked") {
+      findings.push({
+        severity: "warning",
+        code: "blocked-open",
+        unit,
+        detail: `blocked — waiting on the coordinator${top.blockedReason ? ` (${top.blockedReason})` : ""}`,
+      });
+    }
   }
 
   // Which units actually LANDED in this ledger (verified/merged, most-advanced).
@@ -146,7 +168,7 @@ export function verifyJourney(
     for (const edge of edges) {
       if (edge.from !== unit || !DEPENDENCY_EDGE_TYPES.has(edge.type)) continue;
       const producer = edge.to;
-      if (!contextUnits.has(producer)) continue; // external dependency — not ours to gate
+      if (!journeyUnits.has(producer)) continue; // outside this journey's demand — not ours to gate
       if (landed.has(producer)) continue; // producer landed → the consumer is safe
       const key = `${unit}->${producer}`;
       if (seen.has(key)) continue;

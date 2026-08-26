@@ -5,7 +5,7 @@
 import { packageFqid } from "../context-brain/packages";
 import { readLedger } from "../journey/ledger";
 import type { JourneyLedger } from "../journey/types";
-import type { AgentopRunner, UnitState } from "./types";
+import type { AgentopRunner, UnitPhase, UnitState } from "./types";
 
 const LANDED_STATUSES = new Set(["delivered", "verified", "merged"]);
 
@@ -72,37 +72,49 @@ export function parseSessionList(stdout: string): Set<string> {
   return ids;
 }
 
-export function classify(ledger: JourneyLedger, live: Set<string>): UnitState[] {
+// `reliable` says whether `live` is a TRUSTWORTHY snapshot of who is alive — i.e.
+// `session list` exited 0 and parsed. When it is not reliable, an in-flight unit
+// with a recorded sessionId degrades to `unknown` rather than being guessed
+// `running` (a liveness we cannot verify) or flipped to `dead-silent` (the
+// dangerous direction). Defaults to `true` so the pure callers/tests that hand a
+// known set need not thread the flag. agentop's `activity` field is deliberately
+// NOT consulted anywhere here: it reported `waiting` for a session mid-tool-call,
+// so it is not a trustworthy ground truth for working-vs-idle.
+export function classify(ledger: JourneyLedger, live: Set<string>, reliable = true): UnitState[] {
   const states: UnitState[] = [];
   for (const d of ledger.dispatches) {
     if (d.mode !== "session") continue;
-    // A session-mode dispatch recorded with no sessionId at all always falls
-    // through to dead-silent here (the `d.sessionId &&` short-circuits
-    // before `live` is even consulted). That is intentional, not an
-    // oversight: nothing is running and nothing was recorded, so
-    // inspect-and-re-dispatch is the right response either way.
-    //
-    // `redirected` is checked FIRST, ahead of both the landed and live-session
-    // checks. A redirected unit's session can still be alive (the PE redirected
-    // it via `agentop session attach`, it did not stop) — if the live check ran
-    // first, that would read as ordinary `running` progress and hide the fact
-    // that the approved spec no longer describes what is being built. Checking
-    // `redirected` first makes that divergence loud regardless of whether the
-    // session is still up or has since ended.
-    const phase = d.status === "redirected"
-      ? "redirected"
-      : LANDED_STATUSES.has(d.status)
-        ? "landed"
-        : d.sessionId && live.has(d.sessionId)
-          ? "running"
-          : "dead-silent";
+    // Ledger-recorded states are decided from the ledger alone, ahead of any
+    // liveness check, and take precedence over it:
+    //   • `redirected` — the session may still be alive (the PE redirected it
+    //     via attach, it did not stop); reading it as `running` would hide that
+    //     the approved spec no longer describes what is being built.
+    //   • `blocked` — the specialist declared itself stuck; it is waiting on the
+    //     coordinator whether or not its session is still up.
+    // A session-mode dispatch with no sessionId at all is `dead-silent`
+    // regardless of `reliable`: there is no session for liveness to describe —
+    // it never launched (or its launch was never recorded) and nothing landed,
+    // so inspect-and-re-dispatch is the response either way.
+    let phase: UnitPhase;
+    if (d.status === "redirected") phase = "redirected";
+    else if (d.status === "blocked") phase = "waiting";
+    else if (LANDED_STATUSES.has(d.status)) phase = "landed";
+    else if (!d.sessionId) phase = "dead-silent";
+    else if (!reliable) phase = "unknown";
+    else phase = live.has(d.sessionId) ? "running" : "dead-silent";
+
     states.push({
       fqid: packageFqid(d.repo, d.package),
       sessionId: d.sessionId ?? null,
       phase,
       branch: d.branch,
       worktree: d.worktree,
-      reason: phase === "redirected" ? d.redirectReason ?? null : null,
+      reason:
+        phase === "redirected"
+          ? d.redirectReason ?? null
+          : phase === "waiting"
+            ? d.blockedReason ?? null
+            : null,
     });
   }
   return states;
@@ -120,32 +132,31 @@ function outstandingSessionIds(ledger: JourneyLedger): Set<string> {
   return ids;
 }
 
-// A failed (or unparseable) `session list` call means we genuinely do not
-// know who is still working — that is NOT the same fact as "nobody is
-// working". Treating it as an empty live set would flip every in-flight,
-// not-yet-recorded unit to dead-silent on a single hiccup (binary missing,
-// daemon momentarily down between polls), and the coordinator's documented
-// response to dead-silent is to inspect the branch and re-dispatch — exactly
-// the wrong move against a specialist that is still running. So a failed
-// check fails OPEN: fall back to "every session the ledger is still waiting
-// on is presumed alive" rather than "none of them are". A poll loop (Task 12)
-// keeps calling `pollOnce` until its own timeout, so a transient failure gets
-// retried on the next tick instead of being taken as proof of death; a
-// failure that never clears eventually surfaces as "still running past the
-// timeout", which asks the PE to look rather than silently declaring
-// everyone dead and inviting an automatic re-dispatch over live work.
+// A failed (or unparseable) `session list` call means we genuinely do not know
+// who is still working — that is NOT the same fact as "nobody is working", and
+// it is NOT the same fact as "everyone is working" either. Treating it as an
+// empty live set would flip every in-flight unit to dead-silent on a single
+// hiccup (the dangerous direction); the old code instead presumed every
+// outstanding session alive and labelled it `running` — a liveness it could not
+// verify (D6). Both guess. This returns `reliable: false` so `classify`
+// degrades such units to `unknown` — neither running nor dead. A poll loop
+// keeps calling `pollOnce` until its timeout, so a TRANSIENT failure is retried
+// (next tick recovers to `running`); a PERSISTENT one surfaces as `unknown` at
+// the deadline, asking the coordinator to look rather than declaring anyone
+// dead. `ids` still carries the outstanding set so a legacy caller ignoring the
+// flag degrades no worse than before.
 function liveSessionIds(
   ledger: JourneyLedger,
   result: { code: number; stdout: string; stderr: string },
-): Set<string> {
+): { reliable: boolean; ids: Set<string> } {
   if (result.code === 0) {
     try {
-      return parseSessionList(result.stdout);
+      return { reliable: true, ids: parseSessionList(result.stdout) };
     } catch {
-      // fall through to the fail-open fallback below
+      // fall through to the not-reliable fallback below
     }
   }
-  return outstandingSessionIds(ledger);
+  return { reliable: false, ids: outstandingSessionIds(ledger) };
 }
 
 export async function pollOnce(
@@ -156,5 +167,6 @@ export async function pollOnce(
   const ledger = await readLedger(workspaceDir, journeyId);
   if (!ledger) return [];
   const result = await runner(["session", "list", "--json"]);
-  return classify(ledger, liveSessionIds(ledger, result));
+  const { reliable, ids } = liveSessionIds(ledger, result);
+  return classify(ledger, ids, reliable);
 }

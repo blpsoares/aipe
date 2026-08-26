@@ -177,3 +177,36 @@ test("redirected does not collide with redispatchReason — writing one never po
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("blocked WITHOUT a reason is rejected — the signal is worthless without what it needs", async () => {
+  const dir = await ws();
+  try {
+    const r = await recordDispatchGuarded(dir, "j1", { ...base, status: "blocked" });
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("blocked-needs-reason");
+    expect((await readLedger(dir, "j1"))!.dispatches).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("blocked WITH a reason is recorded and stores blockedReason (distinct from escalated/redirected)", async () => {
+  const dir = await ws();
+  try {
+    const r = await recordDispatchGuarded(dir, "j1", { ...base, status: "blocked", mode: "session", sessionId: "s-1" }, { reason: "need the staging DB url" });
+    expect(r.ok).toBe(true);
+    const rec = (await readLedger(dir, "j1"))!.dispatches[0]!;
+    expect(rec.status).toBe("blocked");
+    expect(rec.blockedReason).toBe("need the staging DB url");
+    // blockedReason is a per-transition annotation, not a redirect/redispatch reason
+    expect(rec.redirectReason).toBeUndefined();
+    expect(rec.redispatchReason).toBeUndefined();
+    // …and it does not leak onto a later write that omits it
+    await recordDispatchGuarded(dir, "j1", { ...base, status: "delivered", pr: "http://pr/1", evidence });
+    const later = (await readLedger(dir, "j1"))!.dispatches[0]!;
+    expect(later.status).toBe("delivered");
+    expect(later.blockedReason).toBeUndefined();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
