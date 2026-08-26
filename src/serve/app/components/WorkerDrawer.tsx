@@ -52,11 +52,14 @@ export function WorkerDrawer() {
   }
 
   if (!w) {
+    // Even when closed the off-canvas drawer must live inside the fixed,
+    // overflow-clipped #overlay — a translated `.drawer` in normal flow adds to
+    // the page's scroll width (the interface-sweep horizontal-overflow finding).
     return (
-      <>
+      <div id="overlay">
         <div class="scrim" />
         <aside class="drawer" />
-      </>
+      </div>
     );
   }
 
@@ -66,7 +69,7 @@ export function WorkerDrawer() {
   const wts = (snapshot.value.worktrees as WorktreeRow[]).filter((r) => r.repo === w.repo);
 
   return (
-    <>
+    <div id="overlay">
       <div class={`scrim${open ? " on" : ""}`} onClick={close} />
       <aside class={`drawer${open ? " on" : ""}`}>
         <div id="drawerContent">
@@ -182,6 +185,6 @@ export function WorkerDrawer() {
           </div>
         </div>
       </aside>
-    </>
+    </div>
   );
 }

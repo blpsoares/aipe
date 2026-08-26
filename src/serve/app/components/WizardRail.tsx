@@ -3,7 +3,7 @@
 // the phase (that is what makes it a wizard, not a card). When a specialist is
 // pinned, the body morphs to that dispatch's derived phase; otherwise it shows
 // the journey's own resting body.
-import { conn, floorJourney, pinnedDispatch, sessions } from "../runtime/store";
+import { conn, floorJourney, pinnedDispatch, sessions, needsYouCount } from "../runtime/store";
 import { t } from "../runtime/i18n";
 import {
   derivePhase,
@@ -300,22 +300,30 @@ export function WizardRail() {
   const pinnedJourney = pinned ? journeyOfDispatch(pinned) : null;
   const bodyTone = pinned ? phaseTone(phaseOf(pinned, pinnedJourney)) : "slate";
 
-  const inboxCount = (snapshot.value.attention ?? []).length;
+  // The single "needs you" count — the same number the inbox, the FAB and the
+  // coordinator panel show. NEVER the raw attention array (that was the divergence).
+  const inboxCount = needsYouCount.value;
 
   return (
     <section class="floor-rail" aria-label={t("floor_wizard")}>
       <div class="wz-strip">
         <div class="wz-demand">
-          <span class="wz-jid">{j?.id ?? "—"}</span>
-          {j ? `${(j.dispatches ?? []).length} ${t("floor_units")}` : t("floor_no_journey")}
+          <span class="wz-jid" title={t("floor_g_journey")}>{j?.id ?? "—"}</span>
+          {j ? (
+            <span title={t("floor_g_unit")}>
+              {(j.dispatches ?? []).length} {(j.dispatches ?? []).length === 1 ? t("floor_unit_one") : t("floor_units")}
+            </span>
+          ) : (
+            t("floor_no_journey")
+          )}
         </div>
         {j?.spec && (
-          <span class={`wz-pill ${specApproved ? "ok" : "bad"}`}>
+          <span class={`wz-pill ${specApproved ? "ok" : "bad"}`} title={t("floor_g_spec")}>
             <span class="k">spec</span> v{j.spec.version} · {specApproved ? t("floor_approved") : t("floor_unapproved")}
           </span>
         )}
-        {!j?.spec && j && <span class="wz-pill">{t("floor_no_spec")}</span>}
-        <span class="wz-pill wz-cost">
+        {!j?.spec && j && <span class="wz-pill" title={t("floor_g_spec")}>{t("floor_no_spec")}</span>}
+        <span class="wz-pill wz-cost" title={`${t("floor_g_wave")} ${t("floor_g_index")}`}>
           <span class="k">{t("floor_wave")}</span> {wave.units.length} · index {wave.committedIndex}
           <span class="coarse">{t("floor_coarse")}</span>
         </span>

@@ -8,7 +8,7 @@ import { DecisionInbox } from "../components/DecisionInbox";
 import { RepoGroup } from "../components/RepoGroup";
 import { ConnBadge } from "../components/ConnBadge";
 import { Icon } from "../components/Icon";
-import { dispatches, decisionInbox, pinnedDispatch, snapshot } from "../runtime/store";
+import { dispatches, needsYouCount, pinnedDispatch, snapshot } from "../runtime/store";
 import { t } from "../runtime/i18n";
 import type { Route } from "../route-types";
 import type { Dispatch } from "../runtime/store";
@@ -29,7 +29,7 @@ function byRepo(reps: Dispatch[]): { repo: string; items: Dispatch[] }[] {
 
 function FloorView() {
   const groups = byRepo(dispatches.value);
-  const inboxCount = decisionInbox.value.length;
+  const inboxCount = needsYouCount.value;
   const [inboxOpen, setInboxOpen] = useState(false);
 
   // ESC clears the pinned dispatch (drill-down happens in the rail, never navigates).
@@ -69,7 +69,7 @@ function FloorView() {
         onClick={() => setInboxOpen((v) => !v)}
         aria-label={t("floor_inbox")}
       >
-        inboxCount === 0 ? <Icon name="check" title={t("floor_inbox_clear")} /> : <><Icon name="flag" /> {inboxCount}</>
+        {inboxCount === 0 ? <Icon name="check" title={t("floor_inbox_clear")} /> : <><Icon name="flag" /> {inboxCount}</>}
       </button>
     </div>
   );

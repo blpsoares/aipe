@@ -59,11 +59,14 @@ test("route contract: the Floor is the landing route, ordered first", () => {
 
 test("the coordinator wizard is pinned with the journey and its spec approval", () => {
   load();
-  const { container, getByText } = render(<FloorView />);
-  expect(container.querySelector(".floor-rail")).not.toBeNull();
-  expect(getByText("j-na")).toBeTruthy();
+  const { container } = render(<FloorView />);
+  const rail = container.querySelector(".floor-rail")!;
+  expect(rail).not.toBeNull();
+  // the journey id is shown in the wizard strip (it now also appears in each
+  // decision card's WHERE line, so scope the assertion to the rail).
+  expect(rail.querySelector(".wz-jid")?.textContent).toBe("j-na");
   // spec approval surfaced
-  expect(container.textContent).toContain("approved");
+  expect(rail.textContent).toContain("approved");
 });
 
 test("repos render as groups and specialists as accordions inside them", () => {
@@ -89,6 +92,33 @@ test("the decision inbox surfaces a gated envelope AND an escalation", () => {
   const kinds = [...inbox!.querySelectorAll(".ir-kind")].map((k) => k.textContent);
   expect(kinds.some((k) => /gated/i.test(k ?? ""))).toBe(true);
   expect(kinds.some((k) => /escalation/i.test(k ?? ""))).toBe(true);
+});
+
+test("a decision card shows the four answers with a real, copyable command", () => {
+  load();
+  const { container } = render(<FloorView />);
+  const inbox = container.querySelector(".floor-inbox")!;
+  // WHAT + WHY + DO labels are present
+  expect(inbox.querySelector(".ic-what")).not.toBeNull();
+  expect(inbox.textContent).toContain("Why");
+  expect(inbox.textContent).toContain("Do");
+  // an exact command the PE can copy (escalation → journey show), and a Copy button
+  const cmd = [...inbox.querySelectorAll(".ic-cmd-text")].map((c) => c.textContent);
+  expect(cmd.some((c) => /aipe journey show --journey j-na/.test(c ?? ""))).toBe(true);
+  expect(inbox.querySelector(".ic-cmd-copy")).not.toBeNull();
+});
+
+test("the header 'need you' count equals the decision inbox count — no contradiction", () => {
+  load();
+  const { container } = render(<FloorView />);
+  // header badge in the wizard strip
+  const badge = container.querySelector(".wz-inbox-badge")!.textContent ?? "";
+  const headerN = Number((badge.match(/\d+/) ?? ["0"])[0]);
+  // the inbox's own count
+  const inboxN = Number(container.querySelector(".floor-inbox .inbox-head .n")!.textContent);
+  expect(headerN).toBe(inboxN);
+  // both are the decisions (gated Jesse + escalation Mike), not the raw attention array
+  expect(headerN).toBe(2);
 });
 
 test("the wizard body changes shape with the pinned dispatch's phase", () => {

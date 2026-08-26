@@ -34,7 +34,10 @@ test("commands() palette lists EXACTLY the 6 monolith nav views, in order (no to
 
   // Action commands still present.
   expect(list.find((c) => c.label === t("c_theme"))).toBeTruthy();
-  expect(list.find((c) => c.label === t("c_writespec"))).toBeTruthy();
+  // The dead "Write orientation spec" no-op was removed (interface-sweep finding):
+  // the read-only console authors no specs, so it never presented a control that
+  // did nothing.
+  expect(list.find((c) => c.label === t("c_writespec"))).toBeFalsy();
 });
 
 test("cmdList(q) appends a worker entry per snapshot worker and filters case-insensitively", () => {
@@ -115,6 +118,40 @@ test("ArrowDown moves selection and Enter runs the selected command (navigates)"
     fireEvent.keyDown(document, { key: "Enter" });
   });
   expect(currentPath.value).toBe("/org");
+  // interface-sweep finding: the palette must dismiss after a goto/action, not linger.
+  expect(paletteOpen.value).toBe(false);
+});
+
+test("clicking a goto command navigates AND closes the palette (interface-sweep finding)", () => {
+  const { container } = render(<CommandPalette />);
+  act(() => {
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+  });
+  const input = container.querySelector("input")!;
+  act(() => {
+    fireEvent.input(input, { target: { value: t("nav_pipeline") } });
+  });
+  const opt = [...container.querySelectorAll(".opt")].find((el) => el.textContent?.includes(t("nav_pipeline")))!;
+  act(() => {
+    fireEvent.click(opt);
+  });
+  expect(currentPath.value).toBe("/pipeline");
+  expect(paletteOpen.value).toBe(false);
+});
+
+test("running the theme command closes the palette too (no action leaves it open)", () => {
+  const { container } = render(<CommandPalette />);
+  act(() => {
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+  });
+  const input = container.querySelector("input")!;
+  act(() => {
+    fireEvent.input(input, { target: { value: t("c_theme") } });
+  });
+  act(() => {
+    fireEvent.keyDown(document, { key: "Enter" });
+  });
+  expect(paletteOpen.value).toBe(false);
 });
 
 test("ArrowDown/ArrowUp clamp selection within list bounds", () => {

@@ -66,6 +66,12 @@ export function coordinatorView(journey: JourneyLike | null, inboxCount: number)
         // A human redirected it — the coordinator reconciles the spec.
         next.push({ unit, actionKey: "co_next_reconcile" });
         break;
+      case "blocked":
+        // The specialist is stuck and waiting on the coordinator — the
+        // coordinator owes it an answer. NEVER shown as "building it": inferring
+        // progress from a stalled unit was defect D7.
+        next.push({ unit, actionKey: "co_next_unblock" });
+        break;
       // escalated → the PE must act; counted in the inbox, not here.
       default:
         break;

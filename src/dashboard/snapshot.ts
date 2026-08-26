@@ -138,6 +138,10 @@ export interface Snapshot {
   ok: boolean;
   error?: string;
   context: { name: string; coordinator: string };
+  // The absolute workspace directory the console is serving. Sent to the client
+  // so the Floor can render the EXACT `--workspace <dir>` a resolving command
+  // needs — copyable and correct for this machine, not a placeholder.
+  workspaceDir: string;
   repos: string[];
   workers: WorkerView[];
   journeys: JourneyView[];
@@ -197,10 +201,11 @@ async function journeyMtime(workspaceDir: string, id: string): Promise<string | 
   }
 }
 
-function emptySnapshot(generatedAt: string): Snapshot {
+function emptySnapshot(generatedAt: string, workspaceDir = ""): Snapshot {
   return {
     ok: false,
     context: { name: "?", coordinator: "?" },
+    workspaceDir,
     repos: [],
     workers: [],
     journeys: [],
@@ -273,7 +278,7 @@ async function buildPersonaCVs(
 export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
   // Date is available in the compiled binary and in bun test (not a workflow script).
   const generatedAt = new Date().toISOString();
-  const empty = emptySnapshot(generatedAt);
+  const empty = emptySnapshot(generatedAt, workspaceDir);
 
   const brain = await readBrain(workspaceDir);
   if (!brain.ok) return { ...empty, error: brain.error };
@@ -351,6 +356,7 @@ export async function buildSnapshot(workspaceDir: string): Promise<Snapshot> {
   return {
     ok: true,
     context: brain.brain.context,
+    workspaceDir,
     repos: brain.brain.repos.map((r) => r.name),
     workers,
     journeys: journeyViews,

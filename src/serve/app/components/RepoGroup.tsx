@@ -4,8 +4,8 @@
 // (verified/merged/removed) units fold into a per-repo drawer so nothing green
 // costs vertical space.
 import { useState } from "preact/hooks";
-import { conn, pinnedDispatch, sessions } from "../runtime/store";
-import { t, stt } from "../runtime/i18n";
+import { conn, pinnedDispatch, sessions, decisions, observations } from "../runtime/store";
+import { t, stt, interpolate } from "../runtime/i18n";
 import { Chip } from "./Chip";
 import { Icon } from "./Icon";
 import {
@@ -104,6 +104,15 @@ export function RepoGroup({ repo, dispatches: reps }: { repo: string; dispatches
   const [open, setOpen] = useState(!allOpen);
   const counts = countsByStatus(reps);
 
+  // #4 — the row must answer "is anything HERE waiting on me, and what?", not
+  // just tally states. Cross-reference the decision split by this repo's units.
+  const inRepo = (unit: string): boolean => unit === repo || unit.startsWith(`${repo}/`);
+  const repoDecisions = decisions.value.filter((i) => inRepo(i.unit));
+  const repoObs = observations.value.filter((i) => inRepo(i.unit));
+  // A plain-language "what's happening here" line, no raw status tokens.
+  const awaitingQa = reps.filter((d) => d.status === "delivered").length;
+  const running = live.length - repoDecisions.length - repoObs.length;
+
   // Same-package law: any fqid with >1 open dispatch is being serialized.
   const byFq = new Map<string, Dispatch[]>();
   for (const d of live) {
@@ -112,17 +121,34 @@ export function RepoGroup({ repo, dispatches: reps }: { repo: string; dispatches
   }
   const serializing = [...byFq.values()].filter((g) => g.length > 1).length;
 
+  // Neutral "what's happening here" phrases (plain language, no status tokens).
+  const summary: string[] = [];
+  if (awaitingQa > 0) summary.push(interpolate(t("floor_repo_awaiting"), { n: String(awaitingQa) }));
+  if (running > 0) summary.push(interpolate(t("floor_repo_running"), { n: String(running) }));
+  if (repoObs.length > 0) summary.push(interpolate(t("floor_repo_obs"), { n: String(repoObs.length) }));
+
   return (
     <section class="repo-group">
       <button type="button" class={`repo-head${open ? " open" : ""}`} onClick={() => setOpen(!open)}>
         <span class="caret">▸</span>
         <span class="repo-name">{repo}</span>
-        <span class="count-pills">
+        {/* #4 — the row leads with the answer to "does this need me?" */}
+        {repoDecisions.length > 0 ? (
+          <span class="repo-answer needs">{interpolate(t("floor_repo_needs"), { n: String(repoDecisions.length) })}</span>
+        ) : (
+          <span class="repo-answer calm">{t("floor_repo_calm")}</span>
+        )}
+        {summary.length > 0 && <span class="repo-summary">{summary.join(" · ")}</span>}
+        <span class="count-pills" title={t("floor_g_counts")}>
           {Object.entries(counts).map(([st, n]) => (
-            <span class="count-pill" key={st} title={stt(st)}>{stt(st)} {n}</span>
+            <span class="count-pill" key={st} title={t(`sd_${st}`) || stt(st)}>{stt(st)} {n}</span>
           ))}
         </span>
-        {serializing > 0 && <span class="law-badge"><Icon name="law" size={13} title={t("floor_serializing")} /> {t("floor_serializing")} {serializing}</span>}
+        {serializing > 0 && (
+          <span class="law-badge" title={t("floor_g_serializing")}>
+            <Icon name="law" size={13} title={t("floor_g_serializing")} /> {t("floor_serializing")} {serializing}
+          </span>
+        )}
       </button>
       {open && (
         <div class="repo-body">
