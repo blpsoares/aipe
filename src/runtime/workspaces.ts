@@ -11,8 +11,8 @@
 // command, it just means the upgrade won't know about that workspace.
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import { statePath } from "./state";
+import { dirname, join, resolve } from "node:path";
+import { aipeStateDir, statePath } from "./state";
 
 /** Most recent N workspaces are kept; older entries fall off. */
 export const MAX_WORKSPACES = 50;
@@ -68,9 +68,36 @@ export function needsRecord(
   return now - head.lastSeen >= throttleMs;
 }
 
-/** Pure: is this directory an AIPe workspace? (has a `.aipe/` next to it) */
-export function looksLikeWorkspace(dir: string, exists: (p: string) => boolean = existsSync): boolean {
-  return exists(resolve(dir, ".aipe"));
+/**
+ * Files only a REAL workspace has inside `.aipe/`: `harness` is written by
+ * `aipe start`, `brain.yaml` by `/context-brain`. One of them is always there
+ * by the time a workspace is worth rehydrating.
+ */
+export const WORKSPACE_MARKERS = ["harness", "brain.yaml"];
+
+/**
+ * Pure: is this directory an AIPe workspace?
+ *
+ * Checking only that `<dir>/.aipe` EXISTS was wrong in the one place it hurts:
+ * the machine state dir is itself `~/.aipe`, so running any `aipe` command
+ * from `$HOME` registered `$HOME` as a workspace — and the next upgrade
+ * rehydrated it, writing AIPe's coordinator flow-skills into `~/.claude/skills/`.
+ * That is the user's GLOBAL harness config, loaded by every session on the
+ * machine, and it breaks the product's own promise that nothing is ever
+ * installed globally.
+ *
+ * So a workspace has to prove it is one, and the state dir is excluded outright
+ * — belt and braces, because the cost of getting this wrong is silent and
+ * machine-wide.
+ */
+export function looksLikeWorkspace(
+  dir: string,
+  exists: (p: string) => boolean = existsSync,
+  stateDir: string = aipeStateDir(),
+): boolean {
+  const aipe = resolve(dir, ".aipe");
+  if (aipe === resolve(stateDir)) return false;
+  return WORKSPACE_MARKERS.some((marker) => exists(join(aipe, marker)));
 }
 
 async function readRegistry(): Promise<WorkspaceEntry[]> {

@@ -50,11 +50,11 @@ test("parseWorkspaceRegistry drops junk entries instead of throwing", () => {
   ]);
 });
 
-test("looksLikeWorkspace asks for a .aipe directory", () => {
-  const seen: string[] = [];
-  expect(looksLikeWorkspace("/w", (p) => (seen.push(p), true))).toBe(true);
-  expect(seen).toEqual(["/w/.aipe"]);
-  expect(looksLikeWorkspace("/w", () => false)).toBe(false);
+test("looksLikeWorkspace asks for a workspace MARKER, not a bare .aipe/", () => {
+  // The bare-directory check is what let $HOME through — see the state-dir
+  // test below.
+  expect(looksLikeWorkspace("/w", () => true, "/home/u/.aipe")).toBe(true);
+  expect(looksLikeWorkspace("/w", () => false, "/home/u/.aipe")).toBe(false);
 });
 
 test("parseServeEntry needs a pid and a workspace, and fills the rest in", () => {
@@ -69,4 +69,31 @@ test("parseServeEntry needs a pid and a workspace, and fills the rest in", () =>
     version: "",
     startedAt: 0,
   });
+});
+
+test("the machine state dir is never mistaken for a workspace", () => {
+  // ~/.aipe IS the state dir, and it is also literally a `.aipe` directory.
+  // Treating $HOME as a workspace made the next upgrade rehydrate it, writing
+  // AIPe's flow-skills into ~/.claude/skills/ — the user's GLOBAL harness
+  // config, loaded by every session on the machine.
+  const home = "/home/u";
+  const stateDir = "/home/u/.aipe";
+  // Even if something inside it happens to match a marker name, it is excluded.
+  expect(looksLikeWorkspace(home, () => true, stateDir)).toBe(false);
+});
+
+test("a directory with a bare .aipe/ and no marker is not a workspace", () => {
+  const seen: string[] = [];
+  const exists = (p: string) => (seen.push(p), false);
+  expect(looksLikeWorkspace("/w", exists, "/home/u/.aipe")).toBe(false);
+  // It looked for the markers, not for the bare directory.
+  expect(seen).toEqual(["/w/.aipe/harness", "/w/.aipe/brain.yaml"]);
+});
+
+test("either marker is enough — start writes one, context-brain the other", () => {
+  const only = (marker: string) => (p: string) => p.endsWith(marker);
+  // `aipe start` has written .aipe/harness but onboarding has not run yet.
+  expect(looksLikeWorkspace("/w", only("harness"), "/home/u/.aipe")).toBe(true);
+  // An older workspace predating the harness file still has its brain.
+  expect(looksLikeWorkspace("/w", only("brain.yaml"), "/home/u/.aipe")).toBe(true);
 });

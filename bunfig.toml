@@ -1,0 +1,5 @@
+[test]
+# Redirects machine-level state (~/.aipe) to a temp dir for the whole suite —
+# see test-setup.ts. Without it, running the tests mutates the developer's own
+# machine state.
+preload = ["./test-setup.ts"]
