@@ -60,6 +60,15 @@ function togglePalette(): void {
   else openPalette();
 }
 
+// Run a command and dismiss the palette. Every action here is a one-shot
+// (navigate, toggle theme, open a worker) — the interface-sweep finding was that
+// goto/theme left the palette open after firing. Closing here covers Enter and
+// click uniformly; a worker command that already closed is closed idempotently.
+function runItem(o: CmdItem): void {
+  o.run();
+  closePalette();
+}
+
 // ── Command sources (app.html:1233-1251) ────────────────────────────────────
 
 export function commands(): CmdItem[] {
@@ -79,14 +88,10 @@ export function commands(): CmdItem[] {
 
   return [
     ...gotoCmds,
-    {
-      g: A,
-      ic: "edit",
-      label: t("c_writespec"),
-      // Mock kept for parity with the monolith's `alert("(mock)")` — no real
-      // spec-writing feature is implemented here.
-      run: () => {},
-    },
+    // The monolith's "Write orientation spec" was a dead no-op (an `alert("(mock)")`
+    // in app.html; a `() => {}` here) — an interface-sweep finding. The console is
+    // read-only and authors no specs, so a control that does nothing is removed
+    // rather than presented. Authoring a spec happens in the coordinator session.
     { g: A, ic: "theme", label: t("c_theme"), run: () => cycleTheme() },
   ];
 }
@@ -133,7 +138,8 @@ export function CommandPalette() {
         } else if (e.key === "Enter") {
           e.preventDefault();
           const list = cmdList(query.value);
-          list[sel.value]?.run();
+          const item = list[sel.value];
+          if (item) runItem(item);
         }
       } else if (e.key === "Escape") {
         // app.html:1274 closes the specialist drawer here. WorkerDrawer
@@ -176,7 +182,7 @@ export function CommandPalette() {
                 {groupHeader && <div class="grp">{o.g}</div>}
                 <div
                   class={`opt${i === selection ? " sel" : ""}`}
-                  onClick={() => o.run()}
+                  onClick={() => runItem(o)}
                   onMouseEnter={() => {
                     sel.value = i;
                   }}

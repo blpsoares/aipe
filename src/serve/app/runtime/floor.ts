@@ -23,6 +23,7 @@ export type Phase =
   | "qa-gate" // QA rejected / findings open
   | "escalated"
   | "redirected"
+  | "blocked" // the specialist declared itself stuck — waiting on the coordinator
   | "dead-silent" // session ended / silent past timeout — the PE's call
   | "closed"; // merged / removed (green)
 
@@ -43,6 +44,7 @@ const TONE: Record<Phase, string> = {
   "qa-gate": "rose",
   escalated: "amber",
   redirected: "amber",
+  blocked: "amber",
   "dead-silent": "slate",
 };
 export function phaseTone(p: Phase): string {
@@ -83,6 +85,10 @@ export function derivePhase(d: Dispatch, inputs: PhaseInputs = {}): Phase {
   if (status === "verified") return "verified";
   if (status === "escalated") return "escalated";
   if (status === "redirected") return "redirected";
+  // `blocked` is a real ledger status now (the j-20260825-84 signal): the
+  // specialist declared itself stuck. It must render as blocked, never inferred
+  // as "building it" the way a plain `dispatched` record is (defect D7).
+  if (status === "blocked") return "blocked";
   if (status === "failed") return "qa-gate";
   if (status === "delivered") return hasEvidence(d) ? "delivered" : "verifying";
 
@@ -253,10 +259,52 @@ export type DecisionKind =
   | "gated"
   | "escalation"
   | "redirected"
+  | "blocked"
   | "qa-gap";
+
+// Two kinds of row on the Floor, and the split is the answer to the PE's
+// question "what actually needs ME?":
+//  - "decision"    — only the PE can unblock it (authorize, approve, decide to
+//                    kill). These are what "N need you" counts.
+//  - "observation" — a real finding, but the coordinator / dev / QA resolves it;
+//                    the PE cannot fix it with a click. Per the spec, these do
+//                    not belong in a *decision* inbox — they are shown apart and
+//                    say who is handling them, so the PE is informed without
+//                    being nagged to act on something they can't act on.
+export type DecisionSection = "decision" | "observation";
+
+const SECTION: Record<DecisionKind, DecisionSection> = {
+  escalation: "decision",
+  gated: "decision",
+  "dead-silent": "decision",
+  "no-evidence": "observation",
+  "failed-open": "observation",
+  "dependency-not-landed": "observation",
+  "qa-gap": "observation",
+  redirected: "observation",
+  blocked: "observation",
+};
+
+/** Who acts next on a kind — an i18n key (rendered by the component). */
+const ACTOR: Record<DecisionKind, string> = {
+  escalation: "fa_actor_you",
+  gated: "fa_actor_you",
+  "dead-silent": "fa_actor_you",
+  "no-evidence": "fa_actor_dev",
+  "failed-open": "fa_actor_coord",
+  "dependency-not-landed": "fa_actor_coord",
+  "qa-gap": "fa_actor_coord",
+  redirected: "fa_actor_coord",
+  blocked: "fa_actor_coord",
+};
+
+export function decisionSection(kind: DecisionKind): DecisionSection {
+  return SECTION[kind] ?? "observation";
+}
 
 export interface DecisionItem {
   kind: DecisionKind;
+  section: DecisionSection;
   severity: "critical" | "warning";
   unit: string;
   specialist: string;
@@ -274,8 +322,9 @@ const RANK: Record<DecisionKind, number> = {
   "dead-silent": 1,
   gated: 2,
   escalation: 3,
-  redirected: 4,
-  "qa-gap": 5,
+  blocked: 4,
+  redirected: 5,
+  "qa-gap": 6,
 };
 
 const CRITICAL_ATTENTION: ReadonlySet<string> = new Set(["no-evidence", "failed-open", "dependency-not-landed"]);
@@ -294,16 +343,25 @@ export interface InboxInputs {
  */
 export function buildDecisionInbox(inp: InboxInputs): DecisionItem[] {
   const items: DecisionItem[] = [];
-  const push = (it: Omit<DecisionItem, "rank">): void => {
-    items.push({ ...it, rank: RANK[it.kind] });
+  const push = (it: Omit<DecisionItem, "rank" | "section">): void => {
+    items.push({ ...it, section: decisionSection(it.kind), rank: RANK[it.kind] });
   };
 
-  // 1 — critical ledger invariants (already computed server-side).
+  // 1 — ledger findings already computed server-side (the SAME verifyJourney
+  // engine the `journey verify` CLI runs — one source, so the Floor and the CLI
+  // never disagree). Criticals map to their kind; the warning-level findings that
+  // still need a human map to their row too, as observations.
   for (const a of inp.attention) {
     if (CRITICAL_ATTENTION.has(a.kind)) {
       push({ kind: a.kind as DecisionKind, severity: "critical", unit: a.unit, specialist: a.specialist, journey: a.journey, detail: a.detail });
     } else if (a.kind === "escalated-open") {
       push({ kind: "escalation", severity: "warning", unit: a.unit, specialist: a.specialist, journey: a.journey, detail: a.detail });
+    } else if (a.kind === "blocked-open") {
+      // The j-20260825-84 blocked signal, surfaced: the specialist is stuck and
+      // the coordinator owes it an answer. An observation, not the PE's click.
+      push({ kind: "blocked", severity: "warning", unit: a.unit, specialist: a.specialist, journey: a.journey, detail: a.detail });
+    } else if (a.kind === "merged-skipped-qa") {
+      push({ kind: "qa-gap", severity: "warning", unit: a.unit, specialist: a.specialist, journey: a.journey, detail: a.detail });
     }
   }
 
@@ -326,6 +384,14 @@ export function buildDecisionInbox(inp: InboxInputs): DecisionItem[] {
       if (d.status === "redirected") {
         push({ kind: "redirected", severity: "warning", unit, specialist, journey: j.id, detail: (d.redirectReason as string) || "direction changed — the spec needs reconciling" });
       }
+      // 6 — blocked: the specialist declared itself stuck. Derived from the
+      // ledger status directly (the server's attention array carries only
+      // criticals + escalations, so a warning-level block would never reach the
+      // client otherwise). This is what makes the coordinator panel honest —
+      // a blocked unit renders as blocked, never as "building it" (defect D7).
+      if (d.status === "blocked") {
+        push({ kind: "blocked", severity: "warning", unit, specialist, journey: j.id, detail: (d.blockedReason as string) || "blocked — waiting on the coordinator" });
+      }
     }
   }
 
@@ -338,6 +404,145 @@ export function buildDecisionInbox(inp: InboxInputs): DecisionItem[] {
   }
   const sevRank = (s: DecisionItem["severity"]): number => (s === "critical" ? 0 : 1);
   return [...seen.values()].sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || a.rank - b.rank || a.unit.localeCompare(b.unit));
+}
+
+// ── a pending item's four answers + its resolving command ────────────────────
+// The spec's core: every pending item must answer, in the PE's own framing,
+// WHAT it is, WHY it appeared, WHAT TO DO (with the exact command, copyable in
+// one click), and WHERE. This is a pure mapping from a DecisionItem (+ its
+// dispatch, for the WHERE fields, + the workspace dir, for an exact command) to
+// those four answers as i18n keys the component renders. The console is
+// read-only: the command is shown to be copied and run by the PE in a terminal,
+// never executed here.
+
+export interface ActionWhere {
+  repo: string;
+  unit: string;
+  journey: string;
+  branch?: string;
+  worktree?: string;
+  pr?: string;
+}
+
+export interface ActionCard {
+  section: DecisionSection;
+  /** i18n keys — rendered (and interpolated with `vars`) by the component. */
+  whatKey: string;
+  whyKey: string;
+  todoKey: string;
+  actorKey: string;
+  vars: Record<string, string>;
+  /** The exact command to copy+run, or null when no shell command resolves it. */
+  command: string | null;
+  /** Shown in place of a command when `command` is null. */
+  commandNoteKey?: string;
+  where: ActionWhere;
+}
+
+const WHAT: Record<DecisionKind, string> = {
+  escalation: "fa_what_escalation",
+  gated: "fa_what_gated",
+  "dead-silent": "fa_what_deadsilent",
+  "no-evidence": "fa_what_noevidence",
+  "failed-open": "fa_what_failedopen",
+  "dependency-not-landed": "fa_what_dep",
+  "qa-gap": "fa_what_qagap",
+  redirected: "fa_what_redirected",
+  blocked: "fa_what_blocked",
+};
+const WHY: Record<DecisionKind, string> = {
+  escalation: "fa_why_escalation",
+  gated: "fa_why_gated",
+  "dead-silent": "fa_why_deadsilent",
+  "no-evidence": "fa_why_noevidence",
+  "failed-open": "fa_why_failedopen",
+  "dependency-not-landed": "fa_why_dep",
+  "qa-gap": "fa_why_qagap",
+  redirected: "fa_why_redirected",
+  blocked: "fa_why_blocked",
+};
+const TODO: Record<DecisionKind, string> = {
+  escalation: "fa_todo_escalation",
+  gated: "fa_todo_gated",
+  "dead-silent": "fa_todo_deadsilent",
+  "no-evidence": "fa_todo_noevidence",
+  "failed-open": "fa_todo_failedopen",
+  "dependency-not-landed": "fa_todo_dep",
+  "qa-gap": "fa_todo_qagap",
+  redirected: "fa_todo_redirected",
+  blocked: "fa_todo_blocked",
+};
+
+/** The in-context producer named in a dependency-not-landed detail, if present. */
+export function producerOf(detail: string): string | null {
+  const m = detail.match(/against\s+(\S+?),/);
+  return m ? m[1]! : null;
+}
+
+const q = (s: string): string => (/\s/.test(s) ? `'${s}'` : s);
+
+/** `aipe journey <verb> --workspace <ws> --journey <id>` — omits --workspace when unknown. All read-only. */
+function journeyCmd(verb: "verify" | "show", ws: string, journey: string): string {
+  const wsPart = ws ? ` --workspace ${q(ws)}` : "";
+  return `aipe journey ${verb}${wsPart} --journey ${journey}`;
+}
+
+export function decisionAction(item: DecisionItem, dispatch: Dispatch | undefined, workspaceDir = ""): ActionCard {
+  const kind = item.kind;
+  const journey = item.journey;
+  const repo = String(dispatch?.repo ?? item.unit.split("/")[0] ?? item.unit);
+  const branch = typeof dispatch?.branch === "string" ? dispatch.branch : undefined;
+  const worktree = typeof dispatch?.worktree === "string" ? dispatch.worktree : undefined;
+  const pr = typeof dispatch?.pr === "string" ? dispatch.pr : undefined;
+  const where: ActionWhere = { repo, unit: item.unit, journey, ...(branch ? { branch } : {}), ...(worktree ? { worktree } : {}), ...(pr ? { pr } : {}) };
+
+  const producer = producerOf(item.detail) ?? "";
+  const vars: Record<string, string> = { unit: item.unit, journey, who: item.specialist, producer };
+
+  // The resolving command per kind. Every command is real (verified signatures)
+  // and read-only-safe: it inspects or reconciles; the PE runs it themselves.
+  let command: string | null = null;
+  let commandNoteKey: string | undefined;
+  switch (kind) {
+    case "escalation":
+      command = journeyCmd("show", workspaceDir, journey);
+      break;
+    case "gated":
+      // No shell command authorizes an envelope — the PE does it in the
+      // coordinator session. Being honest beats inventing a fake command.
+      command = null;
+      commandNoteKey = "fa_cmd_none_auth";
+      break;
+    case "dead-silent":
+      command = worktree ? `git -C ${q(worktree)} log --oneline -20` : journeyCmd("show", workspaceDir, journey);
+      break;
+    case "no-evidence":
+    case "dependency-not-landed":
+    case "qa-gap":
+      command = journeyCmd("verify", workspaceDir, journey);
+      break;
+    case "failed-open":
+    case "blocked":
+    case "redirected":
+      // All read-only inspections. `redirected` in particular is NOT resolved by
+      // `journey reconcile` (that command auto-detects merged PRs — a different
+      // job); reconciling a spec after a live redirect is a coordinator judgment
+      // with no single command, so we show the ledger state and name the actor.
+      command = journeyCmd("show", workspaceDir, journey);
+      break;
+  }
+
+  return {
+    section: decisionSection(kind),
+    whatKey: WHAT[kind],
+    whyKey: WHY[kind],
+    todoKey: TODO[kind],
+    actorKey: ACTOR[kind],
+    vars,
+    command,
+    ...(commandNoteKey ? { commandNoteKey } : {}),
+    where,
+  };
 }
 
 // ── per-journey timeline ─────────────────────────────────────────────────────

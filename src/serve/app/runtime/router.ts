@@ -39,6 +39,19 @@ function pathFromHash(): string | null {
   return h ? "/" + h : null;
 }
 
+// The target path for a hashchange EVENT (distinct from resolveInitialPath's
+// first-load resolution, which falls back to storage on an absent hash). On a
+// change, an empty or bare "#/" hash is an explicit navigation to the Floor —
+// map it to "/" rather than null, so browser back/forward from another view
+// back to the Floor re-syncs currentPath (and with it the topbar + active nav)
+// instead of stranding it on the previous view. Returns null for an unknown
+// path so a bogus manual hash is ignored.
+export function hashTarget(rawHash: string): string | null {
+  const stripped = (rawHash || "").replace(/^#\/?/, "");
+  const p = stripped ? "/" + stripped : "/";
+  return isValidPath(p) ? p : null;
+}
+
 function pathFromStorage(): string | null {
   try {
     const v = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
@@ -83,7 +96,7 @@ export function navigate(path: string): void {
 // navigate() is idempotent when the hash already matches).
 if (typeof window !== "undefined") {
   window.addEventListener("hashchange", () => {
-    const p = pathFromHash();
-    if (isValidPath(p) && p !== currentPath.value) navigate(p);
+    const p = hashTarget(location.hash || "");
+    if (p && p !== currentPath.value) navigate(p);
   });
 }

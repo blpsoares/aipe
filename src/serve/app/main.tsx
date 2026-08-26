@@ -4,6 +4,7 @@ import { LocationProvider, Router, Route } from "preact-iso";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/floor.css";
+import "./runtime/theme"; // applies the persisted theme on import (before first paint)
 import { routes } from "./routes.generated";
 import type { Route as RouteContract } from "./route-types";
 import { Sidebar } from "./components/Sidebar";

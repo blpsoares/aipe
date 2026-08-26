@@ -78,6 +78,9 @@ export interface ActivityEvent {
 export interface RawSnapshot {
   ok?: boolean;
   context?: { name?: string; coordinator?: string };
+  // Absolute workspace dir the console serves — the exact `--workspace <dir>` a
+  // Floor command needs (see runtime/floor.ts decisionAction).
+  workspaceDir?: string;
   workers?: Worker[];
   repos?: string[];
   repoInfos?: { name: string; stack?: string[]; kind?: string }[];
@@ -115,6 +118,7 @@ export interface AttentionItem {
 export interface Snapshot {
   ok: boolean;
   context: { name?: string; coordinator?: string };
+  workspaceDir: string;
   workers: Worker[];
   repos: Repo[];
   relations: unknown[];
@@ -254,6 +258,7 @@ export function diffActivity(
 const EMPTY_SNAPSHOT: Snapshot = {
   ok: false,
   context: { name: "—", coordinator: "—" },
+  workspaceDir: "",
   workers: [],
   repos: [],
   relations: [],
@@ -308,7 +313,7 @@ export const sessions: ReadonlySignal<SessionInfo[]> = computed(() => snapshot.v
 // coordinators (5.5). There is one coordinator identity: snapshot.context.coordinator.
 export const coordinatorSessionCount: ReadonlySignal<number> = computed(() => (snapshot.value.coordinatorSessions ?? []).length);
 
-// Everything waiting on the PE, ranked. The empty list IS the success state.
+// Everything the Floor surfaces, ranked. The empty list IS the success state.
 export const decisionInbox: ReadonlySignal<DecisionItem[]> = computed(() =>
   buildDecisionInbox({
     attention: snapshot.value.attention ?? [],
@@ -317,6 +322,19 @@ export const decisionInbox: ReadonlySignal<DecisionItem[]> = computed(() =>
     now: Date.now(),
   }),
 );
+
+// The split that answers "what needs ME?": decisions only the PE can unblock,
+// vs observations the coordinator/dev/QA handle. Because both derive from the
+// snapshot, a resolved item disappears on its own on the next SSE frame — no
+// manual dismiss, no stale card (the PE watches the list shrink).
+export const decisions: ReadonlySignal<DecisionItem[]> = computed(() => decisionInbox.value.filter((i) => i.section === "decision"));
+export const observations: ReadonlySignal<DecisionItem[]> = computed(() => decisionInbox.value.filter((i) => i.section === "observation"));
+
+// THE single "N need you" count. The header, the inbox badge, the mobile FAB and
+// the coordinator panel all read THIS — so no two numbers on the Floor can
+// contradict each other (the "12 vs 9" divergence came from the header counting
+// the raw attention array while everything else counted the decision list).
+export const needsYouCount: ReadonlySignal<number> = computed(() => decisions.value.length);
 
 // Module-level previous-dispatch map, equivalent to the monolith's `PREV`.
 let prevMap: Map<string, Dispatch> | null = null;
@@ -330,6 +348,7 @@ export function applySnapshot(raw: RawSnapshot, now: number, t: Translator = (k)
   const next: Snapshot = {
     ok: !!raw.ok,
     context: raw.context ?? snapshot.value.context,
+    workspaceDir: raw.workspaceDir ?? snapshot.value.workspaceDir ?? "",
     workers: deriveWorkers(raw),
     repos: deriveRepos(raw),
     relations: raw.relations || [],

@@ -1,9 +1,9 @@
 import type { JSX } from "preact";
 import { Icon } from "../components/Icon";
-import { useState } from "preact/hooks";
 import { t, lang } from "../runtime/i18n";
 import { NOTIF, saveNotif, notify } from "../runtime/notify";
 import { LangSwitch } from "../components/LangSwitch";
+import { theme, setTheme, type Theme } from "../runtime/theme";
 import type { Route } from "../route-types";
 
 // Settings sits in the sidebar footer, not the main nav list (Sidebar.tsx),
@@ -81,15 +81,11 @@ function ThemeSeg({ theme, onChange }: { theme: string; onChange: (v: string) =>
 
 function SettingsView() {
   const notif = NOTIF.value;
-  const [theme, setTheme] = useState(() => (typeof document !== "undefined" ? document.documentElement.getAttribute("data-theme") || "" : ""));
+  // Reads the SHARED theme signal so this segment tracks the Topbar toggle live
+  // and the two never disagree; setTheme persists the choice (runtime/theme.ts).
+  const curTheme = theme.value;
 
   const perm: NotificationPermission | "unsupported" = typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported";
-
-  function setThemeAttr(v: string) {
-    if (v) document.documentElement.setAttribute("data-theme", v);
-    else document.documentElement.removeAttribute("data-theme");
-    setTheme(v);
-  }
 
   function grant() {
     if (typeof window !== "undefined" && "Notification" in window) void Notification.requestPermission();
@@ -146,7 +142,7 @@ function SettingsView() {
         <div class="set-h" style={{ marginBottom: "14px" }}>
           {t("set_appearance")}
         </div>
-        {srow(t("set_theme"), "", <ThemeSeg theme={theme} onChange={setThemeAttr} />)}
+        {srow(t("set_theme"), "", <ThemeSeg theme={curTheme} onChange={(v) => setTheme(v as Theme)} />)}
         {srow(t("set_lang"), "", <LangSwitch />)}
       </div>
     </div>

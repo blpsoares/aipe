@@ -3,7 +3,7 @@
 // waiting" kept visually and semantically separate from "the PE must act".
 // 5.5 — a single coordinator identity; open sessions are shown as a session
 // count, never as multiple coordinators.
-import { snapshot, floorJourney, decisionInbox, coordinatorSessionCount } from "../runtime/store";
+import { snapshot, floorJourney, needsYouCount, coordinatorSessionCount } from "../runtime/store";
 import { navigate } from "../runtime/router";
 import { t } from "../runtime/i18n";
 import { coordinatorView } from "../runtime/coordinator";
@@ -11,8 +11,8 @@ import { coordinatorView } from "../runtime/coordinator";
 export function CoordinatorPanel() {
   const name = snapshot.value.context?.coordinator || "—";
   const journey = floorJourney.value;
-  const inbox = decisionInbox.value;
-  const view = coordinatorView(journey, inbox.length);
+  // needsPE reads the SAME single count as the header/inbox/FAB.
+  const view = coordinatorView(journey, needsYouCount.value);
   const sess = coordinatorSessionCount.value;
 
   return (
@@ -21,7 +21,7 @@ export function CoordinatorPanel() {
         <span class="co-avatar">{name.slice(0, 1).toUpperCase()}</span>
         <div class="co-who">
           <span class="co-name">{name}</span>
-          <span class="co-role">
+          <span class="co-role" title={t("floor_g_coord")}>
             {t("co_role")}
             {sess > 1 && <span class="co-sessions" title={t("co_sessions_hint")}> · {sess} {t("co_sessions")}</span>}
           </span>
@@ -31,7 +31,7 @@ export function CoordinatorPanel() {
       <div class="co-cols">
         {/* The coordinator is waiting — progress it monitors. */}
         <div class="co-col co-waiting">
-          <div class="co-h">{t("co_waiting_h")}</div>
+          <div class="co-h" title={t("floor_g_qa")}>{t("co_waiting_h")}</div>
           {view.waiting.length === 0 && view.next.length === 0 ? (
             <div class="co-line muted">{t("co_idle")}</div>
           ) : (

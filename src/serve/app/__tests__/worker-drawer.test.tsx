@@ -36,6 +36,21 @@ test("closed by default (openWorkerName null): no 'on' class", () => {
   expect(container.querySelector(".scrim.on")).toBeNull();
 });
 
+test("the off-canvas drawer lives inside the fixed #overlay so it never widens the page (interface-sweep finding: base.css:352 horizontal overflow)", () => {
+  // Closed: the drawer is translated off the right edge. It must be clipped by
+  // the fixed+overflow-hidden #overlay, not sit in normal flow adding scroll width.
+  const { container } = render(<WorkerDrawer />);
+  const overlay = container.querySelector("#overlay");
+  expect(overlay).toBeTruthy();
+  expect(overlay!.querySelector(".drawer")).toBeTruthy();
+  expect(overlay!.querySelector(".scrim")).toBeTruthy();
+
+  // Open: still inside the overlay.
+  openWorkerName.value = "Ana";
+  const { container: c2 } = render(<WorkerDrawer />);
+  expect(c2.querySelector("#overlay .drawer.on")).toBeTruthy();
+});
+
 test("opens when openWorkerName matches a store worker", () => {
   openWorkerName.value = "Ana";
   const { container } = render(<WorkerDrawer />);

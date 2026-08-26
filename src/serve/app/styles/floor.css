@@ -141,22 +141,58 @@
   background: var(--accent-wash); color: var(--accent-ink);
   border: 1px solid transparent; font-size: 13px;
 }
-.inbox-row {
+/* Section headers inside the inbox: decisions ("need you") vs observations. */
+.inbox-sec-h {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-2); padding: 6px 2px 2px; display: flex; align-items: baseline; gap: 6px;
+}
+.inbox-sec-h.obs { color: var(--ink-3); border-top: 1px solid var(--line); margin-top: 6px; }
+.inbox-sec-h .n2 { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.inbox-sec-hint { font-size: 11px; color: var(--ink-3); padding: 0 2px 4px; font-style: italic; }
+
+/* The pending-item card — the four answers + its resolving command. */
+.inbox-card {
   text-align: left; width: 100%;
   background: var(--raise); border: 1px solid var(--line);
   border-left: 3px solid var(--amber);
-  border-radius: 10px; padding: 9px 11px; cursor: pointer;
-  display: grid; gap: 3px;
+  border-radius: 10px; padding: 10px 12px;
+  display: grid; gap: 7px;
 }
-.inbox-row:hover { box-shadow: var(--shadow-1); border-color: var(--line-2); }
-.inbox-row.critical { border-left-color: var(--rose); }
-.inbox-row.on { outline: 2px solid var(--accent-2); }
-.inbox-row .ir-top { display: flex; align-items: center; gap: 8px; }
-.inbox-row .ir-kind { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
-.inbox-row.critical .ir-kind { color: var(--rose); }
-.inbox-row .ir-unit { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-left: auto; }
-.inbox-row .ir-detail { font-size: 12.5px; color: var(--ink-2); }
-.inbox-row .ir-inferred { font-size: 10.5px; color: var(--ink-3); font-style: italic; }
+.inbox-card.critical { border-left-color: var(--rose); }
+.inbox-card.observation { border-left-color: var(--line-2); background: var(--panel); }
+.inbox-card.on { outline: 2px solid var(--accent-2); }
+.inbox-card .ic-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: transparent; border: 0; padding: 0; cursor: pointer; text-align: left;
+}
+.inbox-card .ir-kind { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-2); }
+.inbox-card.critical .ir-kind { color: var(--rose); }
+.inbox-card .ir-unit { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-left: auto; }
+.inbox-card .ic-what { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+.inbox-card .ic-answers { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin: 0; }
+.inbox-card .ic-answers dt { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); padding-top: 2px; }
+.inbox-card .ic-answers dd { margin: 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.35; }
+.inbox-card .ic-actor { color: var(--ink-3); font-style: italic; }
+.inbox-card .ic-cmd {
+  display: flex; align-items: stretch; gap: 0; border: 1px solid var(--line-2);
+  border-radius: 8px; overflow: hidden; background: var(--panel-3);
+}
+.inbox-card .ic-cmd-text {
+  flex: 1; min-width: 0; font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+  padding: 7px 9px; overflow-x: auto; white-space: nowrap; user-select: all;
+}
+.inbox-card .ic-cmd-copy {
+  border: 0; border-left: 1px solid var(--line-2); background: var(--panel-2);
+  color: var(--accent-ink); font-size: 11px; font-weight: 650; padding: 0 11px;
+  cursor: pointer; white-space: nowrap;
+}
+.inbox-card .ic-cmd-copy:hover { background: var(--accent-wash); }
+.inbox-card .ic-cmdnote { font-size: 12px; color: var(--ink-3); font-style: italic; padding: 2px 0; }
+.inbox-card .ic-where { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 11px; }
+.inbox-card .ic-w-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+.inbox-card .ic-w { color: var(--ink-2); }
+.inbox-card .ic-w.mono { font-family: var(--mono); color: var(--ink-3); }
+.inbox-card .ir-inferred { font-size: 10.5px; color: var(--ink-3); font-style: italic; }
 
 /* ── Floor body: repo groups + specialist accordions ── */
 .floor-scroll { grid-area: floor; min-width: 0; display: flex; flex-direction: column; gap: 12px; overflow: visible; }
@@ -169,6 +205,11 @@
 .repo-head .caret { color: var(--ink-3); transition: transform .12s ease; }
 .repo-head.open .caret { transform: rotate(90deg); }
 .repo-head .repo-name { font-weight: 650; color: var(--ink); }
+/* #4 — the row's primary answer to "does this need me?" */
+.repo-answer { font-size: 11.5px; font-weight: 650; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.repo-answer.needs { background: var(--rose-w, var(--amber-w)); color: var(--rose); }
+.repo-answer.calm { background: transparent; color: var(--ink-3); font-weight: 500; }
+.repo-summary { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto; }
 .count-pills { display: flex; gap: 5px; flex-wrap: wrap; }
 .count-pill { font-size: 11px; font-family: var(--mono); padding: 1px 7px; border-radius: 6px; background: var(--panel-3); color: var(--ink-2); border: 1px solid var(--line); }
 .law-badge {
