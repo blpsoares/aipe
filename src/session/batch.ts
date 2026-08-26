@@ -195,6 +195,16 @@ export function buildRenameArgs(id: string, label: string): string[] {
   return ["session", "rename", id, label];
 }
 
+// `agentop session kill <id>` — the close a landed unit's session goes through
+// (see closeSessions in journey/session-close.ts). A single positional id, no
+// flags, handed straight to Bun.spawn (never a shell). This is invoked by the
+// CLI as the COORDINATOR'S instrument on `journey record`, not by a specialist
+// typing it — so it never passes through guard.decide(), and the guard stays
+// exactly as strict against a specialist running `agentop session kill` directly.
+export function buildKillArgs(id: string): string[] {
+  return ["session", "kill", id];
+}
+
 export async function startBatch(
   task: string,
   units: BatchUnit[],

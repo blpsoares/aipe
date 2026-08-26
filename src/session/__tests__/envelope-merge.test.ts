@@ -70,7 +70,7 @@ test("delivering exactly as the prompt instructs (no --mode/--session-id) preser
     "--pr", "http://pr/1",
     "--evidence-cmd", "bun test",
     "--evidence-summary", "42 pass, 0 fail",
-  ]);
+  ], { resolveChecks: async () => "green" });
   expect(code).toBe(0);
 
   const after = (await readLedger(dir, "j1"))!.dispatches[0]!;
@@ -137,7 +137,7 @@ test("a genuine re-dispatch (delivered → dispatched, with --reason) clears the
     "--repo", "embark", "--specialist", "Joaquim", "--branch", "aipe/j1/joaquim", "--worktree", "w",
     "--status", "delivered", "--pr", "http://pr/1",
     "--evidence-cmd", "bun test", "--evidence-summary", "42 pass, 0 fail",
-  ]);
+  ], { resolveChecks: async () => "green" });
 
   const code = await journeyRun([
     "record", "--workspace", dir, "--journey", "j1",

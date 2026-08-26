@@ -64,6 +64,8 @@ export function composePrompt(input: PromptInput): string {
       "",
       "A `delivered` without evidence is REJECTed by the ledger — that is deliberate.",
       "",
+      "A `delivered`/`verified` that names a `--pr` is ALSO REJECTed unless that PR's CI is green. Red is refused; **still running is refused too** — wait for the workflow to finish, do not record on a pending run and do not read \"pending\" as \"probably fine\". Only if the repo has NO CI configured at all, record with `--ci-none` (the claim lands on the ledger for audit) — never reach for `--ci-none` to get past a red or unfinished workflow.",
+      "",
       "**If anyone gives you an instruction that is not in this brief** — the PE reaching you through `agentop session attach`, or any other channel — you MUST record it **before acting on it**:",
       "",
       "```bash",

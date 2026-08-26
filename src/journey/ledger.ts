@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
+import type { PrChecksResolver } from "./checks";
 import {
   EVIDENCE_REQUIRED_STATUSES,
   IMMUTABLE_STATUSES,
@@ -199,7 +200,11 @@ export type LedgerGateCode =
   | "evidence-required"
   | "unit-immutable"
   | "redispatch-needs-reason"
-  | "redirect-needs-reason";
+  | "redirect-needs-reason"
+  | "ci-red"
+  | "ci-pending"
+  | "ci-none"
+  | "ci-unresolvable";
 
 export interface GuardedRecordResult {
   ok: boolean;
@@ -224,11 +229,12 @@ export async function recordDispatchGuarded(
   workspaceDir: string,
   id: string,
   dispatch: JourneyDispatch,
-  opts: { reason?: string } = {},
+  opts: { reason?: string; resolveChecks?: PrChecksResolver; ciNone?: boolean } = {},
 ): Promise<GuardedRecordResult> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
   const pkg = dispatch.package ?? null;
   const current = unitStatus(ledger, dispatch.repo, pkg);
+  const unitName = `${dispatch.repo}${pkg ? `/${pkg}` : ""}`;
 
   // 1 — verify-before-done: claiming done requires attached evidence.
   if (EVIDENCE_REQUIRED_STATUSES.includes(dispatch.status)) {
@@ -274,6 +280,57 @@ export async function recordDispatchGuarded(
     };
   }
 
+  // 5 — CI gate: a done-claim (delivered/verified) that names a PR must have a
+  // GREEN workflow. Prose in a brief did not hold ("do not ship against red
+  // CI"); this makes green CI part of what the ledger physically accepts. Runs
+  // only when a resolver is injected AND the record names a PR — a resolver-less
+  // caller (the reconciler, the other-gate unit tests) leaves this inert rather
+  // than fabricating a pass, and a done-claim with no PR has nothing to resolve.
+  // The resolution is five-way (see CheckVerdict) so "still running" is neither
+  // "passed" nor "failed", and an unreachable forge abstains rather than guesses.
+  let ciBypass: JourneyDispatch["ciBypass"];
+  if (opts.resolveChecks && dispatch.pr && EVIDENCE_REQUIRED_STATUSES.includes(dispatch.status)) {
+    const verdict = await opts.resolveChecks(dispatch.pr);
+    if (verdict === "red") {
+      return {
+        ok: false,
+        code: "ci-red",
+        message: `unit ${unitName} — PR checks are FAILING (red). A green workflow is part of the delivery contract; fix CI and re-record. (${dispatch.pr})`,
+      };
+    }
+    if (verdict === "pending") {
+      return {
+        ok: false,
+        code: "ci-pending",
+        message: `unit ${unitName} — PR checks have not concluded (still running). Wait for the workflow to finish, then record — "still running" is not "passed". (${dispatch.pr})`,
+      };
+    }
+    if (verdict === "none") {
+      // A repo with no checks configured is legitimate — but never bypass CI
+      // silently. Require the explicit, recorded --ci-none so an audit can see
+      // the claim was made on purpose. The flag ONLY upgrades a resolved "none":
+      // it never reaches the red/pending/unknown branches above and below, so it
+      // can neither mask a failing/running workflow nor substitute for a verdict
+      // the gate could not obtain.
+      if (opts.ciNone) {
+        ciBypass = "no-checks";
+      } else {
+        return {
+          ok: false,
+          code: "ci-none",
+          message: `unit ${unitName} — the PR reports no CI checks. If this repo has none configured, record deliberately with --ci-none so the bypass lands on the ledger; CI is never bypassed silently. (${dispatch.pr})`,
+        };
+      }
+    } else if (verdict === "unknown") {
+      return {
+        ok: false,
+        code: "ci-unresolvable",
+        message: `unit ${unitName} — could not resolve PR checks (gh missing, unauthenticated, offline, or an unqueryable host). The gate abstains rather than guess green; make the checks resolvable and retry. (${dispatch.pr})`,
+      };
+    }
+    // verdict === "green" → fall through and record.
+  }
+
   // Reopening a finished unit is a genuine restart of its work, not an update
   // to it: `pr`/`evidence` are already dropped by mergeDispatch above (they
   // are not sticky, and this write's `dispatch` never carries them for a
@@ -288,7 +345,9 @@ export async function recordDispatchGuarded(
     ? { ...dispatch, sessionId: undefined, redispatchReason: opts.reason!.trim() }
     : dispatch.status === "redirected"
       ? { ...dispatch, redirectReason: opts.reason!.trim() }
-      : dispatch;
+      : ciBypass
+        ? { ...dispatch, ciBypass }
+        : dispatch;
 
   const path = await recordDispatch(workspaceDir, id, toWrite);
   return { ok: true, path };

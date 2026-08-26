@@ -6,6 +6,7 @@
 // waiting on the PE. Pure and offline — no LLM, no network, no fs (the CLI
 // supplies the ledger, the graph edges and the in-context unit set).
 import { packageFqid } from "../context-brain/packages";
+import type { PrChecksResolver } from "./checks";
 import type { JourneyDispatch, JourneyLedger } from "./types";
 
 export type VerifySeverity = "critical" | "warning";
@@ -162,4 +163,41 @@ export function verifyJourney(
   // Critical findings first, then by unit (stable within a bucket).
   const sevRank = (s: VerifySeverity): number => (s === "critical" ? 0 : 1);
   return findings.sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || a.unit.localeCompare(b.unit));
+}
+
+// The CI half of verify — kept separate from verifyJourney because it is the one
+// audit that must talk to the forge (verifyJourney stays pure and offline). A
+// delivered/verified unit (top status; `merged` is terminal, reconcile's domain)
+// that names a PR and was NOT deliberately bypassed (`ciBypass`) has its checks
+// re-resolved live: `red`/`pending` is a CRITICAL finding — the exact situation
+// that let a green ledger sit atop a red workflow on PR #22. `green` is clean;
+// `none`/`unknown` ABSTAIN (no finding) so a repo with no checks configured, or
+// a forge we cannot reach, never becomes a false critical. The resolver is
+// injected (the CLI wires the real gh); an offline caller gets an empty result.
+export async function auditPrChecks(
+  ledger: JourneyLedger,
+  resolve: PrChecksResolver,
+): Promise<VerifyFinding[]> {
+  const byUnit = new Map<string, JourneyDispatch[]>();
+  for (const d of ledger.dispatches) {
+    const unit = packageFqid(d.repo, d.package);
+    (byUnit.get(unit) ?? byUnit.set(unit, []).get(unit)!).push(d);
+  }
+
+  const findings: VerifyFinding[] = [];
+  for (const [unit, records] of byUnit) {
+    const top = records.reduce((a, b) => ((RANK[b.status] ?? 0) > (RANK[a.status] ?? 0) ? b : a));
+    if (top.status !== "delivered" && top.status !== "verified") continue;
+    if (!top.pr) continue;
+    if (records.some((d) => d.ciBypass)) continue; // deliberate no-checks bypass — respected
+    const verdict = await resolve(top.pr);
+    if (verdict === "red") {
+      findings.push({ severity: "critical", code: "ci-red", unit, detail: `"${top.status}" but PR checks are failing (red) — a green ledger over a red workflow` });
+    } else if (verdict === "pending") {
+      findings.push({ severity: "critical", code: "ci-pending", unit, detail: `"${top.status}" but PR checks have not concluded (still running)` });
+    }
+    // green → clean; none/unknown → abstain (never a guessed critical).
+  }
+
+  return findings.sort((a, b) => a.unit.localeCompare(b.unit));
 }

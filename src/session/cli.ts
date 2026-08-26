@@ -288,7 +288,7 @@ const FIELD_FLAGS = {
   mode: "--mode",
   intensity: "--intensity",
   harness: "--harness",
-} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason">, string>;
+} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason" | "ciBypass">, string>;
 
 function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: JourneyDispatch, sessionId: string): string {
   const parts = ["aipe journey record", `--journey ${shQuote(journeyId)}`, `--workspace ${shQuote(workspace)}`];
@@ -308,18 +308,35 @@ function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: J
 }
 
 // The label a dispatched session is renamed to once it has an id (see the
-// rename step in dispatchCommand below). `fqid@specialist` — e.g.
-// "embark@Joaquim" — is the SAME idiom `aipe execution plan` already uses to
-// key a unit (`dispatchLabel` in src/execution/cli.ts): the bare fqid alone
-// is not enough, because SKILL.md can dispatch a dev AND a QA specialist
-// against the same package in the same wave — two separate sessions that
-// would otherwise carry the identical, indistinguishable label in `agentop
-// session ls`. Reusing the exact separator and field order AIPe already
-// trains a human to read (rather than inventing a second convention, e.g.
-// "specialist@fqid" or a slash) means "embark@Joaquim" reads the same way
-// here as it does in a plan.
-function sessionLabel(fqid: string, specialist: string): string {
-  return `${fqid}@${specialist}`;
+// rename step in dispatchCommand below). The PE scans `agentop session ls` for
+// WHO is doing what, so the specialist comes FIRST — the field the eye lands on.
+// Format: `<Specialist>-<task>-<project>`, e.g. "Jesse-j-20260825-v2-aipe",
+// "Mike-j-20260825-v2-aipe".
+//   • <Specialist> — the persona, case preserved (the PE reads "Jesse", not
+//     "jesse"), only made hyphen-safe (a two-word name like "Ana Paula" → "Ana-Paula").
+//   • <task> — the JOURNEY id. In AIPe's model a journey IS one task (one demand
+//     the PE brought), so it is the real, stable identifier of the work; nothing
+//     shorter is both derivable and unambiguous. This also disambiguates the
+//     same specialist+package across two journeys.
+//   • <project> — the fqid leaf: the package ("aipe-site") or, for an implicit
+//     whole-repo package, the repo ("aipe").
+// Two specialists on the SAME package+journey (a dev and a QA) differ by the
+// leading <Specialist>, so the label is still unambiguous — the reason the old
+// `fqid@specialist` carried the specialist at all. The agentop TASK grouping
+// (`aipe/<journey>`, set elsewhere) is unchanged and is what lets the PE collapse
+// coordinator sessions away from their own.
+function labelSegment(name: string): string {
+  return name
+    .trim()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/(^-+|-+$)/g, "");
+}
+
+export function sessionLabel(fqid: string, specialist: string, journey: string): string {
+  const project = fqid.split("/").pop() ?? fqid;
+  return `${labelSegment(specialist)}-${journey}-${project}`;
 }
 
 export async function dispatchCommand(
@@ -574,7 +591,7 @@ export async function dispatchCommand(
     // below) and move on. The session id is still recorded in the ledger
     // either way, `collect` still works either way, and the human can rename
     // it by hand.
-    const label = sessionLabel(fqid, d.specialist);
+    const label = sessionLabel(fqid, d.specialist, opts.journeyId);
     try {
       const renamed = await opts.runner(buildRenameArgs(session.id, label));
       if (renamed.code !== 0) {
