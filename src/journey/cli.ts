@@ -5,12 +5,24 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readGraph } from "../relationship/read-graph";
+import { ghPrChecks, type PrChecksResolver } from "./checks";
 import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from "./ledger";
 import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
+import { closeSessions, sessionsToClose } from "./session-close";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { DISPATCH_STATUSES } from "./types";
 import type { DispatchEvidence, DispatchStatus, JourneyDispatch } from "./types";
-import { verifyJourney } from "./verify";
+import { auditPrChecks, verifyJourney } from "./verify";
+import { realRunner } from "../session/runner";
+import type { AgentopRunner } from "../session/types";
+
+// Injection seam so the CLI stays testable offline: the record gate's CI
+// resolver and the session-close runner default to the real gh/agentop, and
+// tests pass fakes. Mirrors how reconcile injects its PR-state fetcher.
+export interface JourneyDeps {
+  resolveChecks?: PrChecksResolver;
+  sessionRunner?: AgentopRunner;
+}
 
 type SessionMode = NonNullable<JourneyDispatch["mode"]>;
 type Intensity = NonNullable<JourneyDispatch["intensity"]>;
@@ -53,7 +65,7 @@ async function startCommand(args: string[]): Promise<number> {
   return 0;
 }
 
-async function recordCommand(args: string[]): Promise<number> {
+async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const id = getFlag(args, "--journey");
   const repo = getFlag(args, "--repo");
@@ -110,6 +122,13 @@ async function recordCommand(args: string[]): Promise<number> {
         }
       : undefined;
 
+  // The CI gate resolves the PR's checks over the forge; wire the real gh here
+  // (tests inject a fake). `--ci-none` is the explicit, recorded bypass for a
+  // repo with no checks configured — it only upgrades a resolved "none" (see
+  // recordDispatchGuarded), never masks a red/pending/unresolvable verdict.
+  const ciNone = args.includes("--ci-none");
+  const resolveChecks = deps.resolveChecks ?? ghPrChecks;
+
   const result = await recordDispatchGuarded(
     workspace,
     id,
@@ -129,7 +148,7 @@ async function recordCommand(args: string[]): Promise<number> {
       ...(evidence ? { evidence } : {}),
       status,
     },
-    { ...(reason ? { reason } : {}) },
+    { ...(reason ? { reason } : {}), resolveChecks, ciNone },
   );
 
   if (!result.ok) {
@@ -137,6 +156,23 @@ async function recordCommand(args: string[]): Promise<number> {
     return 1;
   }
   console.log(`OK ${repo}${pkg ? `/${pkg}` : ""} ${specialist} ${status}`);
+
+  // Rule 2 — the ledger record above is the important thing and is now durable;
+  // closing the session is housekeeping done AFTER it, and must never lose the
+  // record. When this write lands a session-mode unit (verified/merged), end its
+  // session(s) as the coordinator's instrument (an internal agentop spawn that
+  // never passes through the specialist guard) and say so. Idempotent, non-fatal.
+  if (status === "verified" || status === "merged") {
+    const ledger = await readLedger(workspace, id);
+    const unitRecords = (ledger?.dispatches ?? []).filter(
+      (d) => d.repo === repo && (d.package ?? null) === (pkg ?? null),
+    );
+    const ids = sessionsToClose(unitRecords);
+    if (ids.length > 0) {
+      const lines = await closeSessions(ids, `${repo}${pkg ? `/${pkg}` : ""}`, deps.sessionRunner ?? realRunner);
+      for (const l of lines) console.log(l);
+    }
+  }
   return 0;
 }
 
@@ -265,7 +301,7 @@ async function reconcileCommand(args: string[]): Promise<number> {
 // rejection left open, a delivery that never cleared its gate, a merge that
 // skipped QA, a consumer shipped against a producer that never landed, an
 // escalation still open) and fails (exit 1) on any critical finding.
-async function verifyCommand(args: string[]): Promise<number> {
+async function verifyCommand(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const id = getFlag(args, "--journey");
   if (!id) {
@@ -280,7 +316,12 @@ async function verifyCommand(args: string[]): Promise<number> {
   const graph = await readGraph(workspace);
   const contextUnits = new Set(graph.nodes.map((n) => n.fqid));
   const edges = graph.edges.map((e) => ({ from: e.from, to: e.to, type: e.type }));
+  // The offline invariant lint, plus the CI audit (talks to the forge). Both
+  // feed the same finding list so a red-CI unit reads exactly like any other
+  // critical. The CI resolver is injectable (tests) and defaults to real gh.
   const findings = verifyJourney(ledger, edges, contextUnits);
+  findings.push(...(await auditPrChecks(ledger, deps.resolveChecks ?? ghPrChecks)));
+  findings.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "critical" ? -1 : 1));
   for (const f of findings) {
     console.log(`FINDING ${f.severity.toUpperCase()} ${f.code} ${f.unit} — ${f.detail}`);
   }
@@ -289,13 +330,13 @@ async function verifyCommand(args: string[]): Promise<number> {
   return critical > 0 ? 1 : 0;
 }
 
-export async function run(args: string[]): Promise<number> {
+export async function run(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
     case "start":
       return startCommand(rest);
     case "record":
-      return recordCommand(rest);
+      return recordCommand(rest, deps);
     case "show":
       return showCommand(rest);
     case "spec":
@@ -303,7 +344,7 @@ export async function run(args: string[]): Promise<number> {
     case "reconcile":
       return reconcileCommand(rest);
     case "verify":
-      return verifyCommand(rest);
+      return verifyCommand(rest, deps);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
       console.log("Usage: aipe journey <start|record|show|spec|reconcile|verify> [options]");

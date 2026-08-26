@@ -85,6 +85,14 @@ export interface JourneyDispatch {
   intensity?: "normal" | "ultracode";
   harness?: string;
   sessionId?: string;
+  // Recorded when a delivered/verified record was accepted via the explicit
+  // `--ci-none` bypass — the PR's forge reported no CI checks configured and the
+  // specialist deliberately claimed that. Present ⇒ the CI gate was consciously
+  // waived for this record (an audit can see the claim was made on purpose);
+  // absent ⇒ the record either passed a green CI gate or predates it. The only
+  // value today is "no-checks"; kept as a string union so a future bypass reason
+  // is additive.
+  ciBypass?: "no-checks";
 }
 
 // An explicit PE grant for a gated tier, recorded only after the PE says yes in

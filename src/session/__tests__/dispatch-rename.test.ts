@@ -94,7 +94,7 @@ function sessionsFromBatchArgs(args: string[]): { id: string; harness: string; c
     });
 }
 
-test("every started session gets a rename call, with the expected fqid@specialist label, through the fake runner — exact argv", async () => {
+test("every started session gets a rename call, with the expected <Specialist>-<journey>-<project> label, through the fake runner — exact argv", async () => {
   const { dir, worktreeA, worktreeB } = await twoUnitFixture();
   const renameCalls: string[][] = [];
   const runner: AgentopRunner = async (args) => {
@@ -117,8 +117,8 @@ test("every started session gets a rename call, with the expected fqid@specialis
   // Exact argv, order matches the order units were paired/recorded in
   // (`pending`'s own order — see dispatchCommand's per-unit loop).
   expect(renameCalls).toEqual([
-    ["session", "rename", "s-j1-a", "a@Ana"],
-    ["session", "rename", "s-j1-b", "b@Bento"],
+    ["session", "rename", "s-j1-a", "Ana-j1-a"],
+    ["session", "rename", "s-j1-b", "Bento-j1-b"],
   ]);
 
   const ledger = await readLedger(dir, "j1");
@@ -149,9 +149,9 @@ test("a rename that returns a non-zero exit is reported as a non-fatal WARN line
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
     "OK a → s-j1-a",
-    `WARN rename: session s-j1-a for a could not be renamed to "a@Ana" (No session matches "s-j1-a". Run \`agentop session list\` to see them.) — rename it manually: agentop session rename s-j1-a 'a@Ana'`,
+    `WARN rename: session s-j1-a for a could not be renamed to "Ana-j1-a" (No session matches "s-j1-a". Run \`agentop session list\` to see them.) — rename it manually: agentop session rename s-j1-a 'Ana-j1-a'`,
     "OK b → s-j1-b",
-    `WARN rename: session s-j1-b for b could not be renamed to "b@Bento" (No session matches "s-j1-b". Run \`agentop session list\` to see them.) — rename it manually: agentop session rename s-j1-b 'b@Bento'`,
+    `WARN rename: session s-j1-b for b could not be renamed to "Bento-j1-b" (No session matches "s-j1-b". Run \`agentop session list\` to see them.) — rename it manually: agentop session rename s-j1-b 'Bento-j1-b'`,
   ]);
 
   // Both sessions are still recorded — a failed cosmetic rename must not
@@ -181,7 +181,7 @@ test("a rename call that throws (binary gone mid-run) is reported as a non-fatal
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
     "OK embark → s-j1-joaquim",
-    `WARN rename: session s-j1-joaquim for embark could not be renamed to "embark@Joaquim" (ENOENT: agentop not found) — rename it manually: agentop session rename s-j1-joaquim 'embark@Joaquim'`,
+    `WARN rename: session s-j1-joaquim for embark could not be renamed to "Joaquim-j1-embark" (ENOENT: agentop not found) — rename it manually: agentop session rename s-j1-joaquim 'Joaquim-j1-embark'`,
   ]);
 
   const ledger = await readLedger(dir, "j1");
@@ -211,7 +211,7 @@ test("a mixed wave — one rename fails, one succeeds — records both sessions 
   expect(r.code).toBe(0);
   expect(r.lines).toEqual([
     "OK a → s-j1-a",
-    `WARN rename: session s-j1-a for a could not be renamed to "a@Ana" (simulated rename failure for a) — rename it manually: agentop session rename s-j1-a 'a@Ana'`,
+    `WARN rename: session s-j1-a for a could not be renamed to "Ana-j1-a" (simulated rename failure for a) — rename it manually: agentop session rename s-j1-a 'Ana-j1-a'`,
     "OK b → s-j1-b",
   ]);
 
