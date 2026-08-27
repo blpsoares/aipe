@@ -177,18 +177,52 @@ test("pruneWorktrees keeps ACTIVE dispatches, removes only TERMINAL ones (A1)", 
   }
 });
 
-test("pruneWorktrees --force removes ACTIVE dispatches too (A1)", async () => {
+// The negative case is the whole point (orientation bug A): `--force` may bypass
+// the dirty-tree guard, but it must NEVER remove a worktree a live dispatch is
+// using. A re-dispatched unit is ACTIVE, not leftover.
+test("pruneWorktrees --force STILL keeps an ACTIVE worktree — force overrides the dirty guard, never the live-dispatch guard (A1)", async () => {
   const { dir } = await makeWorkspace();
   try {
     const active = await createWorktree(dir, { repo: "embark", specialist: "Ativo", journey: "jf" });
     if (!active.ok) throw new Error("setup");
+    // Make it dirty so --force WOULD bypass the dirty guard — proving that even
+    // then the live-dispatch guard holds and the worktree survives.
+    await writeFile(join(active.path, "wip.txt"), "uncommitted work\n", "utf8");
     await writeLedger(dir, "jf", [
       { repo: "embark", specialist: "Ativo", branch: active.branch, worktree: active.path, status: "dispatched" },
     ]);
 
     const rows = await pruneWorktrees(dir, "jf", true);
-    expect(rows.find((r) => r.slug === "ativo")?.status).toBe("removed");
-    expect(await listWorktrees(dir, "jf")).toHaveLength(0);
+    const ativo = rows.find((r) => r.slug === "ativo");
+    expect(ativo?.status).toBe("skipped");
+    expect(ativo?.detail).toContain("active");
+    // survives on disk and in the worktree list
+    expect(await exists(active.path)).toBe(true);
+    expect((await listWorktrees(dir, "jf")).map((r) => r.slug)).toEqual(["ativo"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// The other half of the separation: --force DOES still override the dirty-tree
+// guard, but only for a worktree whose dispatch is terminal (safe to discard).
+test("pruneWorktrees --force removes a TERMINAL worktree even when dirty (A1 — force overrides the dirty guard)", async () => {
+  const { dir } = await makeWorkspace();
+  try {
+    const done = await createWorktree(dir, { repo: "embark", specialist: "Terminado", journey: "jt" });
+    if (!done.ok) throw new Error("setup");
+    await writeFile(join(done.path, "wip.txt"), "uncommitted work\n", "utf8");
+    await writeLedger(dir, "jt", [
+      { repo: "embark", specialist: "Terminado", branch: done.branch, worktree: done.path, status: "merged" },
+    ]);
+
+    // Without --force the dirty guard blocks the terminal worktree...
+    const guarded = await pruneWorktrees(dir, "jt", false);
+    expect(guarded.find((r) => r.slug === "terminado")?.status).toBe("blocked");
+    // ...with --force the dirty guard is overridden and it is removed.
+    const rows = await pruneWorktrees(dir, "jt", true);
+    expect(rows.find((r) => r.slug === "terminado")?.status).toBe("removed");
+    expect(await listWorktrees(dir, "jt")).toHaveLength(0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -7,7 +7,7 @@
 import { link, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import { listJourneys } from "../journey/ledger";
+import { listJourneys, readLedger } from "../journey/ledger";
 
 export interface Lock {
   repo: string;
@@ -96,9 +96,26 @@ export async function isLockActive(workspaceDir: string, lock: Lock | null): Pro
   return true;
 }
 
+// The human unit key a force-claim override is authorized against — the same
+// string the CLI prints and the PE names when granting the override.
+export function claimUnit(repo: string, pkg?: string): string {
+  return pkg && pkg !== repo ? `${repo}/${pkg}` : repo;
+}
+
+// A force-override of an ACTIVE lock is legitimate only when the CLAIMING
+// journey carries a recorded PE authorization for exactly this unit (or a `*`
+// blanket grant). Overriding the law is a human decision on the record, never an
+// agent's shortcut. Reconciling a STALE lock (orphan / dead pid) needs no grant
+// — that is ordinary recovery, not an override.
+async function hasForceAuthorization(workspaceDir: string, journey: string, unit: string): Promise<boolean> {
+  const ledger = await readLedger(workspaceDir, journey);
+  return (ledger?.authorizations ?? []).some((a) => a.forceClaim === unit || a.forceClaim === "*");
+}
+
 export type ClaimResult =
-  | { ok: true; claimed: true; reconciled: boolean; previous?: Lock }
-  | { ok: false; reason: "collision"; holder: Lock };
+  | { ok: true; claimed: true; reconciled: boolean; forced?: boolean; previous?: Lock }
+  | { ok: false; reason: "collision"; holder: Lock }
+  | { ok: false; reason: "unauthorized-force"; holder: Lock; unit: string };
 
 interface ClaimInput {
   repo: string;
@@ -155,9 +172,17 @@ export async function claimLock(workspaceDir: string, input: ClaimInput): Promis
           await unlink(tmp).catch(() => {});
           return { ok: false, reason: "collision", holder: incumbent as Lock };
         }
-        // --force over an active lock: overwrite atomically via rename.
+        // --force over an ACTIVE lock is a law override: it needs a recorded PE
+        // authorization for this unit in the claiming journey. Without it, refuse
+        // — --force alone is not enough.
+        const unit = claimUnit(input.repo, input.package);
+        if (!(await hasForceAuthorization(workspaceDir, input.journey, unit))) {
+          await unlink(tmp).catch(() => {});
+          return { ok: false, reason: "unauthorized-force", holder: incumbent as Lock, unit };
+        }
+        // authorized --force: overwrite atomically via rename.
         await rename(tmp, path);
-        return { ok: true, claimed: true, reconciled: true, ...(incumbent ? { previous: incumbent } : {}) };
+        return { ok: true, claimed: true, reconciled: true, forced: true, ...(incumbent ? { previous: incumbent } : {}) };
       }
       // stale / orphan → remove and retry the atomic create so a rival that
       // recreates an ACTIVE lock in the gap makes us loop back to the check.

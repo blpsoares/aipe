@@ -298,8 +298,30 @@ digraph operate {
      first; the gate is deterministic, so you cannot dispatch a consumer against a
      contract that doesn't exist yet (see step f).
 
-   b. **Provision a worktree per entry** (pass `--package` for a monorepo unit so
-   two packages of one repo get distinct worktrees on the same clone):
+   b. **Claim the repo, then provision a worktree, per entry.** `dispatch
+   validate` only adjudicates *your* batch, in memory — it cannot see another
+   coordinator session dispatching into the same repo at the same moment. Take a
+   physical, per-machine lock **before** the worktree (`--package` for a monorepo
+   unit):
+   ```bash
+   aipe dispatch claim <repo> [--package <package>] --journey <id> --specialist <persona> --workspace <workspace>
+   ```
+   - `CLAIMED …` (exit 0) → the repo is yours; proceed to the worktree.
+   - `RECONCILED …` (exit 0) → a stale lock (a released, orphaned, or crashed
+     holder) was cleaned up and re-taken; proceed.
+   - `COLLISION … held by journey=<other>` (exit 2) → another live session owns
+     this repo. **Do not dispatch into it.** Wait for it to release, pick a
+     different repo for this wave, or take it to the PE — never race it by hand.
+   - `UNAUTHORIZED-FORCE …` (exit 3) → you passed `--force` without the PE's
+     approval on the record. Overriding a live lock is the PE's call, not yours:
+     get the yes in-session, record it, then re-run with `--force`:
+     ```bash
+     aipe dispatch authorize-force <repo> [--package <package>] --journey <id> --by PE --workspace <workspace>
+     aipe dispatch claim <repo> [--package <package>] --journey <id> --specialist <persona> --force --workspace <workspace>
+     ```
+
+   With the claim held, provision the worktree (two packages of one repo get
+   distinct worktrees on the same clone):
    ```bash
    aipe worktree create --repo <repo> [--package <package>] --specialist <persona> --journey <id> --workspace <workspace>
    ```
@@ -417,13 +439,19 @@ digraph operate {
      ```
      If a subagent returns `delivered` with **no** evidence, it is **not** delivered —
      send it back to run `/verify-before-done` and return proof.
+     Then **release the claim** — the active dispatch into this repo is done, so a
+     later wave (the QA gate, another journey) can claim it:
+     ```bash
+     aipe dispatch release <repo> [--package <package>] --journey <id> --workspace <workspace>
+     ```
    - `{ "status": "needs-clarification", "need": "…" }` — the brief was insufficient.
      Answer it (or get the PE's answer), amend the brief, and re-dispatch. A specialist
      that asks is cheaper than one that guesses; never punish the question by pushing it
      to deliver anyway.
    - `{ "status": "escalate", "targetRepo": "<repo>", "need": "…", "reason": "…" }`
-     — a cross-repo need it must not touch. Record `--status escalated` and hold
-     it for step 5.
+     — a cross-repo need it must not touch. Record `--status escalated`, **release
+     the claim** on that repo (`aipe dispatch release <repo> --journey <id>
+     --workspace <workspace>`), and hold it for step 5.
 
    e. **QA gate (MUST) — an independent skeptic against the diff.** For every dev
    delivery you **MUST** dispatch that same repo/package's **QA** persona
@@ -501,11 +529,20 @@ digraph operate {
    ```bash
    aipe worktree remove --repo <repo> --specialist <persona> --journey <id> --workspace <workspace>
    ```
-   Once the whole journey's PRs have merged, sweep them all at once instead:
+   Once the whole journey's PRs have merged, sweep them all at once instead
+   (guardrail-safe: `prune` **skips** any worktree whose dispatch is still active
+   — a re-dispatched unit is live work, not leftover — and `--force` overrides the
+   dirty-tree guard but still never removes a live-dispatch worktree; read its
+   `STATE pruned=… kept=… skipped=…` line to see the difference between "nothing
+   to prune" and "I refused"):
    ```bash
    aipe worktree prune --journey <id> --workspace <workspace>
    ```
-   Record `--status merged` (or `removed`).
+   Record `--status merged` (or `removed`), and **release the claim** on each
+   repo (idempotent — a no-op if it was already released at `delivered`):
+   ```bash
+   aipe dispatch release <repo> [--package <package>] --journey <id> --workspace <workspace>
+   ```
 
    **Reliability lint before you report (MUST).** Before telling the PE the demand
    is done, run the deterministic ledger audit and only report once it is clean:

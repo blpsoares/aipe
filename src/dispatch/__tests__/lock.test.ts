@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { recordDispatch, startJourney } from "../../journey/ledger";
+import { recordAuthorization, recordDispatch, startJourney } from "../../journey/ledger";
 import { claimLock, isPidAlive, lockKey, lockPath, readLock, releaseLock } from "../lock";
 
 async function ws(): Promise<string> {
@@ -113,7 +113,7 @@ test("a redirected dispatch keeps the lock ACTIVE — a redirect is not a releas
   }
 });
 
-test("collision against an ACTIVE lock, then --force overrides", async () => {
+test("--force over an ACTIVE lock WITHOUT a recorded authorization is REFUSED (unauthorized-force)", async () => {
   const dir = await ws();
   try {
     await dispatched(dir, "j1", "embark");
@@ -123,11 +123,54 @@ test("collision against an ACTIVE lock, then --force overrides", async () => {
 
     const collide = await claimLock(dir, { repo: "embark", journey: "j2", specialist: "B" });
     expect(collide.ok).toBe(false);
-    if (!collide.ok) expect(collide.holder.journey).toBe("j1");
+    if (!collide.ok) expect(collide.reason).toBe("collision");
+
+    // --force alone is NOT enough: without the PE's grant recorded in the
+    // claiming journey's ledger, the override is refused and the lock is untouched.
+    const forced = await claimLock(dir, { repo: "embark", journey: "j2", specialist: "B", force: true });
+    expect(forced.ok).toBe(false);
+    if (!forced.ok) {
+      expect(forced.reason).toBe("unauthorized-force");
+      if (forced.reason === "unauthorized-force") expect(forced.unit).toBe("embark");
+    }
+    // holder unchanged — j1 still owns it
+    expect((await readLock(lockPath(dir, "embark")))?.journey).toBe("j1");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--force over an ACTIVE lock WITH a recorded PE authorization overrides it", async () => {
+  const dir = await ws();
+  try {
+    await dispatched(dir, "j1", "embark");
+    await dispatched(dir, "j2", "embark");
+    const first = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A" });
+    expect(first.ok).toBe(true);
+
+    // PE grants j2 the override for this unit, recorded on the ledger.
+    await recordAuthorization(dir, "j2", { grantedBy: "PE", forceClaim: "embark" });
 
     const forced = await claimLock(dir, { repo: "embark", journey: "j2", specialist: "B", force: true });
     expect(forced.ok).toBe(true);
+    if (forced.ok) expect(forced.forced).toBe(true);
     expect((await readLock(lockPath(dir, "embark")))?.journey).toBe("j2");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a force authorization for a DIFFERENT unit does not authorize this override", async () => {
+  const dir = await ws();
+  try {
+    await dispatched(dir, "j1", "embark");
+    await dispatched(dir, "j2", "embark");
+    await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A" });
+    // grant names the wrong unit — must not unlock 'embark'
+    await recordAuthorization(dir, "j2", { grantedBy: "PE", forceClaim: "other-repo" });
+    const forced = await claimLock(dir, { repo: "embark", journey: "j2", specialist: "B", force: true });
+    expect(forced.ok).toBe(false);
+    if (!forced.ok) expect(forced.reason).toBe("unauthorized-force");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -209,3 +252,66 @@ test("distinct packages of one repo get distinct locks", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ── Atomicity under real concurrency ────────────────────────────────────────
+// A single "claim twice" pass proves nothing about atomicity — a lucky
+// interleaving passes it. These two tests make luck an implausible explanation:
+// the in-process one repeats the many-way race dozens of times; the multi-process
+// one drives the real CLI in separate OS processes contending for one lock file.
+
+test("in-process race: 5 concurrent claimants over one repo, exactly one wins — repeated", async () => {
+  const ROUNDS = 60;
+  const CLAIMANTS = 5;
+  for (let round = 0; round < ROUNDS; round++) {
+    const dir = await ws();
+    try {
+      const journeys = Array.from({ length: CLAIMANTS }, (_, i) => `j${i}`);
+      for (const j of journeys) await dispatched(dir, j, "embark");
+      const results = await Promise.all(
+        journeys.map((j) => claimLock(dir, { repo: "embark", journey: j, specialist: j, pid: 0 })),
+      );
+      const wins = results.filter((r) => r.ok).length;
+      const collisions = results.filter((r) => !r.ok && r.reason === "collision").length;
+      expect(wins).toBe(1);
+      expect(collisions).toBe(CLAIMANTS - 1);
+      // the persisted lock belongs to exactly the winner
+      const winner = journeys[results.findIndex((r) => r.ok)];
+      expect((await readLock(lockPath(dir, "embark")))?.journey).toBe(winner);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("multi-process race: N separate CLI processes contend for one lock, exactly one CLAIMED", async () => {
+  const cli = join(import.meta.dir, "..", "cli.ts");
+  const N = 6;
+  const ROUNDS = 3;
+  for (let round = 0; round < ROUNDS; round++) {
+    const dir = await ws();
+    try {
+      const journeys = Array.from({ length: N }, (_, i) => `j${i}`);
+      for (const j of journeys) await dispatched(dir, j, "embark");
+      // Spawn all claimants at once; --pid 0 = ledger-governed (no crash tracking),
+      // so every incumbent counts as ACTIVE and the losers must collide.
+      const procs = journeys.map((j) =>
+        Bun.spawn(["bun", cli, "claim", "embark", "--journey", j, "--specialist", j, "--pid", "0", "--workspace", dir], {
+          stdout: "pipe",
+          stderr: "pipe",
+        }),
+      );
+      const outs = await Promise.all(procs.map((p) => new Response(p.stdout).text()));
+      const codes = await Promise.all(procs.map((p) => p.exited));
+      const claimed = outs.filter((o) => o.includes("CLAIMED")).length;
+      const collided = outs.filter((o) => o.includes("COLLISION")).length;
+      const zero = codes.filter((c) => c === 0).length;
+      const two = codes.filter((c) => c === 2).length;
+      expect(claimed).toBe(1);
+      expect(zero).toBe(1);
+      expect(collided).toBe(N - 1);
+      expect(two).toBe(N - 1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+}, 30000);

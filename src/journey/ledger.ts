@@ -163,14 +163,21 @@ export async function recordAuthorization(
 ): Promise<string> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [], authorizations: [] };
   ledger.authorizations ??= [];
-  if (!ledger.authorizations.some((a) => a.tier === auth.tier)) {
+  // Idempotent per grant identity: a tier grant dedups on tier, a force-claim
+  // grant dedups on its unit — so distinct force-claims don't collapse into one.
+  const identity = (a: JourneyAuthorization): string => `${a.tier ?? ""}|${a.forceClaim ?? ""}`;
+  if (!ledger.authorizations.some((a) => identity(a) === identity(auth))) {
     ledger.authorizations.push(auth);
   }
   return writeLedger(workspaceDir, ledger);
 }
 
 export function grantedTiers(ledger: JourneyLedger | null): Set<string> {
-  return new Set((ledger?.authorizations ?? []).map((a) => a.tier));
+  return new Set(
+    (ledger?.authorizations ?? [])
+      .map((a) => a.tier)
+      .filter((t): t is string => typeof t === "string"),
+  );
 }
 
 // ── The ledger gate (the deterministic spine of reliability) ─────────────────

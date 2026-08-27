@@ -62,6 +62,10 @@ ${harness.join("\n")}${harness.length > 0 ? "\n" : ""}!/.gitignore
 # make a fresh clone think it is already up to date), and the lock is transient.
 /.aipe/toolchain.yaml
 /.aipe/.rehydrate.lock
+# Per-machine dispatch claim locks: physical mutual exclusion over THIS machine's
+# clones, keyed by local pids. Publishing them would wedge a fresh clone against
+# holders that don't exist there. Same rule as toolchain.yaml / .rehydrate.lock.
+/.aipe/locks/
 `;
 }
 

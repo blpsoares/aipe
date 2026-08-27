@@ -9,7 +9,8 @@ import { readGraph } from "../relationship/read-graph";
 import { readLedger } from "../journey/ledger";
 import { packageFqid } from "../context-brain/packages";
 import { checkDependenciesLanded, validateBatch } from "./law";
-import { claimLock, releaseLock } from "./lock";
+import { claimLock, claimUnit, releaseLock } from "./lock";
+import { recordAuthorization } from "../journey/ledger";
 import { readPersonas } from "./personas";
 import { isContainable } from "../harness/types";
 import { getAdapter } from "../harness/registry";
@@ -174,19 +175,45 @@ async function claimCommand(args: string[]): Promise<number> {
     pid,
   });
   if (result.ok) {
-    const unit = pkg ? `${repo}/${pkg}` : repo;
-    if (result.reconciled) {
-      const prev = result.previous;
-      console.log(`RECONCILED ${unit} journey=${journey} prev=${prev ? `${prev.journey}/${prev.specialist}(pid ${prev.pid})` : "none"}`);
+    const unit = claimUnit(repo, pkg);
+    const prev = result.previous;
+    const prevStr = prev ? `${prev.journey}/${prev.specialist}(pid ${prev.pid})` : "none";
+    if (result.forced) {
+      console.log(`FORCED ${unit} journey=${journey} over prev=${prevStr} (authorized override)`);
+    } else if (result.reconciled) {
+      console.log(`RECONCILED ${unit} journey=${journey} prev=${prevStr}`);
     } else {
       console.log(`CLAIMED ${unit} journey=${journey} specialist=${specialist}`);
     }
     return 0;
   }
   const h = result.holder;
-  console.log(`COLLISION ${pkg ? `${repo}/${pkg}` : repo} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
-  console.log("WARN not blocking; re-run with --force to override the active lock.");
+  const unit = claimUnit(repo, pkg);
+  if (result.reason === "unauthorized-force") {
+    console.log(`UNAUTHORIZED-FORCE ${unit} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
+    console.log(`WARN --force over an active lock needs a recorded PE authorization for ${unit}.`);
+    console.log(`     Record it (after the PE says yes): aipe dispatch authorize-force ${repo}${pkg ? ` --package ${pkg}` : ""} --journey ${journey} --by PE --workspace ${workspace}`);
+    return 3;
+  }
+  console.log(`COLLISION ${unit} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
+  console.log("WARN not blocking; with the PE's approval recorded, re-run with --force to override the active lock.");
   return 2;
+}
+
+async function authorizeForceCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const repo = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+  const journey = getFlag(args, "--journey");
+  if (!repo || !journey) {
+    console.log("ERROR args: usage: dispatch authorize-force <repo> --journey <id> [--package p] [--by <who>]");
+    return 1;
+  }
+  const pkg = getFlag(args, "--package");
+  const by = getFlag(args, "--by") ?? "PE";
+  const unit = claimUnit(repo, pkg);
+  await recordAuthorization(workspace, journey, { grantedBy: by, forceClaim: unit });
+  console.log(`AUTHORIZED force-claim ${unit} journey=${journey} by=${by}`);
+  return 0;
 }
 
 // `aipe dispatch release <repo> [--journey <id>]` — release the lock at a marker
@@ -220,8 +247,9 @@ export async function run(args: string[]): Promise<number> {
   if (sub === "validate") return validateCommand(rest);
   if (sub === "claim") return claimCommand(rest);
   if (sub === "release") return releaseCommand(rest);
+  if (sub === "authorize-force") return authorizeForceCommand(rest);
   console.log(`ERROR command: unknown dispatch command "${sub ?? ""}"`);
-  console.log("Usage: aipe dispatch <validate|claim|release> [options]");
+  console.log("Usage: aipe dispatch <validate|claim|release|authorize-force> [options]");
   return 1;
 }
 

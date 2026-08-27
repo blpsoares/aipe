@@ -143,7 +143,11 @@ export async function pruneWorktrees(
   const rows: PruneRow[] = [];
   for (const wt of await listWorktrees(workspaceDir, journey)) {
     const dispatch = dispatchForRow(dispatches, wt);
-    if (!force && dispatch && isActiveDispatch(dispatch.status)) {
+    // The live-dispatch guard is UNCONDITIONAL: `--force` may override the
+    // dirty-tree guard (inside removeWorktree), but it must never remove a
+    // worktree a live dispatch is using. A re-dispatched unit is active work,
+    // not leftover. Only a terminal (merged/removed) or orphan worktree is prunable.
+    if (dispatch && isActiveDispatch(dispatch.status)) {
       rows.push({ repo: wt.repo, slug: wt.slug, status: "skipped", detail: `active:${dispatch.status}` });
       continue;
     }
