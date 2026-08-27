@@ -79,21 +79,47 @@ async function hasDispatchedDispatch(workspaceDir: string, lock: Lock): Promise<
   return false;
 }
 
-// A lock is ACTIVE when a matching "dispatched" dispatch still exists AND (if a
-// real pid was recorded) that pid is alive. Two independent staleness signals,
-// per spec: orphan (no dispatched dispatch) OR a dead holder pid → overwritable.
+// How long a freshly-claimed lock is trusted as live WITHOUT a ledger
+// "dispatched" entry backing it yet. The claim writes the lock file atomically,
+// but the coordinator records the `dispatched` entry a step LATER (it provisions
+// the worktree, then runs `aipe journey record`). In that gap the ledger has no
+// entry for the unit — yet the lock is not an orphan, the claim is in flight.
+// This grace covers that gap generously (a worktree checkout + one ledger write
+// is seconds, not minutes); past it, a still-dispatchless lock is a genuine
+// orphan (the holder crashed before recording) and becomes reconcilable, so the
+// bound is what keeps a crash from wedging a repo forever.
+export const STALE_ORPHAN_GRACE_MS = 10 * 60_000; // 10 minutes
+
+// A lock is ACTIVE unless we can positively show its holder is gone. Three
+// signals decide it, in order of authority:
 //
-// The ledger's "dispatched" status is the PRIMARY, durable liveness signal — a
-// session that finished calls `dispatch release` (at delivered/escalated/merged),
-// flipping the status away from "dispatched". The pid is a SECONDARY crash
-// detector and only meaningful when it's the coordinator's long-lived session pid
-// (passed via --pid); the ephemeral `aipe` CLI process would be dead instantly and
-// is meaningless, so pid<=0 means "no pid tracking — the ledger governs".
-export async function isLockActive(workspaceDir: string, lock: Lock | null): Promise<boolean> {
+//   1. A recorded, DEAD pid → overwritable at once. The pid is the coordinator's
+//      long-lived session pid (passed via --pid); a tracked pid that no longer
+//      exists is a crashed holder, reconcilable even if it just claimed. (pid<=0
+//      means "no pid tracking" — the ephemeral CLI pid is meaningless — so the
+//      ledger/freshness govern instead.)
+//   2. A matching "dispatched"/"redirected" dispatch in some journey → the
+//      PRIMARY, durable liveness signal. A finished session calls `dispatch
+//      release` at delivered/escalated/merged, flipping the status away.
+//   3. FRESHNESS — the fix for the claim→record window. A lock claimed within
+//      STALE_ORPHAN_GRACE_MS is live even with no dispatched entry yet, because
+//      the atomic claim legitimately precedes the ledger write. Without this a
+//      rival reads the not-yet-recorded lock as an orphan and overwrites it, and
+//      two sessions both "win" the same repo — the very race this module exists
+//      to close. Past the grace with still no dispatched entry, it is an orphan.
+//
+// `now` is injectable purely so the grace boundary is testable; production passes
+// the real clock.
+export async function isLockActive(
+  workspaceDir: string,
+  lock: Lock | null,
+  now: number = Date.now(),
+): Promise<boolean> {
   if (!lock) return false;
-  if (!(await hasDispatchedDispatch(workspaceDir, lock))) return false; // orphan
-  if (lock.pid > 0 && !isPidAlive(lock.pid)) return false; // crashed holder
-  return true;
+  if (lock.pid > 0 && !isPidAlive(lock.pid)) return false; // (1) crashed holder
+  if (await hasDispatchedDispatch(workspaceDir, lock)) return true; // (2) ledger-backed
+  const created = Date.parse(lock.timestamp); // (3) freshly-claimed, record imminent
+  return Number.isFinite(created) && now - created < STALE_ORPHAN_GRACE_MS;
 }
 
 // The human unit key a force-claim override is authorized against — the same

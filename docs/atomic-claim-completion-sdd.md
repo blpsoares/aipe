@@ -55,13 +55,14 @@ de units distintas não colapsam. `grantedTiers` ignora entradas sem tier.
 
 ### 3. Prova de corrida FECHADA (não argumentada)
 Um "claim duas vezes" não prova atomicidade — um interleaving de sorte passa.
-Dois testes tornam a sorte implausível:
-- **in-process:** 5 claimants concorrentes sobre um repo, **exatamente 1 vence**,
-  repetido **60 rodadas** (workspace novo a cada rodada).
-- **multi-process:** **6 processos** de CLI separados (`bun cli.ts claim …`)
-  disputam **o mesmo arquivo de lock**, exatamente 1 `CLAIMED` (exit 0) e os
-  demais `COLLISION` (exit 2), **3 rodadas**. É a atomicidade do `link()` no nível
-  do SO, não só do event loop.
+Dois testes tornam a sorte implausível, **na ordem real** (claim primeiro, sem
+`dispatched` gravado antes — ver §7):
+- **in-process:** 5 claimants concorrentes sobre um repo **sem dispatch prévio**,
+  **exatamente 1 vence**, repetido **60 rodadas** (workspace novo a cada rodada).
+- **multi-process:** **6 processos** de CLI separados (`bun cli.ts claim …`, `--pid
+  0`, sem dispatch prévio) disputam **o mesmo arquivo de lock**, exatamente 1
+  `CLAIMED` (exit 0) e os demais `COLLISION` (exit 2), **5 rodadas**. É a
+  atomicidade do `link()` no nível do SO, não só do event loop.
 
 ### 4. O lock nunca viaja com o workspace publicado
 `.aipe/` é publicado; o lock precisa ser **per-machine** como `toolchain.yaml` e
@@ -79,6 +80,59 @@ idempotente). Nota do `prune` reescrita: pula ativo mesmo com `--force`.
 ### 6. Doc
 `src/worktree/SPEC-safety.md` A1 corrigido (não descrever mais "sai com --force").
 Este SDD.
+
+### 7. Correção pós-review (Mike): a janela `claim → dispatched`
+**O defeito.** A corrida **não** fechava no fluxo real do `operate`. A ordem real é:
+`dispatch claim` (grava o lock atomicamente) → `worktree create` → `journey record
+--status dispatched` (grava o registro no ledger). Entre o claim e o record há uma
+**janela** em que o ledger ainda não tem a entrada `dispatched` — e o `isLockActive`
+antigo só considerava o lock vivo **se** existisse esse `dispatched`. Nessa janela,
+um lock `pid 0` recém-criado era lido como **órfão** e a sessão rival o
+**sobrescrevia sem colisão**: dois vencedores no mesmo repo. Reprodução (ordem
+real, in-process, `pid 0`): **20/20 rodadas com dois vencedores**; via CLI
+multi-processo o Mike viu 15/20 (`pid default`) e 17/20 (`pid vivo`).
+
+**Por que os testes não pegavam.** Todos os testes de concorrência gravavam
+`dispatched` **antes** do claim — ordem **invertida** da real. Provavam serialização
+_dado um dispatch já vivo_, nunca que o **claim** fecha a corrida. Um teste que
+grava `dispatched` antes é o teste errado; foi o que deixou o bug passar.
+
+**A decisão (escolhida entre as duas opções do coordenador).** Optei por
+**tornar o lock auto-suficiente por uma janela de frescor**, não por gravar o
+marcador `dispatched` dentro do claim. Razão: a alternativa (claim escreve o
+`dispatched` atomicamente) polui o ledger com registros dos **perdedores** — cada
+processo que grava `dispatched` antes de perder o `link()` deixa uma entrada
+`(repo,package,specialist)` fantasma, sem worktree, e limpá-la exige rollback
+racy num arquivo que não é atômico entre processos. O `link()` já é o único ponto
+de serialização; o que faltava era o lock **certificar-se vivo no instante da
+criação**, sem depender de um segundo arquivo (o ledger) escrito depois.
+
+`isLockActive` passa a decidir por três sinais, em ordem de autoridade:
+1. **pid rastreado morto** (`pid>0 && !alive`) ⇒ sobrescrivível na hora (holder que
+   crashou; o `--pid` é o pid da sessão longa do coordenador). `pid<=0` = sem
+   rastreio.
+2. **`dispatched`/`redirected` no ledger** ⇒ vivo (sinal durável primário).
+3. **FRESCOR** — `now - lock.timestamp < STALE_ORPHAN_GRACE_MS` (10 min) ⇒ vivo
+   mesmo **sem** `dispatched`, porque o claim atômico legitimamente **precede** a
+   escrita no ledger. Passado o grace **e** ainda sem `dispatched`, é órfão de
+   verdade (holder crashou antes de gravar) e volta a ser reconciliável — o
+   limite é o que impede um crash de travar o repo para sempre.
+
+Isso fecha a janela para o fluxo real `pid 0` **sem exigir flag nova**, preserva
+os dois sinais de staleness do brief (órfão / pid morto) e mantém a preferência
+"lock stale recuperável > registro perdido" (o órfão é recuperável, só com atraso
+limitado). `now` é injetável só para testar a fronteira do grace.
+
+**Testes na ordem real** (RED no código antigo, GREEN no corrigido — provado
+revertendo só o corpo do `isLockActive`: 2 vencedores → 1):
+- `window: a freshly-claimed lock with NO dispatched entry yet is ACTIVE` — dentro
+  do grace vivo, além do grace órfão, e vivo de novo após gravar `dispatched`.
+- `window closed in the REAL order` — 40 rodadas in-process, claim sem dispatch
+  prévio, exatamente 1 vence.
+- os dois testes de §3 reescritos para a ordem real (sem `dispatched` antes).
+- `an AGED orphan …` — reconciliação de órfão agora usa um lock **envelhecido**
+  (o just-created virou frescor=vivo), provando que o crash-antes-de-gravar ainda
+  é recuperável.
 
 ## Decisões que valem registrar
 - **Release confiável > lock recuperável perdido.** Se preciso escolher, prefira
