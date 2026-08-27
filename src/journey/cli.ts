@@ -11,6 +11,7 @@ import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
 import { closeSessions, sessionsToClose } from "./session-close";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
+import { isValidTaskId } from "../worktree/naming";
 import { DISPATCH_STATUSES } from "./types";
 import type { DispatchEvidence, DispatchStatus, JourneyDispatch } from "./types";
 import { auditPrChecks, verifyJourney } from "./verify";
@@ -88,6 +89,11 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   }
   const pr = getFlag(args, "--pr");
   const pkg = getFlag(args, "--package");
+  const task = getFlag(args, "--task");
+  if (task !== undefined && !isValidTaskId(task)) {
+    console.log(`ERROR task: --task must be slug-safe (lowercase alnum + hyphen), got "${task}"`);
+    return 1;
+  }
   const tier = getFlag(args, "--tier");
   const model = getFlag(args, "--model");
   const reason = getFlag(args, "--reason");
@@ -145,6 +151,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
     {
       repo,
       ...(pkg ? { package: pkg } : {}),
+      ...(task ? { task } : {}),
       specialist,
       branch,
       worktree,
@@ -174,8 +181,11 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   // never passes through the specialist guard) and say so. Idempotent, non-fatal.
   if (status === "verified" || status === "merged") {
     const ledger = await readLedger(workspace, id);
+    // Per task (j-20260826-uv): closing THIS task's delivery must end only THIS
+    // task's session(s) — a sibling task of the same persona on the same unit is
+    // an independent run and must keep running.
     const unitRecords = (ledger?.dispatches ?? []).filter(
-      (d) => d.repo === repo && (d.package ?? null) === (pkg ?? null),
+      (d) => d.repo === repo && (d.package ?? null) === (pkg ?? null) && (d.task ?? null) === (task ?? null),
     );
     const ids = sessionsToClose(unitRecords);
     if (ids.length > 0) {

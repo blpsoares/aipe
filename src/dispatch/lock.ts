@@ -12,6 +12,7 @@ import { listJourneys, readLedger } from "../journey/ledger";
 export interface Lock {
   repo: string;
   package?: string;
+  task?: string;
   journey: string;
   specialist: string;
   branch?: string;
@@ -20,10 +21,15 @@ export interface Lock {
 }
 
 // The lock key is the unit of serialization: the repo, or `repo__package` when a
-// package is given (the same-repo law is already package-keyed). Sanitized so it
-// is always a safe single-segment filename.
-export function lockKey(repo: string, pkg?: string): string {
-  const raw = pkg && pkg !== repo ? `${repo}__${pkg}` : repo;
+// package is given (the same-repo law is already package-keyed), plus `__task`
+// when a task is given. The task splits the lock for non-writing roles so two
+// concurrent tasks of one persona do not serialize, while the SAME task still
+// resolves to exactly one winner. The CLI passes a task ONLY for a non-writing
+// role (a writing role keeps the unit-level lock, so two devs still contend).
+// Sanitized so it is always a safe single-segment filename.
+export function lockKey(repo: string, pkg?: string, task?: string): string {
+  const base = pkg && pkg !== repo ? `${repo}__${pkg}` : repo;
+  const raw = task ? `${base}__${task}` : base;
   return raw.replace(/[^A-Za-z0-9._-]/g, "-");
 }
 
@@ -31,8 +37,8 @@ export function locksDir(workspaceDir: string): string {
   return join(workspaceDir, ".aipe", "locks");
 }
 
-export function lockPath(workspaceDir: string, repo: string, pkg?: string): string {
-  return join(locksDir(workspaceDir), `${lockKey(repo, pkg)}.lock`);
+export function lockPath(workspaceDir: string, repo: string, pkg?: string, task?: string): string {
+  return join(locksDir(workspaceDir), `${lockKey(repo, pkg, task)}.lock`);
 }
 
 export async function readLock(path: string): Promise<Lock | null> {
@@ -70,10 +76,20 @@ export function isPidAlive(pid: number): boolean {
 async function hasDispatchedDispatch(workspaceDir: string, lock: Lock): Promise<boolean> {
   const journeys = await listJourneys(workspaceDir);
   const pkg = lock.package ?? null;
+  const task = lock.task ?? null;
   for (const j of journeys) {
     if (lock.journey && j.id !== lock.journey) continue;
     for (const d of j.dispatches) {
-      if (d.repo === lock.repo && (d.package ?? null) === pkg && (d.status === "dispatched" || d.status === "redirected")) return true;
+      // A per-task lock is kept alive only by its OWN task's dispatch — a
+      // different task's live record must not vouch for this lock (else two
+      // concurrent tasks of one persona would cross-signal liveness).
+      if (
+        d.repo === lock.repo &&
+        (d.package ?? null) === pkg &&
+        (d.task ?? null) === task &&
+        (d.status === "dispatched" || d.status === "redirected")
+      )
+        return true;
     }
   }
   return false;
@@ -146,6 +162,7 @@ export type ClaimResult =
 interface ClaimInput {
   repo: string;
   package?: string;
+  task?: string;
   journey: string;
   specialist: string;
   branch?: string;
@@ -162,13 +179,14 @@ interface ClaimInput {
 export async function claimLock(workspaceDir: string, input: ClaimInput): Promise<ClaimResult> {
   const pid = input.pid ?? process.pid;
   const now = input.now ?? (() => new Date().toISOString());
-  const path = lockPath(workspaceDir, input.repo, input.package);
+  const path = lockPath(workspaceDir, input.repo, input.package, input.task);
   const dir = locksDir(workspaceDir);
   await mkdir(dir, { recursive: true });
 
   const lock: Lock = {
     repo: input.repo,
     ...(input.package ? { package: input.package } : {}),
+    ...(input.task ? { task: input.task } : {}),
     journey: input.journey,
     specialist: input.specialist,
     ...(input.branch ? { branch: input.branch } : {}),
@@ -177,7 +195,7 @@ export async function claimLock(workspaceDir: string, input: ClaimInput): Promis
   };
   const content = stringify(lock);
 
-  const tmp = join(dir, `.${lockKey(input.repo, input.package)}.${pid}.${Math.random().toString(36).slice(2)}.tmp`);
+  const tmp = join(dir, `.${lockKey(input.repo, input.package, input.task)}.${pid}.${Math.random().toString(36).slice(2)}.tmp`);
   await writeFile(tmp, content, "utf8");
 
   try {
@@ -234,9 +252,9 @@ export type ReleaseResult =
 export async function releaseLock(
   workspaceDir: string,
   repo: string,
-  opts: { journey?: string; package?: string; force?: boolean } = {},
+  opts: { journey?: string; package?: string; task?: string; force?: boolean } = {},
 ): Promise<ReleaseResult> {
-  const path = lockPath(workspaceDir, repo, opts.package);
+  const path = lockPath(workspaceDir, repo, opts.package, opts.task);
   const existing = await readLock(path);
   if (!existing) return { ok: true, released: false };
   if (!opts.force && opts.journey && existing.journey !== opts.journey) {

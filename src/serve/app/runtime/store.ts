@@ -11,6 +11,10 @@ import type { SessionInfo } from "../../sessions";
 export interface Dispatch {
   repo?: string | null;
   package?: string | null;
+  // The task this dispatch is on (identity-per-task, j-20260826-uv). Travels in
+  // the raw snapshot payload; the console renders it so two concurrent runs of
+  // one persona on one unit are distinguishable.
+  task?: string | null;
   specialist?: string | null;
   status: string;
   pr?: unknown;

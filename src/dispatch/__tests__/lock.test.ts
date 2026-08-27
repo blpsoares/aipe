@@ -71,6 +71,52 @@ test("two concurrent claims over one ACTIVE repo: exactly one wins", async () =>
   }
 });
 
+// ── Identity-per-task: per-task claim lock (j-20260826-uv) ──
+
+test("lockKey folds in the task (per-task serialization for non-writing roles)", () => {
+  expect(lockKey("embark", undefined, "gate-pr24")).toBe("embark__gate-pr24");
+  expect(lockKey("platform", "core", "gate-pr24")).toBe("platform__core__gate-pr24");
+  // no task ⇒ unchanged key (writing roles keep the unit-level lock)
+  expect(lockKey("embark")).toBe("embark");
+});
+
+test("two claims of ONE persona on DISTINCT tasks BOTH win (independent locks)", async () => {
+  const dir = await ws();
+  try {
+    const a = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "Marina", task: "gate-pr24" });
+    const b = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "Marina", task: "gate-pr23" });
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    // Distinct lock files on disk — nothing serialized.
+    expect(await readLock(lockPath(dir, "embark", undefined, "gate-pr24"))).not.toBeNull();
+    expect(await readLock(lockPath(dir, "embark", undefined, "gate-pr23"))).not.toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("racing claims for the SAME task resolve to exactly one winner — repeated to rule out luck", async () => {
+  // Real contention, not sequence: 5 in-process claimants over a single task,
+  // 60 rounds. The atomic link() must let exactly one win each round.
+  for (let round = 0; round < 60; round++) {
+    const dir = await ws();
+    try {
+      const task = `gate-${round}`;
+      const results = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          claimLock(dir, { repo: "embark", journey: `j${i}`, specialist: "Marina", task, pid: 0 }),
+        ),
+      );
+      const wins = results.filter((r) => r.ok).length;
+      expect(wins).toBe(1); // exactly one winner, every round
+      const losers = results.filter((r) => !r.ok);
+      for (const l of losers) expect(l.ok === false && l.reason).toBe("collision");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("ledger-governed lock (pid 0) collides across sessions while dispatched", async () => {
   const dir = await ws();
   try {

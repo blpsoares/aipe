@@ -9,6 +9,12 @@ export interface DispatchEntry {
   repo: string;
   specialist: string;
   package?: string; // the unit within the repo; absent ⇒ the implicit whole-repo package
+  // The specific task this persona is doing on the unit — the axis that makes a
+  // dispatch addressable as `Persona · task`. Slug-safe (same shape as a journey
+  // id). Absent ⇒ the implicit single task (today's persona-on-unit identity).
+  // Two concurrent dispatches of ONE non-writing persona on distinct tasks are
+  // lawful; the same task twice is not (see law.ts).
+  task?: string;
   // Optional model tier the coordinator assigned by task complexity. Adjudicated
   // by the model-policy CLI (`aipe model`), then carried into the hiring brief.
   tier?: string;

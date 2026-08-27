@@ -10,11 +10,12 @@ export interface WorktreeSpec {
   repo: string; // repo name (from brain.yaml)
   specialist: string; // persona display name
   package?: string; // package name/slug (absent ⇒ implicit whole-repo package)
+  task?: string; // task slug (absent ⇒ implicit single task) — the `Persona · task` axis
   journey: string; // journey id
   slug: string; // personaSlug(specialist)
   moduleSlug: string | null; // personaSlug(package) when a real package, else null
-  branch: string; // aipe/<journey>/<combined>
-  relPath: string; // .worktrees/<journey>-<combined> (relative to the repo dir)
+  branch: string; // aipe/<journey>/<combined>[__<task>]
+  relPath: string; // .worktrees/<journey>-<combined>[__<task>] (relative to the repo dir)
 }
 
 // A live worktree discovered by `git worktree list`, filtered to AIPe branches.
@@ -22,6 +23,7 @@ export interface WorktreeRow {
   repo: string;
   slug: string;
   package?: string; // package slug recovered from the branch (absent ⇒ implicit)
+  task?: string; // task slug recovered from the branch (absent ⇒ implicit single task)
   journey: string;
   branch: string;
   path: string; // absolute

@@ -87,6 +87,20 @@ test("subtitle contains the hardcoded literal 2 (parity quirk) and dispatches.le
   expect(sub).toContain(String(dispatches.value.length));
 });
 
+// Identity-per-task (j-20260826-uv): two concurrent runs of one persona on one
+// unit are distinguishable in the console by their task tag.
+test("a dispatch card shows its task tag; two tasks of one persona are distinguishable", () => {
+  dispatches.value = [
+    { repo: "aipe", specialist: "Mike", task: "gate-pr24", status: "dispatched", journey: "j-uv" },
+    { repo: "aipe", specialist: "Mike", task: "gate-pr23", status: "dispatched", journey: "j-uv" },
+  ];
+  const { container } = render(<PipelineView />);
+  const dispatchedLane = [...container.querySelectorAll(".board .lane")][0]!;
+  const text = dispatchedLane.textContent!;
+  expect(text).toContain("gate-pr24");
+  expect(text).toContain("gate-pr23");
+});
+
 test("Filter button renders without a click handler wired (parity: non-functional)", () => {
   loadFixture();
   const { container } = render(<PipelineView />);

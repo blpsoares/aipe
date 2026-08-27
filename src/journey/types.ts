@@ -60,6 +60,14 @@ export interface DispatchEvidence {
 export interface JourneyDispatch {
   repo: string;
   package?: string; // the unit within the repo (absent ⇒ implicit whole-repo package)
+  // The specific task this persona is doing on the unit — the axis that makes a
+  // dispatch addressable as `Persona · task` (j-20260826-uv). Two concurrent
+  // dispatches of one persona on distinct tasks are SEPARATE ledger rows with
+  // independent QA gates; the fix-loop protection (re-dispatch needs a reason, a
+  // merged task is immutable) is keyed on this task, not the bare unit. Absent ⇒
+  // the implicit single task (legacy rows and subagent dispatches round-trip
+  // untouched, identical to pre-task behavior).
+  task?: string;
   specialist: string;
   branch: string;
   worktree: string;

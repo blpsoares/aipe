@@ -278,6 +278,7 @@ function shQuote(value: string): string {
 const FIELD_FLAGS = {
   repo: "--repo",
   package: "--package",
+  task: "--task",
   specialist: "--specialist",
   branch: "--branch",
   worktree: "--worktree",
@@ -334,9 +335,13 @@ function labelSegment(name: string): string {
     .replace(/(^-+|-+$)/g, "");
 }
 
-export function sessionLabel(fqid: string, specialist: string, journey: string): string {
+export function sessionLabel(fqid: string, specialist: string, journey: string, task?: string): string {
   const project = fqid.split("/").pop() ?? fqid;
-  return `${labelSegment(specialist)}-${journey}-${project}`;
+  // The task, when present, trails the label so `agentop session ls` tells two
+  // concurrent runs of ONE persona apart (identity-per-task, j-20260826-uv). A
+  // task-less dispatch keeps the exact prior label.
+  const taskSeg = task ? `-${labelSegment(task)}` : "";
+  return `${labelSegment(specialist)}-${journey}-${project}${taskSeg}`;
 }
 
 export async function dispatchCommand(
@@ -494,6 +499,7 @@ export async function dispatchCommand(
       workspace: workspace,
       fqid,
       intensity: d.intensity === "ultracode" ? "ultracode" : "normal",
+      ...(d.task ? { task: d.task } : {}),
     });
 
     const promptFile = join(promptsDir, `${fqid.replace(/\//g, "--")}.md`);
@@ -568,7 +574,11 @@ export async function dispatchCommand(
       const freshLedger = await readLedger(workspace, opts.journeyId);
       const current =
         freshLedger?.dispatches.find(
-          (x) => x.repo === d.repo && (x.package ?? null) === (d.package ?? null) && x.specialist === d.specialist,
+          (x) =>
+            x.repo === d.repo &&
+            (x.package ?? null) === (d.package ?? null) &&
+            (x.task ?? null) === (d.task ?? null) &&
+            x.specialist === d.specialist,
         ) ?? d;
       await recordDispatch(workspace, opts.journeyId, { ...current, sessionId: session.id });
       lines.push(`OK ${fqid} → ${session.id}`);
@@ -611,7 +621,7 @@ export async function dispatchCommand(
     // below) and move on. The session id is still recorded in the ledger
     // either way, `collect` still works either way, and the human can rename
     // it by hand.
-    const label = sessionLabel(fqid, d.specialist, opts.journeyId);
+    const label = sessionLabel(fqid, d.specialist, opts.journeyId, d.task);
     try {
       const renamed = await opts.runner(buildRenameArgs(session.id, label));
       if (renamed.code !== 0) {

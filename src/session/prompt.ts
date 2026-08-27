@@ -14,12 +14,19 @@ export interface PromptInput {
   workspace: string;
   fqid: string;
   intensity: Intensity;
+  // The task this dispatch is (identity-per-task, j-20260826-uv). When present it
+  // is stamped into every recorded `aipe journey record` command below, so a
+  // detached specialist records against its OWN task identity — not the unit —
+  // and a concurrent run of the same persona never overwrites its ledger row.
+  task?: string;
 }
 
 export function composePrompt(input: PromptInput): string {
   const lane = input.packagePath
     ? `${input.worktree} — and within it, stay inside ${input.packagePath}`
     : input.worktree;
+  // Interpolated into the recovery/record example commands; absent ⇒ nothing added.
+  const taskFlag = input.task ? ` --task ${input.task}` : "";
 
   const parts: string[] = [];
 
@@ -50,7 +57,7 @@ export function composePrompt(input: PromptInput): string {
       "For a successful delivery, record:",
       "```bash",
       `aipe journey record --journey ${input.journeyId} --workspace ${input.workspace} \\`,
-      `  --repo ${input.repo} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
+      `  --repo ${input.repo}${taskFlag} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
       `  --status delivered --pr <url> \\`,
       '  --evidence-cmd "<command you ran>" --evidence-summary "<what its output showed>"',
       "```",
@@ -58,14 +65,14 @@ export function composePrompt(input: PromptInput): string {
       "If the assignment is not answerable as written, record an escalation instead:",
       "```bash",
       `aipe journey record --journey ${input.journeyId} --workspace ${input.workspace} \\`,
-      `  --repo ${input.repo} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
+      `  --repo ${input.repo}${taskFlag} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
       `  --status escalated --reason "<why you cannot proceed>"`,
       "```",
       "",
       "If you are STUCK and need the coordinator — not a cross-repo scope decision (that is `escalated`), just an answer you cannot proceed without — record yourself blocked. This is how the coordinator learns you are waiting WITHOUT reading your terminal; do not simply stop and wait silently:",
       "```bash",
       `aipe journey record --journey ${input.journeyId} --workspace ${input.workspace} \\`,
-      `  --repo ${input.repo} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
+      `  --repo ${input.repo}${taskFlag} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
       '  --status blocked --reason "<what you are stuck on and what you need>"',
       "```",
       "",
@@ -77,7 +84,7 @@ export function composePrompt(input: PromptInput): string {
       "",
       "```bash",
       `aipe journey record --journey ${input.journeyId} --workspace ${input.workspace} \\`,
-      `  --repo ${input.repo} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
+      `  --repo ${input.repo}${taskFlag} --specialist <you> --branch ${input.branch} --worktree ${input.worktree} \\`,
       '  --status redirected --reason "<what you were asked to do instead>"',
       "```",
       "",

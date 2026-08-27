@@ -10,8 +10,10 @@ import { readLedger } from "../journey/ledger";
 import { packageFqid } from "../context-brain/packages";
 import { checkDependenciesLanded, validateBatch } from "./law";
 import { claimLock, claimUnit, releaseLock } from "./lock";
+import { roleWritesToRepo } from "./roles";
 import { recordAuthorization } from "../journey/ledger";
 import { readPersonas } from "./personas";
+import { isValidTaskId } from "../worktree/naming";
 import { isContainable } from "../harness/types";
 import { getAdapter } from "../harness/registry";
 import { probe, realRunner } from "../session/runner";
@@ -41,6 +43,7 @@ export function parseBatch(value: unknown): Batch | null {
       repo: r.repo,
       specialist: r.specialist,
       ...(typeof r.package === "string" ? { package: r.package } : {}),
+      ...(typeof r.task === "string" ? { task: r.task } : {}),
       ...(typeof r.tier === "string" ? { tier: r.tier } : {}),
       ...(r.mode !== undefined ? { mode: r.mode as "subagent" | "session" } : {}),
       ...(r.intensity !== undefined ? { intensity: r.intensity as "normal" | "ultracode" } : {}),
@@ -154,12 +157,32 @@ async function claimCommand(args: string[]): Promise<number> {
   const journey = getFlag(args, "--journey");
   const specialist = getFlag(args, "--specialist");
   if (!repo || !journey || !specialist) {
-    console.log("ERROR args: usage: dispatch claim <repo> --journey <id> --specialist <name> [--branch b] [--package p] [--force]");
+    console.log("ERROR args: usage: dispatch claim <repo> --journey <id> --specialist <name> [--branch b] [--package p] [--task t] [--force]");
     return 1;
   }
   const branch = getFlag(args, "--branch");
   const pkg = getFlag(args, "--package");
+  const task = getFlag(args, "--task");
+  if (task !== undefined && !isValidTaskId(task)) {
+    console.log(`ERROR task: --task must be slug-safe (lowercase alnum + hyphen), got "${task}"`);
+    return 1;
+  }
   const force = args.includes("--force");
+  // The task splits the lock ONLY for a role that writes NOTHING to the repo. A
+  // writing role keeps the unit-level lock even if a --task is passed, so two
+  // devs still contend on the one lock — the serialization D3 made physical is
+  // never removed by handing out a task. Role is resolved from the roster (the
+  // single source of truth), never a name list; unknown role ⇒ treated as
+  // writing (safe default).
+  const role = task
+    ? (await readPersonas(workspace)).find(
+        (p) => p.repo === repo && p.name.toLowerCase() === specialist.toLowerCase(),
+      )?.role
+    : undefined;
+  const lockTask = task && !roleWritesToRepo(role) ? task : undefined;
+  if (task && lockTask === undefined) {
+    console.log(`NOTE --task ${task} does not split the lock for role "${role ?? "unknown"}" (a writing role serializes on its unit); claiming the unit lock.`);
+  }
   // The coordinator's long-lived session pid, for crash-based reconciliation.
   // Absent ⇒ 0 (the ephemeral CLI pid is meaningless): the lock's liveness is
   // then governed purely by the ledger's "dispatched" status.
@@ -168,34 +191,36 @@ async function claimCommand(args: string[]): Promise<number> {
   const result = await claimLock(workspace, {
     repo,
     ...(pkg ? { package: pkg } : {}),
+    ...(lockTask ? { task: lockTask } : {}),
     journey,
     specialist,
     ...(branch ? { branch } : {}),
     force,
     pid,
   });
+  const taskSuffix = lockTask ? ` task=${lockTask}` : "";
   if (result.ok) {
     const unit = claimUnit(repo, pkg);
     const prev = result.previous;
     const prevStr = prev ? `${prev.journey}/${prev.specialist}(pid ${prev.pid})` : "none";
     if (result.forced) {
-      console.log(`FORCED ${unit} journey=${journey} over prev=${prevStr} (authorized override)`);
+      console.log(`FORCED ${unit}${taskSuffix} journey=${journey} over prev=${prevStr} (authorized override)`);
     } else if (result.reconciled) {
-      console.log(`RECONCILED ${unit} journey=${journey} prev=${prevStr}`);
+      console.log(`RECONCILED ${unit}${taskSuffix} journey=${journey} prev=${prevStr}`);
     } else {
-      console.log(`CLAIMED ${unit} journey=${journey} specialist=${specialist}`);
+      console.log(`CLAIMED ${unit}${taskSuffix} journey=${journey} specialist=${specialist}`);
     }
     return 0;
   }
   const h = result.holder;
   const unit = claimUnit(repo, pkg);
   if (result.reason === "unauthorized-force") {
-    console.log(`UNAUTHORIZED-FORCE ${unit} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
+    console.log(`UNAUTHORIZED-FORCE ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
     console.log(`WARN --force over an active lock needs a recorded PE authorization for ${unit}.`);
     console.log(`     Record it (after the PE says yes): aipe dispatch authorize-force ${repo}${pkg ? ` --package ${pkg}` : ""} --journey ${journey} --by PE --workspace ${workspace}`);
     return 3;
   }
-  console.log(`COLLISION ${unit} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
+  console.log(`COLLISION ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
   console.log("WARN not blocking; with the PE's approval recorded, re-run with --force to override the active lock.");
   return 2;
 }
@@ -222,18 +247,32 @@ async function releaseCommand(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const repo = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
   if (!repo) {
-    console.log("ERROR args: usage: dispatch release <repo> [--journey <id>] [--package p] [--force]");
+    console.log("ERROR args: usage: dispatch release <repo> [--journey <id>] [--package p] [--task t] [--specialist name] [--force]");
     return 1;
   }
   const journey = getFlag(args, "--journey");
   const pkg = getFlag(args, "--package");
+  const task = getFlag(args, "--task");
+  const specialist = getFlag(args, "--specialist");
   const force = args.includes("--force");
+  // Release the SAME lock the claim took: the task splits the lock only for a
+  // non-writing role. When --specialist is given, resolve the role and honor the
+  // gate (a writing role's --task is ignored, matching claim); without it, trust
+  // the --task as passed (the operate flow always pairs --task with --specialist).
+  let releaseTask = task;
+  if (task && specialist) {
+    const role = (await readPersonas(workspace)).find(
+      (p) => p.repo === repo && p.name.toLowerCase() === specialist.toLowerCase(),
+    )?.role;
+    releaseTask = roleWritesToRepo(role) ? undefined : task;
+  }
   const result = await releaseLock(workspace, repo, {
     ...(journey ? { journey } : {}),
     ...(pkg ? { package: pkg } : {}),
+    ...(releaseTask ? { task: releaseTask } : {}),
     force,
   });
-  const unit = pkg ? `${repo}/${pkg}` : repo;
+  const unit = `${pkg ? `${repo}/${pkg}` : repo}${releaseTask ? `#${releaseTask}` : ""}`;
   if (result.ok) {
     console.log(result.released ? `RELEASED ${unit}` : `NOOP ${unit} (no lock)`);
     return 0;

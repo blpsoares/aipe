@@ -36,7 +36,9 @@ function dispatchForRow(dispatches: JourneyDispatch[], wt: WorktreeRow): Journey
     if (d.repo !== wt.repo) return false;
     if (personaSlug(d.specialist) !== wt.slug) return false;
     const dPkg = d.package && d.package !== d.repo ? personaSlug(d.package) : undefined;
-    return dPkg === (wt.package ?? undefined);
+    if (dPkg !== (wt.package ?? undefined)) return false;
+    const dTask = d.task ? personaSlug(d.task) : undefined;
+    return dTask === (wt.task ?? undefined);
   });
 }
 
@@ -63,13 +65,13 @@ async function repoAbsOf(
 
 export async function createWorktree(
   workspaceDir: string,
-  opts: { repo: string; specialist: string; journey: string; package?: string; base?: string },
+  opts: { repo: string; specialist: string; journey: string; package?: string; task?: string; base?: string },
 ): Promise<CreateResult> {
   if (!isValidJourneyId(opts.journey)) return { ok: false, error: `invalid-journey ${opts.journey}` };
   const resolved = await repoAbsOf(workspaceDir, opts.repo);
   if (!resolved.ok) return { ok: false, error: resolved.error };
 
-  const spec = deriveSpec(opts.repo, opts.journey, opts.specialist, opts.package);
+  const spec = deriveSpec(opts.repo, opts.journey, opts.specialist, opts.package, opts.task);
   const wtAbs = join(resolved.abs, spec.relPath);
 
   await ensureExcluded(resolved.abs, `${WORKTREES_DIR}/`);
@@ -107,13 +109,19 @@ export async function listWorktrees(workspaceDir: string, journey?: string): Pro
       const m = /^aipe\/([^/]+)\/(.+)$/.exec(w.branch);
       if (!m) continue;
       const j = m[1] as string;
-      const combined = m[2] as string;
+      const rest = m[2] as string;
       if (journey && j !== journey) continue;
-      // combined is "<package>--<persona>" for a real package, else just "<persona>"
+      // rest is "<combined>[__<task>]" where combined is "<package>--<persona>"
+      // for a real package, else just "<persona>". `__` splits off the task; `--`
+      // splits off the package (personaSlug never emits either delimiter, so the
+      // split is unambiguous).
+      const taskSep = rest.indexOf("__");
+      const combined = taskSep >= 0 ? rest.slice(0, taskSep) : rest;
+      const task = taskSep >= 0 ? rest.slice(taskSep + 2) : undefined;
       const sep = combined.indexOf("--");
       const pkg = sep >= 0 ? combined.slice(0, sep) : undefined;
       const slug = sep >= 0 ? combined.slice(sep + 2) : combined;
-      rows.push({ repo: repo.name, slug, package: pkg, journey: j, branch: w.branch, path: w.path });
+      rows.push({ repo: repo.name, slug, package: pkg, ...(task ? { task } : {}), journey: j, branch: w.branch, path: w.path });
     }
   }
   return rows;
@@ -151,7 +159,7 @@ export async function pruneWorktrees(
       rows.push({ repo: wt.repo, slug: wt.slug, status: "skipped", detail: `active:${dispatch.status}` });
       continue;
     }
-    const result = await removeWorktree(workspaceDir, { repo: wt.repo, specialist: wt.slug, package: wt.package, journey, force });
+    const result = await removeWorktree(workspaceDir, { repo: wt.repo, specialist: wt.slug, package: wt.package, task: wt.task, journey, force });
     if (result.ok) rows.push({ repo: wt.repo, slug: wt.slug, status: "removed" });
     else rows.push({ repo: wt.repo, slug: wt.slug, status: result.blocked ? "blocked" : "error", detail: result.error });
   }
@@ -160,13 +168,13 @@ export async function pruneWorktrees(
 
 export async function removeWorktree(
   workspaceDir: string,
-  opts: { repo: string; specialist: string; journey: string; package?: string; force?: boolean },
+  opts: { repo: string; specialist: string; journey: string; package?: string; task?: string; force?: boolean },
 ): Promise<RemoveResult> {
   if (!isValidJourneyId(opts.journey)) return { ok: false, blocked: false, error: `invalid-journey ${opts.journey}` };
   const resolved = await repoAbsOf(workspaceDir, opts.repo);
   if (!resolved.ok) return { ok: false, blocked: false, error: resolved.error };
 
-  const spec = deriveSpec(opts.repo, opts.journey, opts.specialist, opts.package);
+  const spec = deriveSpec(opts.repo, opts.journey, opts.specialist, opts.package, opts.task);
   // Locate the worktree where git actually has it (single source of truth),
   // not where deriveSpec guesses — bare repos nest it elsewhere.
   const wtAbs = (await worktreePathByBranch(resolved.abs, spec.branch)) ?? join(resolved.abs, spec.relPath);

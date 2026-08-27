@@ -35,3 +35,22 @@ test("deriveSpec encodes a package into the branch/path, implicit stays unchange
   expect(flat.branch).toBe("aipe/j1/ana");
   expect(flat.moduleSlug).toBeNull();
 });
+
+// Identity-per-task (j-20260826-uv): the task lands in the branch/path via a `__`
+// delimiter (personaSlug emits only [a-z0-9-], so `__` never collides with a
+// package `--` or persona segment; it is git-ref-legal and keeps the branch a
+// single level — no D/F ref conflict a nested `…/task` would risk).
+test("deriveSpec folds a task into the branch/path; absent stays unchanged", () => {
+  const qa = deriveSpec("aipe", "j1", "Mike", null, "gate-pr24");
+  expect(qa.branch).toBe("aipe/j1/mike__gate-pr24");
+  expect(qa.relPath).toBe(".worktrees/j1-mike__gate-pr24");
+  expect(qa.task).toBe("gate-pr24");
+
+  const both = deriveSpec("platform", "j1", "Ana", "core", "feat-x");
+  expect(both.branch).toBe("aipe/j1/core--ana__feat-x");
+  expect(both.relPath).toBe(".worktrees/j1-core--ana__feat-x");
+
+  const noTask = deriveSpec("aipe", "j1", "Mike");
+  expect(noTask.branch).toBe("aipe/j1/mike");
+  expect(noTask.task).toBeUndefined();
+});

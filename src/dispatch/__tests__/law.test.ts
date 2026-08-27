@@ -90,3 +90,80 @@ test("the same package twice in one batch is rejected", () => {
   expect(verdict.ok).toBe(false);
   if (!verdict.ok) expect(verdict.rejects).toContain("same-package platform/core");
 });
+
+// ── Identity-per-task: concurrency for non-writing roles (j-20260826-uv) ──
+
+test("two concurrent dispatches of ONE non-writing persona on DISTINCT tasks are admitted", () => {
+  // Marina (qa) gates PR #24 and PR #23 at once — a QA writes nothing to the
+  // repo, so two runs on the same unit cannot collide, given a distinct task each.
+  const verdict = validateBatch(
+    [
+      { repo: "embark", specialist: "Marina", task: "gate-pr24" },
+      { repo: "embark", specialist: "Marina", task: "gate-pr23" },
+    ],
+    repos,
+    roster,
+  );
+  expect(verdict.ok).toBe(true);
+});
+
+test("two dev dispatches in ONE package stay rejected (writing role serializes)", () => {
+  // Not this journey's to unlock: a dev writes, so the unit still serializes even
+  // with distinct tasks.
+  const verdict = validateBatch(
+    [
+      { repo: "embark", specialist: "Joaquim", task: "feat-a" },
+      { repo: "embark", specialist: "Joaquim", task: "feat-b" },
+    ],
+    repos,
+    roster,
+  );
+  expect(verdict.ok).toBe(false);
+  if (!verdict.ok) expect(verdict.rejects).toContain("same-repo embark");
+});
+
+test("a mixed group (one writing role) still serializes as same-repo", () => {
+  const verdict = validateBatch(
+    [
+      { repo: "embark", specialist: "Marina", task: "gate" },
+      { repo: "embark", specialist: "Joaquim", task: "feat" },
+    ],
+    repos,
+    roster,
+  );
+  expect(verdict.ok).toBe(false);
+  if (!verdict.ok) expect(verdict.rejects).toContain("same-repo embark");
+});
+
+test("N non-writing dispatches with a DUPLICATE task are rejected same-task", () => {
+  const verdict = validateBatch(
+    [
+      { repo: "embark", specialist: "Marina", task: "gate-pr24" },
+      { repo: "embark", specialist: "Marina", task: "gate-pr24" },
+    ],
+    repos,
+    roster,
+  );
+  expect(verdict.ok).toBe(false);
+  if (!verdict.ok) expect(verdict.rejects).toContain("same-task embark#gate-pr24");
+});
+
+test("N non-writing dispatches MISSING a task are rejected same-task (must be distinguishable)", () => {
+  const verdict = validateBatch(
+    [
+      { repo: "embark", specialist: "Marina" },
+      { repo: "embark", specialist: "Marina" },
+    ],
+    repos,
+    roster,
+  );
+  expect(verdict.ok).toBe(false);
+  if (!verdict.ok) expect(verdict.rejects.some((r) => r.startsWith("same-task embark"))).toBe(true);
+});
+
+test("N concurrent non-writing dispatches still count toward the cap of 16", () => {
+  const big = Array.from({ length: 17 }, (_, i) => ({ repo: "embark", specialist: "Marina", task: `gate-${i}` }));
+  const verdict = validateBatch(big, repos, roster);
+  expect(verdict.ok).toBe(false);
+  if (!verdict.ok) expect(verdict.rejects).toContain("cap-exceeded 17");
+});

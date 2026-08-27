@@ -146,7 +146,11 @@ export async function recordDispatch(
 ): Promise<string> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
   const idx = ledger.dispatches.findIndex(
-    (d) => d.repo === dispatch.repo && (d.package ?? null) === (dispatch.package ?? null) && d.specialist === dispatch.specialist,
+    (d) =>
+      d.repo === dispatch.repo &&
+      (d.package ?? null) === (dispatch.package ?? null) &&
+      (d.task ?? null) === (dispatch.task ?? null) &&
+      d.specialist === dispatch.specialist,
   );
   if (idx >= 0) ledger.dispatches[idx] = mergeDispatch(ledger.dispatches[idx], dispatch);
   else ledger.dispatches.push(dispatch);
@@ -221,15 +225,20 @@ export interface GuardedRecordResult {
   path?: string;
 }
 
-function unitStatus(ledger: JourneyLedger, repo: string, pkg: string | null): JourneyDispatch | undefined {
-  // The most advanced record for this unit (any specialist), to judge transitions.
-  // Kept in lockstep with the identical table in journey/verify.ts (see its
-  // comment): `redirected` ranks with `failed`/`escalated` — a live redirect
-  // must outrank a stale `dispatched` record from another specialist on the
-  // same unit when judging the unit's most-advanced state.
+function unitStatus(ledger: JourneyLedger, repo: string, pkg: string | null, task: string | null): JourneyDispatch | undefined {
+  // The most advanced record for this TASK identity (repo + package + task, any
+  // specialist), to judge transitions. Keyed on the task — not the bare unit —
+  // so the fix-loop protection is per task: re-dispatching or immutability of one
+  // task never blocks a DIFFERENT task that merely shares the unit (the new axis
+  // is another task, not another try at the same one). A fix loop still reuses or
+  // swaps the specialist on the SAME task and the invariant holds. Task absent ⇒
+  // identity == unit, identical to pre-task behavior. Kept in lockstep with the
+  // identical table in journey/verify.ts (see its comment): `redirected` ranks
+  // with `failed`/`escalated` — a live redirect must outrank a stale
+  // `dispatched` record from another specialist on the same task.
   const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, redirected: 2, blocked: 2, delivered: 3, verified: 4, merged: 5 };
   return ledger.dispatches
-    .filter((d) => d.repo === repo && (d.package ?? null) === pkg)
+    .filter((d) => d.repo === repo && (d.package ?? null) === pkg && (d.task ?? null) === task)
     .sort((a, b) => (rank[b.status] ?? 0) - (rank[a.status] ?? 0))[0];
 }
 
@@ -241,7 +250,7 @@ export async function recordDispatchGuarded(
 ): Promise<GuardedRecordResult> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
   const pkg = dispatch.package ?? null;
-  const current = unitStatus(ledger, dispatch.repo, pkg);
+  const current = unitStatus(ledger, dispatch.repo, pkg, dispatch.task ?? null);
   const unitName = `${dispatch.repo}${pkg ? `/${pkg}` : ""}`;
 
   // 1 — verify-before-done: claiming done requires attached evidence.

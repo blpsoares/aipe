@@ -18,6 +18,7 @@ function DispatchCard({ d }: { d: Dispatch }) {
       </div>
       <div class="meta">
         <span class="tag">{fqidOf(d)}</span>·<span>{d.journey}</span>
+        {d.task ? <span class="tag" title="task">·{d.task}</span> : null}
         {d.pr ? (
           <a
             class="link"

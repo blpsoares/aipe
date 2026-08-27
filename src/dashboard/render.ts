@@ -102,7 +102,10 @@ export function renderDashboard(s: Snapshot, opts: RenderOpts = {}): string {
         const pr = d.pr ? paint(C.gray, `  ${d.pr}`) : "";
         // Show the model/tier the dispatch ran on, when recorded (model policy).
         const model = d.tier || d.model ? paint(C.magenta, ` «${d.tier ?? ""}${d.tier && d.model ? ":" : ""}${d.model ?? ""}»`) : "";
-        out.push(`    ${glyph} ${paint(C.dim, d.repo)} · ${d.specialist} ${paint(C.gray, d.status)}${model}${pr}`);
+        // Show the task so two concurrent runs of one persona on one unit are
+        // distinguishable (identity-per-task, j-20260826-uv).
+        const task = d.task ? paint(C.cyan, ` ·${d.task}`) : "";
+        out.push(`    ${glyph} ${paint(C.dim, d.repo)} · ${d.specialist}${task} ${paint(C.gray, d.status)}${model}${pr}`);
       }
     }
   }

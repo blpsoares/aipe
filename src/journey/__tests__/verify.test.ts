@@ -161,6 +161,48 @@ test("D5-twin: a producer that is a graph node but NOT a unit of this journey is
   expect(findings.filter((f) => f.code === "dependency-not-landed")).toEqual([]);
 });
 
+// ── Identity-per-task: the QA gate is per task (j-20260826-uv) ──
+
+// CASE 1 (coordinator field evidence, j-20260826-fi): the audit grouped by UNIT
+// and picked one top by RANK, so a QA `failed` (one piece of work) ranked above a
+// dev `dispatched` (the re-worked delivery) on the same unit and reported
+// failed-open — a false critical, since the unit WAS re-dispatched. A `failed`
+// with an active re-dispatch on its task-group is not open work; it is being
+// redone.
+test("CASE 1: a QA failed does NOT report failed-open when the dev is re-dispatched on the same unit", () => {
+  const ledger = ledgerOf(
+    d({ repo: "agentistics", package: "tui", specialist: "Skyler", status: "dispatched" }),
+    d({ repo: "agentistics", package: "tui", specialist: "Flynn", status: "failed", evidence: qaEv }),
+  );
+  expect(verifyJourney(ledger, []).filter((f) => f.code === "failed-open")).toEqual([]);
+});
+
+test("failed-open STILL fires when a task's failure was NOT re-dispatched", () => {
+  // no sibling `dispatched` on the task-group → genuinely open, must fire.
+  const findings = verifyJourney(ledgerOf(d({ status: "failed" })), []);
+  expect(findings.filter((f) => f.code === "failed-open")).toHaveLength(1);
+});
+
+// Item 3 (the symmetric danger): a `verified` on one task must not clear another.
+// Grouping by unit let task A's verified mask task B's un-verified delivery —
+// reporting safety that is not there. Per-task grouping surfaces task B.
+test("a verified on task A does not hide task B's delivered-not-verified on the same unit", () => {
+  const ledger = ledgerOf(
+    d({ repo: "aipe", specialist: "Mike", task: "gate-pr24", status: "verified", evidence: qaEv }),
+    d({ repo: "aipe", specialist: "Mike", task: "gate-pr23", status: "delivered", evidence: qaEv }),
+  );
+  const findings = verifyJourney(ledger, []);
+  expect(findings.filter((f) => f.code === "delivered-not-verified")).toHaveLength(1);
+});
+
+test("two tasks each cleanly verified on one unit yield no findings", () => {
+  const ledger = ledgerOf(
+    d({ repo: "aipe", specialist: "Mike", task: "gate-pr24", status: "verified", evidence: qaEv }),
+    d({ repo: "aipe", specialist: "Mike", task: "gate-pr23", status: "verified", evidence: qaEv }),
+  );
+  expect(verifyJourney(ledger, [])).toEqual([]);
+});
+
 test("escalated-open (warning): waiting on the PE", () => {
   const findings = verifyJourney(ledgerOf(d({ status: "escalated" })), []);
   expect(findings).toHaveLength(1);

@@ -137,6 +137,32 @@ test("renderDashboard shows a redirected worker with the redirected glyph, never
   }
 });
 
+// Identity-per-task (j-20260826-uv): two concurrent runs of one persona on one
+// unit must be distinguishable in the pipeline — by their task.
+test("renderDashboard PIPELINE distinguishes two concurrent tasks of one persona", async () => {
+  const dir = await ws();
+  try {
+    await writeFile(
+      join(dir, ".aipe", "journeys", "j1.yaml"),
+      stringify({
+        id: "j1",
+        dispatches: [
+          { repo: "embark", specialist: "Marina", task: "gate-pr24", branch: "aipe/j1/marina__gate-pr24", worktree: "w1", status: "dispatched" },
+          { repo: "embark", specialist: "Marina", task: "gate-pr23", branch: "aipe/j1/marina__gate-pr23", worktree: "w2", status: "delivered", evidence: { by: "qa", commands: ["x"], summary: "ok" } },
+        ],
+      }),
+      "utf8",
+    );
+    const snap = await buildSnapshot(dir);
+    const frame = renderDashboard(snap, { color: false });
+    const lines = frame.split("\n").filter((l) => l.includes("Marina"));
+    expect(lines.some((l) => l.includes("gate-pr24"))).toBe(true);
+    expect(lines.some((l) => l.includes("gate-pr23"))).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("buildSnapshot reports not-onboarded without a brain", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-dash-"));
   try {

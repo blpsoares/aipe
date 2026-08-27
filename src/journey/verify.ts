@@ -73,6 +73,18 @@ export function verifyJourney(
   // on graph-node membership made it a permanent false critical.
   const journeyUnits = new Set(byUnit.keys());
 
+  // Identity-per-task (j-20260826-uv): the QA-gate audits below are per TASK, not
+  // per unit. Grouping by unit made a `verified`/`failed` on one task pair with
+  // another task's delivery the moment two tasks shared a unit — a mis-paired gate
+  // that reports safety (or danger) that is not there. Group by `(repo, package,
+  // task)`; the finding still names the display unit. Task absent ⇒ gate key ==
+  // unit, so a single-task journey is grouped exactly as before.
+  const byGate = new Map<string, JourneyDispatch[]>();
+  for (const d of ledger.dispatches) {
+    const gateKey = `${packageFqid(d.repo, d.package)}\0${d.task ?? ""}`;
+    (byGate.get(gateKey) ?? byGate.set(gateKey, []).get(gateKey)!).push(d);
+  }
+
   // 1 — no-evidence: a done-claim (delivered/verified) with no valid proof.
   for (const d of ledger.dispatches) {
     if ((d.status === "delivered" || d.status === "verified") && !hasEvidence(d)) {
@@ -85,12 +97,18 @@ export function verifyJourney(
     }
   }
 
-  for (const [unit, records] of byUnit) {
+  for (const [, records] of byGate) {
     const top = records.reduce((a, b) => ((RANK[b.status] ?? 0) > (RANK[a.status] ?? 0) ? b : a));
     const status = top.status;
+    const unit = packageFqid(top.repo, top.package);
 
     // 2 — failed-open: QA rejected the delivery and it was never re-dispatched.
-    if (status === "failed") {
+    // A sibling `dispatched` on the SAME task-group means the delivery IS being
+    // re-worked (fail → re-dispatch) — not open, abandoned work. Only a task that
+    // failed with no active re-dispatch is failed-open. This closes the false
+    // positive where a QA `failed` and a dev `dispatched` on one unit (separate
+    // specialist rows) were read as still-failed even though the dev was back on it.
+    if (status === "failed" && !records.some((d) => d.status === "dispatched")) {
       findings.push({
         severity: "critical",
         code: "failed-open",
