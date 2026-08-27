@@ -1,6 +1,7 @@
 import { packageFqid } from "../context-brain/packages";
+import { roleWritesToRepo } from "./roles";
 import { MAX_CONCURRENT, SESSION_MAX_CONCURRENT } from "./types";
-import type { Batch, PersonaRegistryEntry, SessionContext, Verdict } from "./types";
+import type { Batch, DispatchEntry, PersonaRegistryEntry, SessionContext, Verdict } from "./types";
 
 // Pure adjudication of the parallel-dispatch law for a single proposed batch.
 // The coordinator owns *sequencing* (which batch runs before which, derived
@@ -60,19 +61,12 @@ export function validateBatch(
     }
   }
 
-  const seenKeys = new Set<string>();
+  // Per-entry existence checks (independent of same-unit collisions below).
   for (const entry of batch) {
-    const key = packageFqid(entry.repo, entry.package);
-    if (seenKeys.has(key)) {
-      rejects.push(entry.package && entry.package !== entry.repo ? `same-package ${key}` : `same-repo ${entry.repo}`);
-    }
-    seenKeys.add(key);
-
     if (!repoSet.has(entry.repo)) {
       rejects.push(`unknown-repo ${entry.repo}`);
       continue; // can't check the specialist against an unknown repo
     }
-
     const known = roster.some(
       (p) =>
         p.repo === entry.repo &&
@@ -80,6 +74,56 @@ export function validateBatch(
     );
     if (!known) {
       rejects.push(`unknown-specialist ${entry.specialist}@${entry.repo}`);
+    }
+  }
+
+  // Same-unit collisions — the serialization law, now task-aware.
+  //
+  // A unit that appears more than once in the batch is adjudicated by WHAT THE
+  // ROLES DO, not by name:
+  //   • any WRITING role in the group → serialize (same-repo / same-package,
+  //     exactly as before). Two devs in one package stay forbidden — that is not
+  //     this journey's to unlock, and quietly allowing it would remove the
+  //     serialization with nothing put in its place.
+  //   • all NON-WRITING roles → N concurrent runs of one persona are lawful,
+  //     because nothing they do can collide — PROVIDED each carries a DISTINCT
+  //     task, so they are distinguishable everywhere (ledger, worktree, session).
+  //     A missing or duplicated task is rejected `same-task`, a message written
+  //     precisely so a coordinator reading REJECT knows which rule it hit and why
+  //     this case is allowed where two devs are not.
+  const groups = new Map<string, DispatchEntry[]>();
+  for (const entry of batch) {
+    const key = packageFqid(entry.repo, entry.package);
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(entry);
+  }
+  const roleOf = (entry: DispatchEntry): string | undefined =>
+    roster.find(
+      (p) => p.repo === entry.repo && p.name.toLowerCase() === entry.specialist.toLowerCase(),
+    )?.role;
+
+  for (const [key, members] of groups) {
+    if (members.length < 2) continue;
+    const anyWrites = members.some((e) => roleWritesToRepo(roleOf(e)));
+    if (anyWrites) {
+      // Serialize: one reject per duplicate occurrence, preserving the prior
+      // message shape (same-package for a real package, else same-repo).
+      for (const dup of members.slice(1)) {
+        rejects.push(dup.package && dup.package !== dup.repo ? `same-package ${key}` : `same-repo ${dup.repo}`);
+      }
+      continue;
+    }
+    // All non-writing → concurrency is lawful iff every task is present and unique.
+    const seenTasks = new Set<string>();
+    for (const e of members) {
+      if (!e.task) {
+        rejects.push(`same-task ${key} (concurrent non-writing dispatches on one unit need a distinct --task each)`);
+        continue;
+      }
+      if (seenTasks.has(e.task)) {
+        rejects.push(`same-task ${key}#${e.task}`);
+        continue;
+      }
+      seenTasks.add(e.task);
     }
   }
 

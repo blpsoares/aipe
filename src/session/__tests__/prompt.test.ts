@@ -68,3 +68,13 @@ test("a monorepo package narrows the stated lane", () => {
   const p = composePrompt({ ...base, packagePath: "packages/api", fqid: "embark/api" });
   expect(p).toContain("packages/api");
 });
+
+// Identity-per-task (j-20260826-uv): a task-bearing dispatch must record against
+// its OWN task, so every example `aipe journey record` command carries --task.
+test("a task is stamped into every recorded journey-record command", () => {
+  const p = composePrompt({ ...base, task: "gate-pr24" });
+  expect((p.match(/--task gate-pr24/g) || []).length).toBe(4);
+  // no task ⇒ no `--task <slug>` record flag leaks in (the `--task-type` hint in
+  // the skill-match line is unrelated and must not be matched).
+  expect(composePrompt(base)).not.toMatch(/--task [a-z]/);
+});

@@ -37,6 +37,70 @@ async function writeBatch(dir: string, batch: unknown): Promise<string> {
   return p;
 }
 
+// Identity-per-task: the claim CLI splits the lock by task ONLY for a non-writing
+// role; a writing role keeps the unit-level lock even with --task (defense in
+// depth — two devs never get concurrency by passing a task).
+async function wsWithQa(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-disp-"));
+  const brain: BrainFile = {
+    context: { name: "opvibes", coordinator: "Nicolas" },
+    repos: [{ name: "embark", url: "git@github.com:o/embark.git", path: "./embark" }],
+  };
+  await mkdir(join(dir, ".aipe"), { recursive: true });
+  await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(brain), "utf8");
+  await writeFile(
+    join(dir, ".aipe", "personas.yaml"),
+    stringify({
+      personas: [
+        { name: "Joaquim", role: "dev-fullstack", repo: "embark", path: "./embark/.claude/skills/joaquim" },
+        { name: "Marina", role: "qa", repo: "embark", path: "./embark/.claude/skills/marina" },
+      ],
+    }),
+    "utf8",
+  );
+  return dir;
+}
+
+async function capture(fn: () => Promise<number>): Promise<{ code: number; out: string }> {
+  const orig = console.log;
+  const lines: string[] = [];
+  console.log = (...a: unknown[]) => lines.push(a.join(" "));
+  try {
+    const code = await fn();
+    return { code, out: lines.join("\n") };
+  } finally {
+    console.log = orig;
+  }
+}
+
+test("claim: a QA (non-writing) gets a per-task lock; two tasks both CLAIM", async () => {
+  const dir = await wsWithQa();
+  try {
+    const a = await capture(() => run(["claim", "embark", "--journey", "j1", "--specialist", "Marina", "--task", "gate-pr24", "--workspace", dir]));
+    const b = await capture(() => run(["claim", "embark", "--journey", "j1", "--specialist", "Marina", "--task", "gate-pr23", "--workspace", dir]));
+    expect(a.code).toBe(0);
+    expect(b.code).toBe(0);
+    expect(a.out).toContain("task=gate-pr24");
+    expect(b.out).toContain("task=gate-pr23");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("claim: a DEV (writing) keeps the unit lock even with --task; a second dev task COLLIDES", async () => {
+  const dir = await wsWithQa();
+  try {
+    const a = await capture(() => run(["claim", "embark", "--journey", "j1", "--specialist", "Joaquim", "--task", "feat-a", "--pid", "0", "--workspace", dir]));
+    const b = await capture(() => run(["claim", "embark", "--journey", "j2", "--specialist", "Joaquim", "--task", "feat-b", "--pid", "0", "--workspace", dir]));
+    expect(a.code).toBe(0);
+    expect(a.out).toContain("NOTE"); // task did not split the lock for a writing role
+    expect(b.code).toBe(2); // collision — the unit lock is held, task ignored
+    expect(b.out).toContain("COLLISION");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("validate returns 0 for a lawful batch", async () => {
   const dir = await ws();
   try {

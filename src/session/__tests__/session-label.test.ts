@@ -23,3 +23,16 @@ test("case is preserved and a two-word name is hyphen-safed (not an @ idiom)", (
   expect(sessionLabel("embark", "Ana Paula", "j1")).toBe("Ana-Paula-j1-embark");
   expect(sessionLabel("embark", "Joaquim", "j1")).not.toContain("@");
 });
+
+// Identity-per-task (j-20260826-uv): two concurrent runs of one persona are
+// told apart in `agentop session ls` by a trailing task segment. A task-less
+// dispatch keeps the exact prior label.
+test("the task trails the label so concurrent runs of one persona are distinguishable", () => {
+  const a = sessionLabel("aipe", "Mike", "j-20260826-uv", "gate-pr24");
+  const b = sessionLabel("aipe", "Mike", "j-20260826-uv", "gate-pr23");
+  expect(a).toBe("Mike-j-20260826-uv-aipe-gate-pr24");
+  expect(b).toBe("Mike-j-20260826-uv-aipe-gate-pr23");
+  expect(a).not.toBe(b);
+  // no task ⇒ unchanged
+  expect(sessionLabel("aipe", "Mike", "j-20260826-uv")).toBe("Mike-j-20260826-uv-aipe");
+});

@@ -4,6 +4,7 @@
 // git plumbing; no LLM. Output convention mirrors the other subcommands
 // (OK/WT/BLOCKED/ERROR), one machine-readable line per fact.
 import { createWorktree, listWorktrees, pruneWorktrees, removeWorktree } from "./run";
+import { isValidTaskId } from "./naming";
 import type { WorktreeRow } from "./types";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -19,14 +20,16 @@ function hasFlag(args: string[], name: string): boolean {
 }
 
 export function renderRows(rows: WorktreeRow[]): string[] {
-  return rows.map((r) => `WT ${r.repo} ${r.slug} ${r.journey} ${r.branch} ${r.path}${r.package ? ` package=${r.package}` : ""}`);
+  return rows.map(
+    (r) => `WT ${r.repo} ${r.slug} ${r.journey} ${r.branch} ${r.path}${r.package ? ` package=${r.package}` : ""}${r.task ? ` task=${r.task}` : ""}`,
+  );
 }
 
 const USAGE = [
   "Usage: aipe worktree <command> [options]",
-  "  create --repo <name> --specialist <persona> --journey <id> [--package <name>] [--base <branch>] [--workspace <dir>]",
+  "  create --repo <name> --specialist <persona> --journey <id> [--package <name>] [--task <slug>] [--base <branch>] [--workspace <dir>]",
   "  list   [--journey <id>] [--workspace <dir>]",
-  "  remove --repo <name> --specialist <persona> --journey <id> [--package <name>] [--force] [--workspace <dir>]",
+  "  remove --repo <name> --specialist <persona> --journey <id> [--package <name>] [--task <slug>] [--force] [--workspace <dir>]",
   "  prune  --journey <id> [--force] [--workspace <dir>]",
 ].join("\n");
 
@@ -41,7 +44,12 @@ async function createCommand(args: string[]): Promise<number> {
   }
   const base = getFlag(args, "--base");
   const pkg = getFlag(args, "--package");
-  const result = await createWorktree(workspace, { repo, specialist, journey, package: pkg, base });
+  const task = getFlag(args, "--task");
+  if (task && !isValidTaskId(task)) {
+    console.log(`ERROR task: --task must be slug-safe (${task})`);
+    return 1;
+  }
+  const result = await createWorktree(workspace, { repo, specialist, journey, package: pkg, task, base });
   if (!result.ok) {
     console.log(`ERROR ${result.error}`);
     return 1;
@@ -70,7 +78,8 @@ async function removeCommand(args: string[]): Promise<number> {
   }
   const force = hasFlag(args, "--force");
   const pkg = getFlag(args, "--package");
-  const result = await removeWorktree(workspace, { repo, specialist, journey, package: pkg, force });
+  const task = getFlag(args, "--task");
+  const result = await removeWorktree(workspace, { repo, specialist, journey, package: pkg, task, force });
   if (result.ok) {
     console.log(`OK removed ${result.path}`);
     return 0;
