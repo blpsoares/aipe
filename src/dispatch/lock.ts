@@ -7,7 +7,7 @@
 import { link, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import { listJourneys } from "../journey/ledger";
+import { listJourneys, readLedger } from "../journey/ledger";
 
 export interface Lock {
   repo: string;
@@ -79,26 +79,69 @@ async function hasDispatchedDispatch(workspaceDir: string, lock: Lock): Promise<
   return false;
 }
 
-// A lock is ACTIVE when a matching "dispatched" dispatch still exists AND (if a
-// real pid was recorded) that pid is alive. Two independent staleness signals,
-// per spec: orphan (no dispatched dispatch) OR a dead holder pid → overwritable.
+// How long a freshly-claimed lock is trusted as live WITHOUT a ledger
+// "dispatched" entry backing it yet. The claim writes the lock file atomically,
+// but the coordinator records the `dispatched` entry a step LATER (it provisions
+// the worktree, then runs `aipe journey record`). In that gap the ledger has no
+// entry for the unit — yet the lock is not an orphan, the claim is in flight.
+// This grace covers that gap generously (a worktree checkout + one ledger write
+// is seconds, not minutes); past it, a still-dispatchless lock is a genuine
+// orphan (the holder crashed before recording) and becomes reconcilable, so the
+// bound is what keeps a crash from wedging a repo forever.
+export const STALE_ORPHAN_GRACE_MS = 10 * 60_000; // 10 minutes
+
+// A lock is ACTIVE unless we can positively show its holder is gone. Three
+// signals decide it, in order of authority:
 //
-// The ledger's "dispatched" status is the PRIMARY, durable liveness signal — a
-// session that finished calls `dispatch release` (at delivered/escalated/merged),
-// flipping the status away from "dispatched". The pid is a SECONDARY crash
-// detector and only meaningful when it's the coordinator's long-lived session pid
-// (passed via --pid); the ephemeral `aipe` CLI process would be dead instantly and
-// is meaningless, so pid<=0 means "no pid tracking — the ledger governs".
-export async function isLockActive(workspaceDir: string, lock: Lock | null): Promise<boolean> {
+//   1. A recorded, DEAD pid → overwritable at once. The pid is the coordinator's
+//      long-lived session pid (passed via --pid); a tracked pid that no longer
+//      exists is a crashed holder, reconcilable even if it just claimed. (pid<=0
+//      means "no pid tracking" — the ephemeral CLI pid is meaningless — so the
+//      ledger/freshness govern instead.)
+//   2. A matching "dispatched"/"redirected" dispatch in some journey → the
+//      PRIMARY, durable liveness signal. A finished session calls `dispatch
+//      release` at delivered/escalated/merged, flipping the status away.
+//   3. FRESHNESS — the fix for the claim→record window. A lock claimed within
+//      STALE_ORPHAN_GRACE_MS is live even with no dispatched entry yet, because
+//      the atomic claim legitimately precedes the ledger write. Without this a
+//      rival reads the not-yet-recorded lock as an orphan and overwrites it, and
+//      two sessions both "win" the same repo — the very race this module exists
+//      to close. Past the grace with still no dispatched entry, it is an orphan.
+//
+// `now` is injectable purely so the grace boundary is testable; production passes
+// the real clock.
+export async function isLockActive(
+  workspaceDir: string,
+  lock: Lock | null,
+  now: number = Date.now(),
+): Promise<boolean> {
   if (!lock) return false;
-  if (!(await hasDispatchedDispatch(workspaceDir, lock))) return false; // orphan
-  if (lock.pid > 0 && !isPidAlive(lock.pid)) return false; // crashed holder
-  return true;
+  if (lock.pid > 0 && !isPidAlive(lock.pid)) return false; // (1) crashed holder
+  if (await hasDispatchedDispatch(workspaceDir, lock)) return true; // (2) ledger-backed
+  const created = Date.parse(lock.timestamp); // (3) freshly-claimed, record imminent
+  return Number.isFinite(created) && now - created < STALE_ORPHAN_GRACE_MS;
+}
+
+// The human unit key a force-claim override is authorized against — the same
+// string the CLI prints and the PE names when granting the override.
+export function claimUnit(repo: string, pkg?: string): string {
+  return pkg && pkg !== repo ? `${repo}/${pkg}` : repo;
+}
+
+// A force-override of an ACTIVE lock is legitimate only when the CLAIMING
+// journey carries a recorded PE authorization for exactly this unit (or a `*`
+// blanket grant). Overriding the law is a human decision on the record, never an
+// agent's shortcut. Reconciling a STALE lock (orphan / dead pid) needs no grant
+// — that is ordinary recovery, not an override.
+async function hasForceAuthorization(workspaceDir: string, journey: string, unit: string): Promise<boolean> {
+  const ledger = await readLedger(workspaceDir, journey);
+  return (ledger?.authorizations ?? []).some((a) => a.forceClaim === unit || a.forceClaim === "*");
 }
 
 export type ClaimResult =
-  | { ok: true; claimed: true; reconciled: boolean; previous?: Lock }
-  | { ok: false; reason: "collision"; holder: Lock };
+  | { ok: true; claimed: true; reconciled: boolean; forced?: boolean; previous?: Lock }
+  | { ok: false; reason: "collision"; holder: Lock }
+  | { ok: false; reason: "unauthorized-force"; holder: Lock; unit: string };
 
 interface ClaimInput {
   repo: string;
@@ -155,9 +198,17 @@ export async function claimLock(workspaceDir: string, input: ClaimInput): Promis
           await unlink(tmp).catch(() => {});
           return { ok: false, reason: "collision", holder: incumbent as Lock };
         }
-        // --force over an active lock: overwrite atomically via rename.
+        // --force over an ACTIVE lock is a law override: it needs a recorded PE
+        // authorization for this unit in the claiming journey. Without it, refuse
+        // — --force alone is not enough.
+        const unit = claimUnit(input.repo, input.package);
+        if (!(await hasForceAuthorization(workspaceDir, input.journey, unit))) {
+          await unlink(tmp).catch(() => {});
+          return { ok: false, reason: "unauthorized-force", holder: incumbent as Lock, unit };
+        }
+        // authorized --force: overwrite atomically via rename.
         await rename(tmp, path);
-        return { ok: true, claimed: true, reconciled: true, ...(incumbent ? { previous: incumbent } : {}) };
+        return { ok: true, claimed: true, reconciled: true, forced: true, ...(incumbent ? { previous: incumbent } : {}) };
       }
       // stale / orphan → remove and retry the atomic create so a rival that
       // recreates an ACTIVE lock in the gap makes us loop back to the check.

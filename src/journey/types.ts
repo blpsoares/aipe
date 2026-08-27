@@ -109,11 +109,17 @@ export interface JourneyDispatch {
   ciBypass?: "no-checks";
 }
 
-// An explicit PE grant for a gated tier, recorded only after the PE says yes in
-// the live session. Scope is per journey (PE-confirmed).
+// An explicit PE grant, recorded only after the PE says yes in the live session.
+// Scope is per journey (PE-confirmed). Two kinds of grant share this shape:
+//   • a gated-tier grant — `tier` set (the original use);
+//   • a force-claim override — `forceClaim` set to the unit key (`repo` or
+//     `repo/package`) whose ACTIVE dispatch lock this journey may override with
+//     `dispatch claim --force`. Overriding a live lock is a human decision on the
+//     record, never an agent's shortcut (orientation, 2026-07-08 PE decision).
 export interface JourneyAuthorization {
-  tier: string;
+  tier?: string;
   grantedBy: string;
+  forceClaim?: string;
 }
 
 // The coordinator's Orientation Spec for this journey (path relative to the

@@ -8,9 +8,18 @@ Spec + plano curtos para 3 bugs críticos de lifecycle de worktree.
 `pruneWorktrees` remove qualquer worktree limpo+pushed do journey, ignorando o
 estado do dispatch no ledger. Deve **ler o journey ledger** e só remover
 dispatches em estado **TERMINAL** (`merged`, `removed`). Dispatch **ativo**
-(`dispatched`, `delivered`, `escalated`) é **PULADO** e só sai com `--force`.
-Worktree sem entrada no ledger mantém o comportamento anterior (guardrail de
-sujo/unpushed) — o ledger é a fonte de verdade do estado ativo, ausência ≠ ativo.
+(`dispatched`, `delivered`, `escalated`) é **PULADO**. Worktree sem entrada no
+ledger mantém o comportamento anterior (guardrail de sujo/unpushed) — o ledger é
+a fonte de verdade do estado ativo, ausência ≠ ativo.
+
+> **Correção A1 (j-20260826-1i).** A primeira implementação gateava o skip de
+> ativo em `!force`, então `prune --force` ainda apagava worktree de dispatch
+> **vivo** (um dispatch re-despachado é trabalho ativo, não sobra) — e havia um
+> teste que *fixava* esse comportamento errado. Os dois guardrails são
+> **separados**: `--force` fura só o guard de **árvore-suja** (dentro de
+> `removeWorktree`); a guarda de **dispatch-vivo** é **incondicional** — `--force`
+> nunca remove worktree de dispatch ativo. O caso negativo (re-dispatch + `--force`
+> ⇒ `skipped`) é o teste que importa.
 
 ### A2 — layout bare aninhado → `not-found` no remove/prune
 Em repo bare, o git pode materializar o worktree num caminho diferente do
@@ -34,7 +43,9 @@ sem des-bare-ar o repo compartilhado.
    - `createWorktree`: reconcilia path real via `listPorcelain`, chama
      `setWorktreeNonBare`.
    - `removeWorktree`: resolve path via `listPorcelain` pelo branch.
-   - `pruneWorktrees`: lê ledger, pula ativos sem `--force` (status `skipped`).
+   - `pruneWorktrees`: lê ledger, pula ativos **sempre** (status `skipped`),
+     independentemente de `--force`; `--force` só afeta o guard de árvore-suja em
+     worktrees terminais/órfãos.
 3. `cli.ts`: render/exit code de `prune` tolera status `skipped` (informativo,
    não é falha).
 4. Testes: bare create→add/status, round-trip bare, prune mix terminal+ativo.

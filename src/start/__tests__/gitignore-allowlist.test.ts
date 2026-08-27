@@ -57,6 +57,33 @@ test("git add -A on an assembled workspace stages the brain and nothing else", a
   }
 });
 
+test("per-machine .aipe artifacts never ride along — toolchain.yaml, .rehydrate.lock, and dispatch locks stay local", async () => {
+  // .aipe/ is allowlisted (!/.aipe/), so anything inside it publishes unless
+  // explicitly re-ignored. The dispatch claim locks are per-machine mutual
+  // exclusion keyed by local pids — publishing them would wedge a fresh clone.
+  const dir = await mkdtemp(join(tmpdir(), "aipe-gi-locks-"));
+  try {
+    await scaffoldWorkspace(dir, claudeCodeAdapter);
+
+    await mkdir(join(dir, ".aipe", "locks"), { recursive: true });
+    await writeFile(join(dir, ".aipe", "brain.yaml"), "context: {}\n", "utf8");
+    await writeFile(join(dir, ".aipe", "toolchain.yaml"), "version: 1\n", "utf8");
+    await writeFile(join(dir, ".aipe", ".rehydrate.lock"), "", "utf8");
+    await writeFile(join(dir, ".aipe", "locks", "embark.lock"), "repo: embark\npid: 4321\n", "utf8");
+    await writeFile(join(dir, ".aipe", "locks", "platform__core.lock"), "repo: platform\npid: 4322\n", "utf8");
+
+    const s = await staged(dir);
+    // the brain publishes...
+    expect(s).toContain(".aipe/brain.yaml");
+    // ...the per-machine artifacts do not
+    expect(s).not.toContain(".aipe/toolchain.yaml");
+    expect(s).not.toContain(".aipe/.rehydrate.lock");
+    expect(s.some((p) => p.startsWith(".aipe/locks/"))).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("the allowlist follows the harness — a Gemini workspace publishes .gemini/ and .agents/", async () => {
   // Same guarantee, different harness: what must never happen is the
   // integration being ignored (published workspace rehydrates into nothing)
