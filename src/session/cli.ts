@@ -16,6 +16,7 @@ import { probe, realRunner } from "./runner";
 import type { AgentopRunner, UnitPhase, UnitState } from "./types";
 import { decide } from "./guard";
 import { consumeGrant, issueGrant } from "./grants";
+import { logStatusDelta } from "../status/delta";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -896,6 +897,18 @@ export async function run(args: string[]): Promise<number> {
       }
       const { code, lines } = await dispatchCommand({ workspace, journeyId, runner: realRunner });
       for (const line of lines) console.log(line);
+      // Item 9 — after a dispatch, log the delta table for the units now in
+      // flight in this journey (gated on TTY + the follow-preference; silent off
+      // a terminal). Presentation only: never lets a display failure fail the
+      // dispatch that already happened.
+      if (code === 0) {
+        await logStatusDelta({
+          workspace,
+          journeyId,
+          changed: (u) => u.journey === journeyId && u.mode === "session",
+          argv: rest,
+        });
+      }
       return code;
     }
     case "collect": {

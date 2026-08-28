@@ -17,6 +17,7 @@ import type { DispatchEvidence, DispatchStatus, JourneyDispatch } from "./types"
 import { auditPrChecks, verifyJourney } from "./verify";
 import { realRunner } from "../session/runner";
 import type { AgentopRunner } from "../session/types";
+import { logStatusDelta } from "../status/delta";
 
 // Injection seam so the CLI stays testable offline: the record gate's CI
 // resolver and the session-close runner default to the real gh/agentop, and
@@ -193,6 +194,22 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       for (const l of lines) console.log(l);
     }
   }
+
+  // Item 9 — a ledger record is a state event: log the delta table (gated on TTY
+  // and the follow-preference, silent off a terminal). Presentation only, wrapped
+  // so it can never undo the record that already landed above.
+  await logStatusDelta({
+    workspace,
+    journeyId: id,
+    changed: (u) =>
+      u.journey === id &&
+      u.repo === repo &&
+      (u.package ?? null) === (pkg ?? null) &&
+      (u.task ?? null) === (task ?? null) &&
+      u.specialist === specialist,
+    argv: args,
+    runner: deps.sessionRunner,
+  });
   return 0;
 }
 
