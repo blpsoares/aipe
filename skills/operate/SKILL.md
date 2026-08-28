@@ -271,7 +271,15 @@ digraph operate {
    - `mode: subagent | session` — `subagent` (default) is in-process and returns
      its evidence directly. `session` is a real detached session with its own
      full context window; choose it when the unit is large enough that a shared
-     context would starve it, or when it needs `ultracode`.
+     context would starve it, when it needs `ultracode`, **or whenever the PE
+     needs real-time visibility** — a dashboard, a demo, live follow-along.
+     A subagent runs **in-process, inside you**: it is invisible to `agentop
+     session list` and to the dashboard, so a wave of subagents makes the
+     coordinator look idle while real work is happening, with nothing for the PE
+     to watch or attach to. When being watchable matters, the mode is `session`,
+     not subagent — the extra cost of a detached session buys the visibility.
+     (`session` is also the only mode the PE can `agentop session attach` to
+     redirect live, and the only one `agentop events watch` can follow.)
    - `intensity: normal | ultracode` — `ultracode` makes the specialist
      orchestrate multi-agent workflows. It multiplies token spend, so it is the
      PE's call, never yours.
@@ -403,6 +411,46 @@ digraph operate {
      agentop for N sessions, it started M`) — that unit never actually
      started. Treat it like any other dispatch failure: investigate and
      re-dispatch it; nothing is running for it anywhere.
+
+   **Then, immediately, arm the push watch for this wave (standard flow, not
+   optional).** `aipe session collect` is a point-in-time poll with a timeout —
+   between polls you are blind, and it cannot tell you the *moment* a specialist
+   pauses for you. `agentop events watch` is the push channel that can:
+
+   ```bash
+   agentop events watch --task aipe/<id> --on waiting,waiting-approval,exited --notify <your-session>
+   ```
+
+   - `--task aipe/<id>` scopes the watch to exactly this wave's sessions (the
+     same task `session dispatch` filed them under) — never a bare global watch.
+   - The three states that matter, and what each means you MUST do:
+     - `waiting` — the specialist paused (finished a step, or is asking). Look:
+       read its delivery/`blocked` record or attach to see what it needs.
+     - `waiting-approval` — it is blocked on a **human** decision. Route it to
+       the PE. **NEVER attach and answer for it** — see the boundary below.
+     - `exited` — the session ended. Reconcile it: a `LANDED`/`delivered` record
+       is a real delivery; an exit with no record is `DEAD-SILENT` (handle it
+       exactly as under `session collect` below — read the branch read-only, do
+       not re-dispatch blind).
+   - `--notify <your-session>` delivers the event to your coordinator session by
+     socket, so you are told the instant a unit changes state instead of
+     discovering it a poll later.
+   - The watch is a **file, not a process**: it survives a reboot or your session
+     ending. When you come back, recover what fired while you were gone:
+     ```bash
+     agentop events tail --task aipe/<id> --since <when>
+     ```
+     Read `--since <last time you looked>` (an ISO time or a relative `30m`) so
+     nothing that happened off-screen is silently lost.
+
+   **What the watch does NOT do (boundary — MUST NOT cross).** A session in
+   `waiting-approval` is waiting on **a person**: the PE, in a live decision
+   only they can make. Neither you the coordinator nor any other session may
+   answer for it — attaching and approving on the PE's behalf forges a human
+   approval the audit trail depends on being real. The watch tells you a
+   human is needed; getting the human is the only correct response. (This is the
+   same rule that governs a `RUNNING`/`waiting` unit: you surface it, the PE
+   decides.)
 
    Then wait for the wave:
 

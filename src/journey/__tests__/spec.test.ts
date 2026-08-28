@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { renderOrientationTemplate, validateOrientation } from "../spec";
+import { parseOrientationUnits, renderOrientationTemplate, validateOrientation } from "../spec";
 import { readLedger, setJourneySpec } from "../ledger";
 
 test("the template has every canonical section and a scope per unit", () => {
@@ -17,6 +17,28 @@ test("validateOrientation flags missing sections and units", () => {
   expect(check.ok).toBe(false);
   expect(check.missingSections).toContain("Sequencing");
   expect(check.missingUnits).toEqual(["api"]);
+});
+
+test("parseOrientationUnits reads the units back from a rendered template", () => {
+  const md = renderOrientationTemplate("j1", ["platform/core", "web"]);
+  expect(parseOrientationUnits(md)).toEqual(["platform/core", "web"]);
+});
+
+test("parseOrientationUnits only counts `###` under Per-package scope, not prose headings elsewhere", () => {
+  const md = [
+    "# Orientation Spec — j1",
+    "## Problem",
+    "### Confirmados no código",
+    "text",
+    "### A verificar",
+    "more",
+    "## Per-package scope",
+    "### aipe",
+    "- Scope",
+    "## Sequencing",
+    "### wave notes",
+  ].join("\n");
+  expect(parseOrientationUnits(md)).toEqual(["aipe"]);
 });
 
 test("setJourneySpec persists and round-trips through the ledger, preserving dispatches", async () => {

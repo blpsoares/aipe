@@ -5,7 +5,46 @@ import { join } from "node:path";
 import { parse, stringify } from "yaml";
 import type { BrainFile } from "../../context-brain/types";
 import { run as gitRun } from "../../worktree/git";
+import { checkPersonaReadiness } from "../../validate-personas/check";
 import { migrateLayout } from "../run";
+
+/** Add a persona's SKILL.md into `repoRelDir` and a personas.yaml row pointing at `recordedPath`. */
+async function addPersona(
+  dir: string,
+  repo: string,
+  slug: string,
+  name: string,
+  repoRelDir: string,
+  recordedPath: string,
+): Promise<void> {
+  const repoAbs = join(dir, repoRelDir);
+  const skillDir = join(repoAbs, ".claude", "skills", slug);
+  await mkdir(skillDir, { recursive: true });
+  await writeFile(join(skillDir, "SKILL.md"), `---\nname: ${slug}\ndescription: dev for ${repo}\n---\n\nYou are ${name}.\n`, "utf8");
+  // A persona SKILL.md is committed in the repo normally; commit it so the repo
+  // is clean and `migrate-layout` is not blocked on unrelated dirt.
+  if (await exists(join(repoAbs, ".git"))) {
+    await gitRun(["git", "-C", repoAbs, "add", "-A"]);
+    await gitRun(["git", "-C", repoAbs, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "persona"]);
+  }
+  await writeFile(
+    join(dir, ".aipe", "personas.yaml"),
+    stringify({
+      personas: [
+        { name: "Nicolas", role: "coordinator", repo: null, path: null },
+        { name, role: "dev-fullstack", repo, path: recordedPath },
+      ],
+    }),
+    "utf8",
+  );
+}
+
+async function personaPaths(dir: string): Promise<Record<string, string>> {
+  const parsed = parse(await readFile(join(dir, ".aipe", "personas.yaml"), "utf8")) as {
+    personas: { name: string; path: string | null }[];
+  };
+  return Object.fromEntries(parsed.personas.map((p) => [p.name, p.path ?? "(none)"]));
+}
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -219,6 +258,67 @@ test("a repo that was never cloned changes path only, and does not abort the run
       ghost: "./repos/ghost",
     });
     expect(await exists(join(dir, "repos", "ghost"))).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--apply rewrites personas.yaml with the repo, so validate-personas is green afterward", async () => {
+  const dir = await legacyWorkspace(["embark"]);
+  try {
+    // The persona lives inside the repo at the root layout, recorded there too.
+    await addPersona(dir, "embark", "joaquim", "Joaquim", "embark", "./embark/.claude/skills/joaquim");
+
+    // Before: the persona is ready at the root layout.
+    expect((await checkPersonaReadiness(dir)).ready).toBe(1);
+
+    const result = await migrateLayout(dir, { apply: true, allowDirty: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok || !("personaChanges" in result)) throw new Error("expected personaChanges");
+    expect(result.personaChanges).toEqual([
+      { name: "Joaquim", from: "./embark/.claude/skills/joaquim", to: "./repos/embark/.claude/skills/joaquim" },
+    ]);
+
+    // The registry now points where the SKILL.md actually is, and readiness holds.
+    expect((await personaPaths(dir)).Joaquim).toBe("./repos/embark/.claude/skills/joaquim");
+    const readiness = await checkPersonaReadiness(dir);
+    expect(readiness.ready).toBe(readiness.total);
+    expect(readiness.ready).toBe(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("preexisting drift: an already-migrated brain with a stale personas.yaml is detected and repaired, even with zero moves", async () => {
+  const dir = await legacyWorkspace(["embark"]);
+  try {
+    // Simulate a workspace migrated by an older, persona-blind migration: the
+    // brain and the repo are already under repos/, but personas.yaml still points
+    // at the root. planMigration sees nothing to move.
+    const brain: BrainFile = {
+      context: { name: "opvibes", coordinator: "Nicolas" },
+      repos: [{ name: "embark", url: "u", path: "./repos/embark" }],
+    };
+    await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(brain), "utf8");
+    await addPersona(dir, "embark", "joaquim", "Joaquim", join("repos", "embark"), "./embark/.claude/skills/joaquim");
+
+    // The drift is real: validate-personas cannot find the SKILL.md at the stale path.
+    expect((await checkPersonaReadiness(dir)).ready).toBe(0);
+
+    // Dry-run detects it (no repo moves, one persona path).
+    const dry = await migrateLayout(dir, { apply: false, allowDirty: false });
+    expect(dry.ok).toBe(true);
+    if (!dry.ok || !("personaChanges" in dry)) throw new Error("expected personaChanges");
+    expect(dry.plan.moves).toEqual([]);
+    expect(dry.personaChanges).toHaveLength(1);
+    // Dry-run changed nothing on disk.
+    expect((await personaPaths(dir)).Joaquim).toBe("./embark/.claude/skills/joaquim");
+
+    // Apply repairs it and validate-personas goes green.
+    const applied = await migrateLayout(dir, { apply: true, allowDirty: false });
+    expect(applied.ok).toBe(true);
+    expect((await personaPaths(dir)).Joaquim).toBe("./repos/embark/.claude/skills/joaquim");
+    expect((await checkPersonaReadiness(dir)).ready).toBe(1);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

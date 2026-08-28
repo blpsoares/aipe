@@ -209,6 +209,39 @@ test("a dispatch given a relative --workspace still emits absolute coordinates t
   expect(prompt).toContain(`--worktree ${join(dir, ".worktrees", "j1-joaquim")}`);
 });
 
+test("resolves the persona through the brain's repo path under the repos/ layout — no symlink, no bare-name assumption", async () => {
+  // A workspace on the NEW layout: the repo is cloned under repos/, and the
+  // brain records that path. The persona sits where the brain says it does.
+  const dir = await mkdtemp(join(tmpdir(), "aipe-sess-dispatch-"));
+  await mkdir(join(dir, "repos", "embark", ".claude", "skills", "joaquim"), { recursive: true });
+  await writeFile(
+    join(dir, "repos", "embark", ".claude", "skills", "joaquim", "SKILL.md"),
+    "---\nname: joaquim\n---\n\nYou are Joaquim.\n",
+    "utf8",
+  );
+  await mkdir(join(dir, ".aipe"), { recursive: true });
+  await writeFile(
+    join(dir, ".aipe", "brain.yaml"),
+    "context:\n  name: c\n  coordinator: H\nrepos:\n  - name: embark\n    url: u\n    path: ./repos/embark\n",
+    "utf8",
+  );
+  await mkdir(join(dir, ".aipe", "journeys", "j1"), { recursive: true });
+  await writeFile(join(dir, ".aipe", "journeys", "j1", "orientation.md"), "## embark\nFix it.\n", "utf8");
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "aipe/j1/joaquim",
+    worktree: join(dir, ".worktrees", "j1-joaquim"), status: "dispatched",
+    mode: "session", intensity: "normal", harness: "claude-code",
+  });
+
+  const r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: okRunner });
+  expect(r.code).toBe(0);
+  expect(r.lines).not.toContain("ERROR persona: could not read the persona for Joaquim@embark");
+
+  const prompt = await readFile(join(dir, ".aipe", "journeys", "j1", "prompts", "embark.md"), "utf8");
+  expect(prompt).toContain("You are Joaquim.");
+});
+
 test("an orientation.md that exists but is blank is treated as missing, and nothing is recorded or written", async () => {
   const dir = await fixture();
   await writeFile(join(dir, ".aipe", "journeys", "j1", "orientation.md"), "   \n\n", "utf8");

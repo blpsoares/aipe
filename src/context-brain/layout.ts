@@ -43,6 +43,23 @@ export function legacyRepos(repos: { name: string; path: string }[]): string[] {
 }
 
 /**
+ * Pure: the workspace-relative directory of a repo, resolved from the brain —
+ * the single source of truth every path consumer must go through instead of
+ * assuming a repo lives at `<workspace>/<name>`. That assumption is exactly what
+ * broke `session dispatch` under the `repos/` layout: the persona sat at
+ * `repos/<name>/…` while the code looked for it at `<name>/…`.
+ *
+ * Returns `undefined` when no repo carries that name, so the caller decides
+ * whether that is fatal or a legacy fallback (a workspace with no brain on disk
+ * predates the convention and keeps resolving by bare name). Normalized: no
+ * leading `./`, no trailing slash — ready to hand straight to `join`.
+ */
+export function repoDir(repos: { name: string; path: string }[], name: string): string | undefined {
+  const repo = repos.find((r) => r.name === name);
+  return repo ? normalizePath(repo.path) : undefined;
+}
+
+/**
  * Pure: is the whole workspace on the legacy layout?
  *
  * Only true when EVERY repo is at the root — a workspace mid-migration, or one
