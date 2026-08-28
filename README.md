@@ -79,7 +79,8 @@ same view in the browser — see [Web console](#web-console-aipe-serve) below.
 *"quero o status atual das tarefas"*), the coordinator runs `aipe status` and
 renders it rather than assembling a table by hand — the four columns the PE asked
 for (who · what · repo · status), the branch/PR/journey, live-session liveness
-(honest: `alive`/`idle`/`unknown`, never guessed), and **what is waiting on the
+(honest: `alive`/`silent`/`unknown` — never an `idle` inferred from agentop's
+unreliable `activity` field, never guessed), and **what is waiting on the
 PE** (gated, escalated, redirected, no-evidence). Default output is short enough to
 paste into a chat (open work + recently closed, with an explicit elision count);
 `--journey <id>` scopes to one demand, `--all` is the full history, `--json` is the
