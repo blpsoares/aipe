@@ -75,6 +75,23 @@ skill:
 the pipeline, worktrees). The responsive **web console** (`aipe serve`) is the
 same view in the browser — see [Web console](#web-console-aipe-serve) below.
 
+**Status on demand — `aipe status`.** When the PE asks what is running (*"status"*,
+*"quero o status atual das tarefas"*), the coordinator runs `aipe status` and
+renders it rather than assembling a table by hand — the four columns the PE asked
+for (who · what · repo · status), the branch/PR/journey, live-session liveness
+(honest: `alive`/`silent`/`unknown` — never an `idle` inferred from agentop's
+unreliable `activity` field, never guessed), and **what is waiting on the
+PE** (gated, escalated, redirected, no-evidence). Default output is short enough to
+paste into a chat (open work + recently closed, with an explicit elision count);
+`--journey <id>` scopes to one demand, `--all` is the full history, `--json` is the
+same data structured, and `--compact`/`--detailed` pick the density. The PE can opt
+into an **automatic** status table after each dispatch and status change — chosen
+once at onboarding (*"Deseja que a cada progresso de algum agente eu dispare uma
+tabela de status…"*) and changeable any time with `aipe status config --auto
+<true|false> --format <detailed|compact>`; with it off, the on-demand pull still
+works. The same report is injected at SessionStart, so a fresh coordinator session
+knows where the work stands, not only how to work.
+
 ### Portability & publishing
 
 A workspace is a **publishable git repo**: `aipe start` writes an allowlist

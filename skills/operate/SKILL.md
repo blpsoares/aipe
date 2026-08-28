@@ -100,6 +100,38 @@ specialist**, never in you the coordinator. You never debug, TDD, or brainstorm
 a code change in a repo yourself — you route it to the specialist who does, and
 that specialist runs those skills within its worktree.
 
+## Status reports for the PE (never hand-assemble one)
+
+`aipe status` is the deterministic, tested renderer of who is doing what, in
+which repo, at what status — plus what is waiting on the PE. When the PE wants to
+know the state, you run it and render its output; you **NEVER** hand-assemble a
+status table from `session list`/the ledger by eye. A hand-built table is exactly
+where the coordinator got it wrong before (told the PE a PR did not exist when it
+did, called a live specialist finished): the tested CLI removes that class of
+error. Your judgement is *when* to show it; the *data* is the CLI's.
+
+- **Pull — the PE asks (ALWAYS works, regardless of any saved preference).** When
+  the PE signals confusion about what is running, or asks for the state — *"status"*,
+  *"quero o status atual das tarefas"*, *"o que está rodando?"* — run `aipe status`
+  and render it into the chat. For the chat, prefer `aipe status --json` and format
+  it as a markdown table (do not re-derive anything), or paste the aligned table
+  directly.
+- **Format override wins for that one reply (does not touch the brain).** *"status
+  completo"* → add `--detailed`; *"status compacto"* → add `--compact`. The flag
+  overrides the saved preference for this render only (item 10, inv. 3).
+- **Push — after each change (only when the preference says so).** The saved
+  `statusUpdates.auto` preference (in the brain; surfaced to you in the SessionStart
+  awareness as `STATUS UPDATES: auto-push is ON/OFF`) is the switch. When it is
+  **ON**, after each `aipe session dispatch` and each `aipe journey record` that
+  changes state, render `aipe status` (in the saved format) into the chat so the PE
+  can follow along. When it is **OFF**, do not auto-push — but the pull above still
+  works. Changing the preference: `aipe status config --auto <true|false> --format
+  <detailed|compact>` (never edit the brain YAML by hand).
+- **Scope.** Default is short (open work + recently closed) — paste-safe. Use
+  `--journey <id>` for one demand, `--all` only when the PE wants the full history.
+  If the output says rows were elided, tell the PE the count — never imply the short
+  list is everything.
+
 ## Preconditions
 
 Read `.aipe/state.yaml`. Operate only when `brain`, `workspace`, `relationship`

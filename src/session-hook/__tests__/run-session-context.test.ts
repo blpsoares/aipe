@@ -102,6 +102,55 @@ test("runSessionContext inside a declared repo emits persona-mode JSON", async (
   }
 });
 
+test("coordinator JSON carries the item-8 STATE block and the follow-preference (item 10 inv.8)", async () => {
+  const dir = await makeWorkspace();
+  try {
+    const out = await capture(() => runSessionContext(["--workspace", dir]));
+    const ctx = JSON.parse(out).hookSpecificOutput.additionalContext as string;
+    expect(ctx).toContain("STATUS UPDATES: auto-push is OFF"); // brain has no statusUpdates → default off
+    expect(ctx).toContain("CURRENT STATE"); // the item-8 state summary
+    expect(ctx).toContain("aipe status");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the in-repo persona context does NOT get the coordinator STATE block", async () => {
+  const dir = await makeWorkspace();
+  try {
+    const out = await capture(() => runSessionContext(["--workspace", join(dir, "embark")]));
+    const ctx = JSON.parse(out).hookSpecificOutput.additionalContext as string;
+    expect(ctx).not.toContain("CURRENT STATE");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a coordinator session whose brain sets statusUpdates auto:true is told to auto-push", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-rsc-auto-"));
+  try {
+    await mkdir(join(dir, ".aipe"), { recursive: true });
+    await writeFile(
+      join(dir, ".aipe", "brain.yaml"),
+      stringify({
+        context: { name: "opvibes", coordinator: "Nicolas", statusUpdates: { auto: true, format: "compact" } },
+        repos: [{ name: "embark", url: "git@github.com:opvibes/embark.git", path: "./embark" }],
+      }),
+      "utf8",
+    );
+    await writeFile(
+      join(dir, ".aipe", "state.yaml"),
+      stringify({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } }),
+      "utf8",
+    );
+    const out = await capture(() => runSessionContext(["--workspace", dir]));
+    const ctx = JSON.parse(out).hookSpecificOutput.additionalContext as string;
+    expect(ctx).toContain("auto-push is ON (compact)");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("runSessionContext rehydrates a stale workspace before emitting JSON, and stamps the current version", async () => {
   const dir = await makeWorkspace();
   try {

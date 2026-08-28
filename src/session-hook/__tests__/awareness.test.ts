@@ -15,6 +15,7 @@ function fields(over: Partial<Fields>): Fields {
     repos: ["embark", "prontuario"],
     root: "/tmp/aipe-opvibes",
     repoAtCwd: null,
+    statusUpdates: { auto: false, format: "detailed" },
     ...over,
   };
 }

@@ -11,6 +11,27 @@ test("accepts a valid input", () => {
   expect(validateContext(base)).toEqual({ ok: true });
 });
 
+test("accepts a valid statusUpdates preference (item 10)", () => {
+  const r = validateContext({ ...base, context: { name: "opvibes", coordinator: "Nicolas", statusUpdates: { auto: true, format: "compact" } } });
+  expect(r).toEqual({ ok: true });
+});
+
+test("absent statusUpdates is valid (absence = auto:false, item 10 inv.1)", () => {
+  expect(validateContext(base)).toEqual({ ok: true });
+});
+
+test("rejects an invalid statusUpdates.format with a legible error (item 10 inv.6)", () => {
+  const r = validateContext({ ...base, context: { name: "opvibes", coordinator: "Nicolas", statusUpdates: { auto: true, format: "fancy" } } as unknown as ContextInput["context"] });
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.errors.some((e) => e.field === "context.statusUpdates.format")).toBe(true);
+});
+
+test("rejects a non-boolean statusUpdates.auto", () => {
+  const r = validateContext({ ...base, context: { name: "opvibes", coordinator: "Nicolas", statusUpdates: { auto: "yes", format: "detailed" } } as unknown as ContextInput["context"] });
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.errors.some((e) => e.field === "context.statusUpdates.auto")).toBe(true);
+});
+
 test("rejects a context name that is not a slug", () => {
   const r = validateContext({ ...base, context: { name: "Op Vibes", coordinator: "Nicolas" } });
   expect(r.ok).toBe(false);

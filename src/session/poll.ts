@@ -4,7 +4,7 @@
 // slow specialist from one that died without a word.
 import { packageFqid } from "../context-brain/packages";
 import { readLedger } from "../journey/ledger";
-import type { JourneyLedger } from "../journey/types";
+import type { JourneyDispatch, JourneyLedger } from "../journey/types";
 import type { AgentopRunner, UnitPhase, UnitState } from "./types";
 
 const LANDED_STATUSES = new Set(["delivered", "verified", "merged"]);
@@ -72,36 +72,41 @@ export function parseSessionList(stdout: string): Set<string> {
   return ids;
 }
 
-// `reliable` says whether `live` is a TRUSTWORTHY snapshot of who is alive — i.e.
-// `session list` exited 0 and parsed. When it is not reliable, an in-flight unit
-// with a recorded sessionId degrades to `unknown` rather than being guessed
-// `running` (a liveness we cannot verify) or flipped to `dead-silent` (the
-// dangerous direction). Defaults to `true` so the pure callers/tests that hand a
-// known set need not thread the flag. agentop's `activity` field is deliberately
-// NOT consulted anywhere here: it reported `waiting` for a session mid-tool-call,
+// The single honest liveness decision for ONE session-mode dispatch, shared by
+// `classify` (the poll loop) and `aipe status` so both report a session's state
+// by exactly the same rules — item (5): the report must never claim a liveness it
+// cannot stand behind. Ledger-recorded states are decided from the ledger alone,
+// ahead of any liveness check, and take precedence over it:
+//   • `redirected` — the session may still be alive (the PE redirected it via
+//     attach, it did not stop); reading it as `running` would hide that the
+//     approved spec no longer describes what is being built.
+//   • `blocked` — the specialist declared itself stuck; it is waiting on the
+//     coordinator whether or not its session is still up.
+// A session-mode dispatch with no sessionId at all is `dead-silent` regardless of
+// `reliable`: there is no session for liveness to describe — it never launched
+// (or its launch was never recorded) and nothing landed, so inspect-and-re-
+// dispatch is the response either way. When `reliable` is false (the live list
+// was unreadable, or agentop is absent) an in-flight unit degrades to `unknown`
+// rather than being guessed `running` (a liveness we cannot verify) or flipped to
+// `dead-silent` (the dangerous direction). agentop's `activity` field is
+// deliberately NOT consulted: it reported `waiting` for a session mid-tool-call,
 // so it is not a trustworthy ground truth for working-vs-idle.
+export function dispatchPhase(d: JourneyDispatch, live: Set<string>, reliable: boolean): UnitPhase {
+  if (d.status === "redirected") return "redirected";
+  if (d.status === "blocked") return "waiting";
+  if (LANDED_STATUSES.has(d.status)) return "landed";
+  if (!d.sessionId) return "dead-silent";
+  if (!reliable) return "unknown";
+  return live.has(d.sessionId) ? "running" : "dead-silent";
+}
+
+// `reliable` defaults to `true` so the pure callers/tests that hand a known set
+// need not thread the flag.
 export function classify(ledger: JourneyLedger, live: Set<string>, reliable = true): UnitState[] {
   const states: UnitState[] = [];
   for (const d of ledger.dispatches) {
     if (d.mode !== "session") continue;
-    // Ledger-recorded states are decided from the ledger alone, ahead of any
-    // liveness check, and take precedence over it:
-    //   • `redirected` — the session may still be alive (the PE redirected it
-    //     via attach, it did not stop); reading it as `running` would hide that
-    //     the approved spec no longer describes what is being built.
-    //   • `blocked` — the specialist declared itself stuck; it is waiting on the
-    //     coordinator whether or not its session is still up.
-    // A session-mode dispatch with no sessionId at all is `dead-silent`
-    // regardless of `reliable`: there is no session for liveness to describe —
-    // it never launched (or its launch was never recorded) and nothing landed,
-    // so inspect-and-re-dispatch is the response either way.
-    let phase: UnitPhase;
-    if (d.status === "redirected") phase = "redirected";
-    else if (d.status === "blocked") phase = "waiting";
-    else if (LANDED_STATUSES.has(d.status)) phase = "landed";
-    else if (!d.sessionId) phase = "dead-silent";
-    else if (!reliable) phase = "unknown";
-    else phase = live.has(d.sessionId) ? "running" : "dead-silent";
+    const phase = dispatchPhase(d, live, reliable);
 
     states.push({
       fqid: packageFqid(d.repo, d.package),
