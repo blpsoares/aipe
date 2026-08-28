@@ -48,15 +48,36 @@ analyzing code — this skill records **factual knowledge only**; it never reads
      whole list at once. `kind` is also optional — the functional category of the
      unit (`api`, `web`, `lib`, `service`), shown as the "type" in the web console;
      when omitted it is inferred from the stack/name, so only set it to override.
+   - **Status-update preference** — two chained questions, one at a time like the
+     rest of the form. Ask **P1** verbatim: *"Deseja que a cada progresso de algum
+     agente eu dispare uma tabela de status para que você possa acompanhar?"*
+     - **If YES** → ask **P2** (single choice) verbatim: *"Qual formato?"* —
+       **detalhado** (várias colunas, informação completa) or **compacto** (menos
+       informação, porém ainda útil). Record
+       `statusUpdates: { "auto": true, "format": "detailed" | "compact" }`.
+     - **If NO** → record `statusUpdates: { "auto": false, "format": "detailed" }`,
+       and you **MUST answer the PE** so the door stays open — a silent "no" leaves
+       them thinking the feature is gone: tell them that at any moment they can pull
+       the table by saying *"status"* or *"quero o status atual das tarefas"*, and
+       can qualify the format with *"status completo"* or *"status compacto"*. The
+       voice pull ALWAYS works; this preference governs only the automatic push.
+     - Omitting the field is equivalent to `auto:false` — but **ask** so the choice
+       is the PE's, not a silent default. To change it later without redoing
+       onboarding: `aipe status config --auto <true|false> --format <detailed|compact>`.
 
 3. **Assemble the JSON** in `ContextInput` format (`name` = the folder name
    minus `aipe-`):
    ```json
    {
-     "context": { "name": "<folder-name-without-aipe->", "coordinator": "<name>", "pe": "<optional>" },
+     "context": {
+       "name": "<folder-name-without-aipe->", "coordinator": "<name>", "pe": "<optional>",
+       "statusUpdates": { "auto": true, "format": "detailed" }
+     },
      "repos": [ { "name": "...", "url": "...", "stack": ["..."] } ]
    }
    ```
+   (`statusUpdates` is optional — omit the whole key when the PE said no and you
+   prefer not to write it; absence is read as `auto:false`.)
 
    **Monorepos.** If a repo is a monorepo, give it `packages` — the units of work
    below the repo (each gets its own specialists, worktree, PR and dispatch, and

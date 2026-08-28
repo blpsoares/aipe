@@ -6,6 +6,7 @@
 // one render (item 10, invariant 3) without touching the brain.
 import { realRunner } from "../session/runner";
 import type { AgentopRunner } from "../session/types";
+import { configCommand } from "./config";
 import { loadReport } from "./load";
 import { renderJson, renderTable, supportsColor } from "./render";
 import type { StatusFormat, StatusScope } from "./types";
@@ -42,9 +43,17 @@ const HELP = [
   "",
   "  --workspace <dir>  workspace directory (defaults to the current directory)",
   "  --help, -h         show this help",
+  "",
+  "Change the saved auto-update preference (no need to redo onboarding):",
+  "  aipe status config                       show the current setting",
+  "  aipe status config --auto true|false     turn the auto-push on/off",
+  "  aipe status config --format detailed|compact   set the pushed format",
 ].join("\n");
 
 export async function run(args: string[], deps: StatusDeps = {}): Promise<number> {
+  if (args[0] === "config") {
+    return configCommand(args.slice(1));
+  }
   if (args.includes("--help") || args.includes("-h")) {
     console.log(HELP);
     return 0;

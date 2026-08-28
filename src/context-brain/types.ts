@@ -27,12 +27,25 @@ export interface RepoEntry {
  */
 export type RepoInput = Omit<RepoEntry, "path"> & { path?: string };
 
+export type StatusUpdatesFormat = "detailed" | "compact";
+
+// The (10) follow-preference, chosen once at onboarding. `auto` is the switch for
+// item 9 (push a status table after each change); `format` is which of the two
+// renderings that push uses. ABSENT on every brain written before this feature —
+// absence IS `auto:false` — so it is optional here and never injected by a
+// re-write of a brain that does not carry it.
+export interface StatusUpdatesConfig {
+  auto: boolean;
+  format: StatusUpdatesFormat;
+}
+
 export interface ContextMeta {
   name: string;
   coordinator: string;
   // The PE's own name (optional — a missing value degrades gracefully:
   // session-hook awareness just omits the "You work for <pe>" clause).
   pe?: string;
+  statusUpdates?: StatusUpdatesConfig;
 }
 
 export interface BrainFile {

@@ -41,6 +41,29 @@ test("addRepo appends to brain and marks relationship+specialists pending", asyn
   }
 });
 
+test("addRepo preserves an existing statusUpdates preference (item 10 inv.4 — no re-ask, no loss)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-add-su-"));
+  try {
+    const brain: BrainFile = {
+      context: { name: "opvibes", coordinator: "Nicolas", statusUpdates: { auto: true, format: "compact" } },
+      repos: [{ name: "embark", url: "u1", path: "./embark" }],
+    };
+    await mkdir(join(dir, ".aipe"), { recursive: true });
+    await writeFile(join(dir, ".aipe", "brain.yaml"), stringify(brain), "utf8");
+    await writeFile(
+      join(dir, ".aipe", "state.yaml"),
+      stringify({ phase: { brain: "done", workspace: "done", relationship: "done", specialists: "done" } }),
+      "utf8",
+    );
+    expect((await addRepo(dir, { name: "prontuario", url: "u2", path: "./prontuario" })).ok).toBe(true);
+    const after = parse(await readFile(join(dir, ".aipe", "brain.yaml"), "utf8"));
+    expect(after.context.statusUpdates).toEqual({ auto: true, format: "compact" });
+    expect(after.repos.map((r: { name: string }) => r.name)).toEqual(["embark", "prontuario"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("addRepo rejects duplicate name and duplicate path", async () => {
   const dir = await ws();
   try {
