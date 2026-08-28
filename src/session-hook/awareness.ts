@@ -37,6 +37,22 @@ const QA_GATE =
   "QA GATE: after each dev delivery, dispatch that repo's QA as a gate before anything is reported \"done\" " +
   "to the PE — only the QA verdict clears a unit as delivered.";
 
+// Item 10, inv. 8 — the coordinator must know the follow-preference to know
+// whether to PUSH a status table after each change (item 9). The PULL always
+// works regardless: the PE can ask for the table any time by saying "status".
+function statusPrefClause(f: Fields): string {
+  const p = f.statusUpdates;
+  const setting = p.auto ? `ON (${p.format})` : "OFF";
+  return (
+    `STATUS UPDATES: auto-push is ${setting}. ` +
+    (p.auto
+      ? `After each dispatch and each status change, render \`aipe status\` (${p.format}) into the chat. `
+      : "Do not auto-push status tables. ") +
+    'The PE can ALWAYS pull one on demand — "status" / "quero o status atual das tarefas" (and qualify with ' +
+    '"status completo" or "status compacto"): run `aipe status` and render it.'
+  );
+}
+
 function nextStep(f: Fields): string {
   if (f.phaseWorkspace !== "done") return "/make-workspace";
   if (f.phaseRelationship !== "done") return "/relationship";
@@ -60,7 +76,7 @@ export function buildAwareness(f: Fields): string {
       "When the PE brings a demand, run the /operate skill: decompose it, dispatch each repo's specialist " +
       "in parallel (cap of 16; the same-repo law serializes, distinct repos run in parallel), isolate each " +
       "in its own worktree, escalate cross-repo matters to the PE, and each specialist opens the final PR. " +
-      `${GATE} ${ENVELOPE} ${QA_GATE} ` +
+      `${GATE} ${ENVELOPE} ${QA_GATE} ${statusPrefClause(f)} ` +
       `Ready to receive requests. ${OPTOUT}`
     );
   }
@@ -127,9 +143,17 @@ export function buildPersonaAwareness(
   );
 }
 
-export function renderSessionContext(f: Fields, personaCtx?: PersonaContext, paths?: PersonaPaths): string {
-  const additionalContext =
+export function renderSessionContext(
+  f: Fields,
+  personaCtx?: PersonaContext,
+  paths?: PersonaPaths,
+  stateBlock?: string,
+): string {
+  const base =
     f.repoAtCwd && personaCtx ? buildPersonaAwareness(f, f.repoAtCwd, personaCtx, paths) : buildAwareness(f);
+  // The item-8 STATE block is appended only to the coordinator awareness (never
+  // the in-repo persona context), and only when the caller could assemble it.
+  const additionalContext = stateBlock && !(f.repoAtCwd && personaCtx) ? `${base}\n\n${stateBlock}` : base;
   return JSON.stringify(
     {
       hookSpecificOutput: {

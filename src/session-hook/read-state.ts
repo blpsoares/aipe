@@ -9,6 +9,10 @@ import { personaLocations } from "../harness/persona-install";
 import { resolveAdapter } from "../harness/registry";
 import { VERSION } from "../cli";
 import { ensureRehydrated } from "./auto-rehydrate";
+import { resolveStatusPref } from "../status/pref";
+import { DEFAULT_STATUS_PREF, type StatusUpdatesPref } from "../status/types";
+import { loadReport } from "../status/load";
+import { renderStateBlock } from "../status/context-block";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -46,6 +50,14 @@ export interface Fields {
   repos: string[];
   root: string;
   repoAtCwd: RepoAtCwd | null;
+  // The (10) follow-preference, read from brain.context.statusUpdates. Absent
+  // field ⇒ `auto:false` (backward compatible with every brain written before
+  // this feature). Carried on Fields so the coordinator learns it from the
+  // SessionStart awareness (item 10, inv. 8) even if the richer state block
+  // (item 8) cannot be assembled. It is deliberately NOT emitted by
+  // `formatFields` — that KEY=value block stays byte-for-byte what the hook
+  // parses.
+  statusUpdates: StatusUpdatesPref;
 }
 
 const MAX_UPWARD_DEPTH = 8;
@@ -136,6 +148,7 @@ function absentFields(): Fields {
     repos: [],
     root: "",
     repoAtCwd: null,
+    statusUpdates: DEFAULT_STATUS_PREF,
   };
 }
 
@@ -176,6 +189,7 @@ export async function readState(cwd: string): Promise<Fields> {
     repos,
     root,
     repoAtCwd: repoAtCwd(root, cwd, repoEntries),
+    statusUpdates: resolveStatusPref(brain.context),
   };
 }
 
@@ -213,9 +227,30 @@ export async function runSessionContext(args: string[]): Promise<number> {
     const adapter = await resolveAdapter(fields.root);
     console.log(renderSessionContext(fields, ctx, personaLocations(adapter)));
   } else {
-    console.log(renderSessionContext(fields));
+    // Item 8 — the coordinator session also gets a STATE block (where the work
+    // is). It must NEVER break session open, so it is fully guarded: any failure
+    // degrades to today's context, and it does not shell out to agentop
+    // (`liveness:false`) so the hook stays fast.
+    console.log(renderSessionContext(fields, undefined, undefined, await safeStateBlock(fields)));
   }
   return 0;
+}
+
+// The item-8 state block, or undefined when it cannot or should not be built:
+// before onboarding is complete there is no coordinator to inject it for, a
+// missing root/brain has nothing to summarize, and any thrown error degrades to
+// no-block rather than a broken session.
+async function safeStateBlock(fields: Fields): Promise<string | undefined> {
+  if (fields.brain !== "present" || !fields.root) return undefined;
+  const onboarded =
+    fields.phaseWorkspace === "done" && fields.phaseRelationship === "done" && fields.phaseSpecialists === "done";
+  if (!onboarded) return undefined;
+  try {
+    const report = await loadReport(fields.root, { scope: "all", liveness: false });
+    return renderStateBlock(report);
+  } catch {
+    return undefined;
+  }
 }
 
 if (import.meta.main) {
