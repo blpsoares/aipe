@@ -593,6 +593,13 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .acol-empty { padding: 18px 8px; text-align: center; }
 
 /* The card: seven fields, primary legible, envelope by-exception (SDD §8). */
+/* flex:0 0 auto is LOAD-BEARING: .acol-body is a flex column, so without it the
+   flexbox SHRINKS every card toward zero height (a long column squeezed 62 cards
+   to ~2px each — empty cards, dead scroll, clipped content) instead of letting
+   them keep their height and the column scroll. Never remove it. Guarded in
+   activity-layout.test.ts because happy-dom computes no layout, so a view test
+   cannot catch this collapse. */
+.acol-body .acard { flex: 0 0 auto; }
 .acard { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid transparent; border-radius: 10px; box-shadow: var(--shadow-1); overflow: hidden; }
 .acard.actor-you { border-left-color: rgb(var(--st-escalated)); }
 .acard.actor-dev { border-left-color: rgb(var(--st-failed)); }
