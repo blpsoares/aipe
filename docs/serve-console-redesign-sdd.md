@@ -423,18 +423,16 @@ canônico, não no status cru:
 
 ## 13. Fase 2 do build — absorver a #39 + os requisitos novos do PE (pós-aprovação)
 
-> **Sequenciamento (imposto pelo coordenador).** A PR #39 (tela **Atividade**,
-> jornada `dp`) está **em gate agora** e este redesign **funde `activity` em Agora e
-> deleta `activity.view`** — colisão direta. **Nenhum novo build de UI começa até a
-> #39 mesclar**; o coordenador libera.
+> **Sequenciamento — RESOLVIDO.** A **PR #34 (Fase 1) já está em `main`**
+> (commit `cc3a5d5`, 15:30). A branch da **#39 já contém esse commit** (merge-base
+> confirmado pelo coordenador) — **sem conflito, sem rebase**. O descampasso de
+> timeline (a #34 caiu antes de o coordenador impor o hold) ficou sem custo.
 >
-> **Descompasso registrado (ledger `redirected`):** a PR **#34 já foi entregue**
-> (CI verde, `delivered`) ANTES desta condição chegar. Como #34 remove `activity.view`
-> e #39 o altera, **as duas se chocam**. Reconciliação proposta, à decisão do
-> coordenador: **manter #34 sem merge; quando a #39 cair, rebasear #34 sobre `main` e
-> absorver os deliverables da #39** (não reescrever por cima de código em revisão).
-> Alternativa: #39 mescla, #34 vira a Fase-2 que a incorpora. O coordenador decide a
-> ordem de merge.
+> **A Fase 2 continua GATED na #39.** A #39 (tela **Atividade**, jornada `dp`) está
+> **em gate agora** com o Mike, que já confirmou um **defeito bloqueante**: a coluna
+> **Integrados renderiza 62 cards cortados no cabeçalho, com conteúdo vazando entre
+> eles** — exatamente o print do PE. Ela **vai reprovar e voltar pro dev**. **Nenhum
+> build da Fase 2 começa até a #39 mesclar de verdade**; o coordenador dá o go.
 
 Cinco pedidos do PE desta semana que o mapa passa a refletir (implementados na
 Fase 2, após a #39):
@@ -446,6 +444,16 @@ mesmo sinal que a #39/`journey reconcile` computa contra o provedor. Isto corrig
 §11.2, que hoje descarta `merged`/`removed` do quadro. Regra: um card só entra em
 Integrados quando o **PR está de fato mesclado**, não quando alguém escreveu
 `merged` à mão. Consome esse cálculo; não re-deriva.
+
+> **Aprendizado do defeito da #39 (bloqueante, achado pelo Mike):** a coluna
+> Integrados dela renderizou **62 cards cortados no cabeçalho, com conteúdo vazando
+> entre eles**. A nossa Integrados nasce imune a isso: é a coluna com **maior
+> volume** (todo histórico mesclado), então (a) o **cabeçalho da coluna é sticky e
+> não sobrepõe cards** (o corpo tem seu próprio `overflow-y`, §13.3), (b) cada card
+> se **contém** (sem vazamento — `min-width:0`, `overflow:hidden` no card, texto com
+> ellipsis), e (c) por padrão a coluna mostra os **N mais recentes** com um "ver
+> todos", em vez de despejar 62+ de uma vez. Teste dedicado com ≥60 cards provando
+> que nenhum vaza e o cabeçalho não colide.
 
 ### 13.2 — Card de **7 campos**, tudo junto
 O card carrega, sem trocar de tela, **sete campos**: (1) tarefa, (2) agente/persona,
@@ -461,9 +469,34 @@ horizontal (invariante do §7 preservada: conteúdo largo rola no próprio cont�
 
 ### 13.4 — **Paleta do site**
 O sistema visual migra da paleta "ops" esmeralda atual para a **paleta do site de
-marketing** (fonte da verdade: o repo do site — matéria **cross-repo**, os valores
-vêm do coordenador). Só `tokens.css` muda; todo o resto já usa tokens, então a troca
-é de valores, não de estrutura. Ambos os temas continuam de primeira classe.
+marketing**. Fonte da verdade: `packages/aipe-site/src/index.css` (repo do site) —
+**não invadir o repo**, só copiar os valores. O coordenador extraiu; são **CSS vars
+em RGB-triplo** (usar `rgb(var(--x))`). Só `tokens.css` muda; todo o resto já usa
+tokens, então a troca é de valores, não de estrutura. Ambos os temas de primeira
+classe. O marca (`--brand`) é **violeta**, não mais esmeralda.
+
+**Tema CLARO:**
+`--bg 247 248 251` · `--surface-1 255 255 255` · `--surface-2 240 242 248` ·
+`--surface-3 231 234 243` · `--line 216 221 232` · `--line-soft 233 236 244` ·
+`--text 20 21 31` · `--muted 74 78 96` · `--faint 118 123 143` ·
+`--brand 98 66 224` · `--brand-strong 82 52 206`.
+Estados (claro): `dispatched 28 104 214` · `running 168 106 8` ·
+`delivered 8 128 116` · `verified 22 143 57` · `failed 200 38 38` ·
+`escalated 188 80 12` · `merged 132 58 226` · `redirected 12 130 148` ·
+`removed 92 98 118`.
+
+**Tema ESCURO:**
+`--bg 8 9 15` · `--surface-1 16 17 26` · `--surface-2 23 25 38` ·
+`--surface-3 32 35 52` · `--line 40 43 60` · `--line-soft 26 28 42` ·
+`--text 233 234 242` · `--muted 162 165 186` · `--faint 122 126 150` ·
+`--brand 141 125 255` · `--brand-strong 172 158 255`.
+Estados (escuro): `dispatched 76 154 255` · `running 245 172 60` ·
+`delivered 32 202 182` · `verified 61 210 100` · **o restante do ramo escuro (failed/
+escalated/merged/redirected/removed) lê-se do mesmo arquivo** na Fase 2.
+
+> **Regra da casa (inegociável):** um estado **NUNCA** é comunicado só por cor —
+> **sempre cor + glifo + rótulo**. (A Fase 1 já segue isto: `StatusIcon` + label; a
+> Fase 2 preserva ao trocar a paleta, e cobre daltonismo por construção.)
 
 ### 13.5 — **Precisa de você** dividido por PÚBLICO; colunas vazias somem
 A atenção deixa de ser um balde só e passa a **separar por quem age**:
