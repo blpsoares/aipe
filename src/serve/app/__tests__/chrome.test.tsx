@@ -19,51 +19,47 @@ afterEach(() => {
   cleanup();
   setLang("en");
   counts.value = { hired: 0, active: 0, delivered: 0, escalated: 0, redirected: 0, idle: 0, journeys: 0, repos: 0 };
-  navigate("/overview");
+  navigate("/");
   document.documentElement.removeAttribute("data-theme");
   location.hash = "";
 });
 
-test("routes.generated.ts has all view stubs, order-sorted, the Floor first, no terminal", () => {
+test("routes.generated.ts: the 3 primary screens + 2 footer, order-sorted, Agora first, no terminal", () => {
   expect(appRoutes.map((r) => r.path)).toEqual([
-    "/", // The Floor — the activity-oriented landing (nav.order -1)
-    "/overview",
-    "/org",
-    "/pipeline",
-    "/team",
-    "/toolbox",
-    "/activity",
-    "/monitor",
-    "/settings",
-    "/status",
+    "/", // Agora — the landing (nav.order 0)
+    "/team", // Equipe
+    "/history", // Histórico
+    "/guide", // Glossário (footer)
+    "/settings", // Ajustes (footer)
   ]);
   expect(appRoutes.some((r) => r.path === "/terminal")).toBe(false);
 });
 
-test("Sidebar renders one nav-i per route.nav, in nav.order — settings in the footer, not the main list", () => {
+test("Sidebar renders the primary nav in order; Glossary + Settings in the footer", () => {
   const { container } = render(<Sidebar />);
   const mainLabels = [...container.querySelectorAll(".sidebar > .nav-i")].map((b) => b.textContent);
-  const nonSettings = appRoutes.filter((r) => r.path !== "/settings");
-  expect(mainLabels).toEqual(nonSettings.map((r) => t(r.nav.label)));
+  const primary = appRoutes.filter((r) => r.nav.group !== "footer");
+  expect(mainLabels).toEqual(primary.map((r) => t(r.nav.label)));
   // Icons are inline SVGs now (5.2) — every nav item carries one with an accessible name.
   for (const btn of container.querySelectorAll(".sidebar > .nav-i")) {
     const svg = btn.querySelector("svg");
     expect(svg).not.toBeNull();
     expect(svg!.getAttribute("aria-label")).toBeTruthy();
   }
-  // Settings lives in .sb-foot, alongside Collapse.
+  // Footer = Glossary + Settings + Collapse.
   const footButtons = [...container.querySelectorAll(".sb-foot > button")];
-  expect(footButtons.length).toBe(2);
-  expect(footButtons[0]!.textContent).toContain(t("nav_settings"));
+  expect(footButtons.length).toBe(3);
+  expect(footButtons[0]!.textContent).toContain(t("nav_guide"));
+  expect(footButtons[1]!.textContent).toContain(t("nav_settings"));
   expect(container.querySelector("#collapseBtn")).toBeTruthy();
 });
 
 test("Sidebar marks the active route with .on", () => {
-  navigate("/pipeline");
+  navigate("/team");
   const { container } = render(<Sidebar />);
   const on = container.querySelector(".nav-i.on");
   expect(on).toBeTruthy();
-  expect(on!.textContent).toContain(t("nav_pipeline"));
+  expect(on!.textContent).toContain(t("nav_team"));
 });
 
 test("Sidebar shows the attention badge on Activity only when there is attention; crit when any critical", () => {
@@ -87,14 +83,12 @@ test("Sidebar shows the attention badge on Activity only when there is attention
   expect(badge!.classList.contains("crit")).toBe(true);
 });
 
-test("BottomNav lists only overview/pipeline/team/activity/monitor, in that order", () => {
+test("BottomNav lists the 3 primary screens (Agora / Equipe / Histórico), in order", () => {
   const { container } = render(<BottomNav />);
   const labels = [...container.querySelectorAll("#tabbar button")].map((b) => b.textContent);
-  const expected = ["overview", "pipeline", "team", "activity", "monitor"].map((p) => {
-    const r = appRoutes.find((x) => x.path === "/" + p)!;
-    return t(r.nav.label);
-  });
+  const expected = appRoutes.filter((r) => r.nav.group !== "footer").map((r) => t(r.nav.label));
   expect(labels).toEqual(expected);
+  expect(labels).toEqual([t("nav_now"), t("nav_team"), t("nav_history")]);
 });
 
 test("BottomNav shows the attention dot on Activity only when there is attention", () => {
@@ -109,7 +103,7 @@ test("BottomNav shows the attention dot on Activity only when there is attention
 test("LangSwitch reads the lang signal and calls setLang; Sidebar labels update reactively (no manual re-render)", () => {
   const { container } = render(<Sidebar />);
   const navLabels = () => [...container.querySelectorAll(".nav-i")].map((b) => b.textContent).join("|");
-  expect(navLabels()).toContain("Overview");
+  expect(navLabels()).toContain("Now");
 
   const langEl = render(<LangSwitch />).container;
   fireEvent.click(langEl.querySelector('[data-lang="pt"]')!);
@@ -117,9 +111,9 @@ test("LangSwitch reads the lang signal and calls setLang; Sidebar labels update 
 
   // No rerender() call: @preact/signals re-renders the already-mounted Sidebar
   // because its render body reads t()/lang.value. If reactivity were broken this
-  // assertion would fail (the Overview label would still read "Overview").
-  expect(navLabels()).toContain("Visão geral");
-  expect(t("nav_overview")).toBe("Visão geral");
+  // assertion would fail (the "Now" label would still read "Now").
+  expect(navLabels()).toContain("Agora");
+  expect(t("nav_now")).toBe("Agora");
 });
 
 test("LangSwitch marks the active language button", () => {
@@ -150,44 +144,43 @@ test("ThemeToggle cycles data-theme dark -> light -> auto -> dark", () => {
 
 test("Topbar title reflects the current route, navigated by hash", () => {
   const { container, rerender } = render(<Topbar />);
-  expect(container.querySelector("#tbTitle")!.textContent).toBe(t("nav_overview"));
+  expect(container.querySelector("#tbTitle")!.textContent).toBe(t("nav_now"));
 
-  location.hash = "#/monitor";
+  location.hash = "#/team";
   window.dispatchEvent(new Event("hashchange"));
-  expect(currentPath.value).toBe("/monitor");
+  expect(currentPath.value).toBe("/team");
 
   rerender(<Topbar />);
-  expect(container.querySelector("#tbTitle")!.textContent).toBe(t("nav_monitor"));
+  expect(container.querySelector("#tbTitle")!.textContent).toBe(t("nav_team"));
 });
 
 test("navigate() persists to localStorage and mirrors into location.hash", () => {
-  navigate("/toolbox");
-  expect(localStorage.getItem("aipe-view")).toBe("toolbox");
-  expect(location.hash).toBe("#/toolbox");
+  navigate("/team");
+  expect(localStorage.getItem("aipe-view")).toBe("team");
+  expect(location.hash).toBe("#/team");
 });
 
-test("navigate() falls back to /overview for an unknown path", () => {
+test("navigate() falls back to Agora (/) for an unknown path", () => {
   navigate("/does-not-exist");
-  expect(currentPath.value).toBe("/overview");
+  expect(currentPath.value).toBe("/");
 });
 
 test("<App> switches the rendered #view content when navigate() changes the route", () => {
-  navigate("/overview");
+  navigate("/");
   const { container } = render(<App />);
   const view = container.querySelector("#view")!;
   expect(view).toBeTruthy();
-  // Overview is a real view (Task 11): it renders a `.hero`, not the
-  // `.view-h` stub heading. Pipeline is still a stub (no `.hero`/`.kpis`).
-  expect(view.querySelector(".hero")).toBeTruthy();
-  expect(view.querySelector(".kpis")).toBeTruthy();
+  // Agora renders its urgency zones (the "Needs you" zone) and its own heading.
+  expect(view.querySelector(".zone-needs")).toBeTruthy();
+  expect(view.querySelector(".view-h")!.textContent).toBe(t("nav_now"));
 
   // act() flushes the signal-scheduled re-render (a bare navigate() only marks
   // the currentPath signal dirty; the batched re-render lands on the next tick).
-  act(() => navigate("/pipeline"));
+  act(() => navigate("/team"));
 
-  // The view area actually re-rendered a different component — overview content
-  // is gone, pipeline content is now mounted (not just currentPath/highlight).
-  expect(view.querySelector(".hero")).toBeNull();
-  expect(view.querySelector(".view-h")!.textContent).toBe(t("nav_pipeline"));
-  expect(view.textContent).toContain(t("nav_pipeline"));
+  // The view area actually re-rendered a different component — Agora's zones are
+  // gone, Equipe's org section is now mounted (not just currentPath/highlight).
+  expect(view.querySelector(".zone-needs")).toBeNull();
+  expect(view.querySelector(".org-stage")).toBeTruthy();
+  expect(view.querySelector(".view-h")!.textContent).toBe(t("nav_team"));
 });

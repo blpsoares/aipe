@@ -19,6 +19,16 @@ export interface OrgTransform {
 
 export const orgTransform: Signal<OrgTransform> = signal({ s: 1, x: 0, y: 0 });
 
+export interface Size {
+  width: number;
+  height: number;
+}
+
+// The org SVG's natural (unscaled) content size, published by OrgChart on every
+// render. Module-level so the toolbar's reset and the ResizeObserver can re-fit
+// without reaching into the component — the same reason orgTransform lives here.
+export const orgContent: Signal<Size> = signal<Size>({ width: 0, height: 0 });
+
 // app.html:912
 export function orgColor(status: string | undefined): string {
   if (status === "active") return "var(--sky)";
@@ -79,11 +89,6 @@ export function orgWorkersFor(workers: Worker[], name: string): Worker[] {
   return orgSortByRole(scoped);
 }
 
-interface Size {
-  width: number;
-  height: number;
-}
-
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 3;
 
@@ -91,11 +96,48 @@ function clampScale(s: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s));
 }
 
+// The default breathing room, in px, between the org content and the viewport
+// edges when fitting. Kept modest so the graph fills the surface but never
+// touches the edge.
+const FIT_MARGIN = 24;
+
+/**
+ * The transform that makes `content` fit inside `viewport` with `margin` px of
+ * padding, centred, WITHOUT ever cropping (no scroll H nor V) — the fix for the
+ * old fixed `s:1` start that overflowed (runtime/org.ts, j-20260827-jo).
+ *
+ * The scale is the smaller of the two axis ratios, capped at 1 so a small org
+ * stays at natural size rather than being blown up. Degenerate inputs (a zero
+ * dimension anywhere — e.g. measuring before layout) collapse to identity, so
+ * callers never divide by zero or emit NaN. Scale is clamped to the same
+ * [MIN,MAX] band as manual zoom; the wrap's `overflow:hidden` clips the extreme
+ * case where even MIN cannot contain a huge graph (never reached at real sizes).
+ */
+export function fitTransform(content: Size, viewport: Size, margin = FIT_MARGIN): OrgTransform {
+  if (content.width <= 0 || content.height <= 0 || viewport.width <= 0 || viewport.height <= 0) {
+    return { s: 1, x: 0, y: 0 };
+  }
+  const availW = Math.max(0, viewport.width - margin * 2);
+  const availH = Math.max(0, viewport.height - margin * 2);
+  const s = clampScale(Math.min(availW / content.width, availH / content.height, 1));
+  // The SVG is rendered as `translate(x,y) scale(s)` with transform-origin 0 0,
+  // so content point (px,py) lands at (x+px·s, y+py·s). Centre both axes.
+  const x = (viewport.width - content.width * s) / 2;
+  const y = (viewport.height - content.height * s) / 2;
+  return { s, x, y };
+}
+
+/** Re-frame the org to fit `viewport`, reading the published content size. */
+export function fitToView(viewport: Size, margin = FIT_MARGIN): void {
+  orgTransform.value = fitTransform(orgContent.value, viewport, margin);
+}
+
 // app.html:1021-1027 (orgZoom). dir: -1 out, +1 in, 0 reset. Zooms about the
-// centre of `size` (the org wrap's bounding rect).
-export function zoomBy(dir: number, size: Size = { width: 0, height: 0 }): void {
+// centre of `size` (the org wrap's bounding rect). Reset (dir 0) RE-FRAMES to
+// fit — never a blind return to s:1 — so "reset" means "make it all fit again".
+export function zoomBy(dir: number, size: Size = { width: 0, height: 0 }, margin = FIT_MARGIN): void {
   if (dir === 0) {
-    orgTransform.value = { s: 1, x: 0, y: 0 };
+    fitToView(size, margin);
     return;
   }
   const cur = orgTransform.value;

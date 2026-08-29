@@ -12,7 +12,7 @@ import { Fragment } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { snapshot, openWorkerName, type Repo, type Worker } from "../runtime/store";
 import { t } from "../runtime/i18n";
-import { orgQuery, orgTransform, orgColor, orgRepoVisible, orgWorkersFor, zoomAtPoint } from "../runtime/org";
+import { orgQuery, orgTransform, orgColor, orgRepoVisible, orgWorkersFor, zoomAtPoint, orgContent, fitToView } from "../runtime/org";
 
 // app.html:927
 const yC = 42;
@@ -177,8 +177,10 @@ export function OrgChart() {
       drag = null;
       wrap!.style.cursor = "grab";
     }
+    // Double-click RE-FRAMES to fit (same as the toolbar reset), never a blind
+    // jump back to s:1.
     function onDblClick() {
-      orgTransform.value = { s: 1, x: 0, y: 0 };
+      fitToView(wrap!.getBoundingClientRect());
     }
 
     wrap.addEventListener("wheel", onWheel, { passive: false });
@@ -186,29 +188,30 @@ export function OrgChart() {
     wrap.addEventListener("pointermove", onPointerMove);
     wrap.addEventListener("pointerup", onPointerUp);
     wrap.addEventListener("dblclick", onDblClick);
+
+    // Recompute the fit whenever the viewport changes size (the spec's "resize
+    // recalcula"). ResizeObserver may be absent in the test DOM — guard it.
+    let ro: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => fitToView(wrap!.getBoundingClientRect()));
+      ro.observe(wrap);
+    }
     return () => {
       wrap.removeEventListener("wheel", onWheel);
       wrap.removeEventListener("pointerdown", onPointerDown);
       wrap.removeEventListener("pointermove", onPointerMove);
       wrap.removeEventListener("pointerup", onPointerUp);
       wrap.removeEventListener("dblclick", onDblClick);
+      ro?.disconnect();
     };
   }, []);
 
   const repos = s.repos.filter((r) => orgRepoVisible(s.workers, r.name)).map((r) => r.name);
 
-  if (repos.length === 0) {
-    return (
-      <div class="orgwrap" id="orgwrap" ref={wrapRef}>
-        <div class="sub" style={{ padding: "24px 12px" }}>
-          {t("org_nomatch")}
-        </div>
-      </div>
-    );
-  }
-
   // app.html:929-940 — per repo, group specialists by package (w.package);
-  // "" = repo-level. Each package becomes a labelled cluster.
+  // "" = repo-level. Each package becomes a labelled cluster. Computed BEFORE the
+  // empty-repos early return (below) so the fit effect can depend on the content
+  // size in every render, keeping the hook order stable.
   const colsData = repos.map((r) => {
     const info = s.repos.find((x) => x.name === r) as Repo;
     const mono = !!(info.packages && info.packages.length > 0);
@@ -255,6 +258,28 @@ export function OrgChart() {
   const totalW = Math.max(560, x + 24);
   const totalH = Math.max(yS0, ...cols.map((c) => c.botY)) + 16;
   const cxAll = totalW / 2;
+
+  // Publish the SVG's natural size and fit it into the viewport on load and
+  // whenever the graph's dimensions change (a repo/specialist added). This is
+  // what makes the org "caber na viewport no load" instead of starting at the
+  // fixed s:1 that overflowed. Runs every render (before the early return) so the
+  // hook order is stable even when the filter empties the graph.
+  useEffect(() => {
+    orgContent.value = { width: totalW, height: totalH };
+    const wrap = wrapRef.current;
+    if (wrap) fitToView(wrap.getBoundingClientRect());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalW, totalH]);
+
+  if (repos.length === 0) {
+    return (
+      <div class="orgwrap" id="orgwrap" ref={wrapRef}>
+        <div class="sub" style={{ padding: "24px 12px" }}>
+          {t("org_nomatch")}
+        </div>
+      </div>
+    );
+  }
 
   // app.html:944-946 — cross-repo relation edges (drawn first, behind the
   // link/node layers).

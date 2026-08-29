@@ -10,8 +10,10 @@ export interface NavInfo {
   icon: string;
   /** Sort key — routes.generated.ts orders by this. */
   order: number;
-  /** Optional badge kind. Only "escalation" exists today (Activity nav item). */
+  /** Optional badge kind. Only "escalation" exists (the Agora/History items). */
   badge?: "escalation";
+  /** Nav placement. "footer" = below the divider (Glossary, Settings); default = primary nav. */
+  group?: "footer";
 }
 
 export interface Route {

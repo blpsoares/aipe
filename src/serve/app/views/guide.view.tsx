@@ -1,20 +1,43 @@
-// 5.3 — The status guide. Explains every canonical DispatchStatus, the
-// session-mode transient `running`, and the states the ledger rejects: what each
-// means, what causes it, what unblocks it, and who acts next. Data comes from the
-// repo's real types (runtime/status-guide.ts), so it can't drift from the ledger.
-// Routed at /status and linked from the nav and from the status chips.
+// "Glossário" (footer) — the safety net against jargon. A plain-language
+// translation of every AIPe word (SDD §3 table) on top, then the full state
+// guide: what each state means, what causes it, what unblocks it, who acts next.
+// Data for the states comes from the repo's real types (runtime/status-guide.ts),
+// so it can't drift from the ledger.
 import { useEffect } from "preact/hooks";
-import { t, stt } from "../runtime/i18n";
+import { t } from "../runtime/i18n";
 import { StatusIcon } from "../components/StatusIcon";
 import { canonicalGuide, transientGuide, rejectedGuide, type StatusEntry } from "../runtime/status-guide";
 import { focusAnchor } from "../runtime/router";
 import type { Route } from "../route-types";
 
 function label(key: string): string {
-  // Canonical statuses have a st_<key> label; synthetic ids (running, verify
-  // codes) read their own key humanized.
   const st = t(`st_${key}`);
   return st === `st_${key}` ? key.replace(/-/g, " ") : st;
+}
+
+// The jargon → plain-language table (SDD §3). Each row: the AIPe term and what
+// it means for the reader, so no word on the console is left unexplained.
+const JARGON = ["coordinator", "specialist", "journey", "dispatch", "worktree", "gate", "escalation", "costindex"] as const;
+
+function JargonTable() {
+  return (
+    <div class="sg-section">
+      <h2 class="sg-sec-h">{t("guide_jargon_h")}</h2>
+      <div class="sub" style={{ marginBottom: "10px" }}>{t("guide_jargon_sub")}</div>
+      <div class="jargon-tbl" role="table" aria-label={t("guide_jargon_h")}>
+        <div class="jargon-row jargon-head" role="row">
+          <span role="columnheader">{t("jg_term")}</span>
+          <span role="columnheader">{t("jg_plain")}</span>
+        </div>
+        {JARGON.map((k) => (
+          <div class="jargon-row" role="row" key={k}>
+            <span class="jargon-term" role="cell">{t(`jg_${k}`)}</span>
+            <span class="jargon-plain" role="cell">{t(`jg_${k}_d`)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function StatusCard({ e }: { e: StatusEntry }) {
@@ -39,11 +62,7 @@ function StatusCard({ e }: { e: StatusEntry }) {
           <>
             <dt>{t("sg_col_laws")}</dt>
             <dd>
-              <ul class="sg-laws">
-                {e.laws.map((l) => (
-                  <li key={l}>{t(l)}</li>
-                ))}
-              </ul>
+              <ul class="sg-laws">{e.laws.map((l) => <li key={l}>{t(l)}</li>)}</ul>
             </dd>
           </>
         )}
@@ -56,18 +75,12 @@ function Section({ titleKey, entries }: { titleKey: string; entries: StatusEntry
   return (
     <div class="sg-section">
       <h2 class="sg-sec-h">{t(titleKey)}</h2>
-      <div class="sg-grid">
-        {entries.map((e) => (
-          <StatusCard key={e.key} e={e} />
-        ))}
-      </div>
+      <div class="sg-grid">{entries.map((e) => <StatusCard key={e.key} e={e} />)}</div>
     </div>
   );
 }
 
-function StatusView() {
-  // A status chip that opened this page sets focusAnchor — scroll to and briefly
-  // highlight the matching card, then clear it.
+function GuideView() {
   useEffect(() => {
     const anchor = focusAnchor.value;
     if (!anchor) return;
@@ -83,9 +96,10 @@ function StatusView() {
   return (
     <div class="view-in grid" style={{ gap: "18px" }}>
       <div>
-        <h1 class="view-h">{t("status_title")}</h1>
-        <div class="sub">{t("status_sub")}</div>
+        <h1 class="view-h">{t("nav_guide")}</h1>
+        <div class="sub">{t("guide_sub")}</div>
       </div>
+      <JargonTable />
       <Section titleKey="sg_sec_canonical" entries={canonicalGuide()} />
       <Section titleKey="sg_sec_transient" entries={transientGuide()} />
       <Section titleKey="sg_sec_rejected" entries={rejectedGuide()} />
@@ -94,7 +108,7 @@ function StatusView() {
 }
 
 export const route: Route = {
-  path: "/status",
-  nav: { label: "status_nav", icon: "book", order: 8 },
-  component: StatusView,
+  path: "/guide",
+  nav: { label: "nav_guide", icon: "book", order: 10, group: "footer" },
+  component: GuideView,
 };

@@ -15,9 +15,9 @@ test("hashTarget resolves an empty or bare hash to the Floor (back-to-Floor no l
 });
 
 test("hashTarget resolves a known view hash to its path", () => {
-  expect(hashTarget("#/pipeline")).toBe("/pipeline");
+  expect(hashTarget("#/team")).toBe("/team");
   expect(hashTarget("#/settings")).toBe("/settings");
-  expect(hashTarget("#/status")).toBe("/status");
+  expect(hashTarget("#/guide")).toBe("/guide");
 });
 
 test("hashTarget rejects an unknown path (guards against a bogus manual hash)", () => {
