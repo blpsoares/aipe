@@ -161,7 +161,7 @@ test("node colors follow orgColor(status): active->sky, delivered->accent, escal
   expect(brunoNode.querySelector("circle")!.getAttribute("class")).toBeFalsy();
 });
 
-test("orgZoom pure math: zoomBy(1) multiplies scale by 1.2 repeatedly, clamped at 3; zoomBy(0) resets", () => {
+test("orgZoom pure math: zoomBy(1) multiplies scale by 1.2 repeatedly, clamped at 3; zoomBy(0) re-frames (identity when viewport is unknown)", () => {
   orgTransform.value = { s: 1, x: 10, y: 10 };
   zoomBy(1);
   expect(orgTransform.value.s).toBeCloseTo(1.2);
@@ -169,6 +169,8 @@ test("orgZoom pure math: zoomBy(1) multiplies scale by 1.2 repeatedly, clamped a
   expect(orgTransform.value.s).toBeCloseTo(1.44);
   for (let i = 0; i < 20; i++) zoomBy(1);
   expect(orgTransform.value.s).toBe(3);
+  // Reset now re-frames to fit; with no viewport passed (default 0×0) the fit is
+  // degenerate and collapses to identity — see org.test.ts for the real re-frame.
   zoomBy(0);
   expect(orgTransform.value).toEqual({ s: 1, x: 0, y: 0 });
 });
