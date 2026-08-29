@@ -14,12 +14,13 @@ afterEach(() => {
 const d = (over: Partial<Dispatch>): Dispatch =>
   ({ repo: "core", specialist: "Bruno", branch: "feat/x", status: "dispatched", mode: "session", ...over }) as Dispatch;
 
-test("renders exactly four columns, each with its plain-language sub-line", () => {
+test("renders the five columns (incl. Integrados), each with its plain-language sub-line", () => {
   const { container } = render(<Board dispatches={[]} sessions={[]} />);
   const cols = [...container.querySelectorAll(".bcol")];
-  expect(cols.length).toBe(4);
+  expect(cols.length).toBe(5);
   expect(container.textContent).toContain(t("board_col_working_sub"));
   expect(container.textContent).toContain(t("board_col_needs_you_sub"));
+  expect(container.textContent).toContain(t("board_col_integrated_sub"));
 });
 
 test("a card keeps task, persona, branch and PR TOGETHER (no screen switch to complete it)", () => {

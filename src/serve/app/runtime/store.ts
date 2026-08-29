@@ -32,6 +32,19 @@ export interface Dispatch {
   // annotateLiveness). Absent on subagent dispatches. The board consumes THIS
   // rather than re-deriving an optimistic reading of its own.
   liveness?: UnitPhase;
+  // Model-policy envelope, carried whole from the ledger (JourneyDispatch) so the
+  // card can show harness/model/effort WITHOUT re-deriving (SDD §8/§11). Absent on
+  // legacy/subagent records — absence renders clean, never as an error.
+  harness?: string;
+  model?: string;
+  tier?: string;
+  intensity?: "normal" | "ultracode";
+  // The MERGE TRUTH, computed server-side (serve/payload.ts annotateIntegrated) by
+  // `git merge-base --is-ancestor <branch> origin/main` — independent of the
+  // ledger status. `true` ⇒ the work is already in main, so it belongs in
+  // Integrados even if the ledger still says `verified` (defect 2). Conservative:
+  // absent/false on any uncertainty, never a false "integrated" (SDD §4).
+  integrated?: boolean;
   [key: string]: unknown;
 }
 

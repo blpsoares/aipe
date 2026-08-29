@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { hasSessionDispatch, relevantSessions, coordinatorSessionsOf, annotateLiveness } from "../payload";
+import { hasSessionDispatch, relevantSessions, coordinatorSessionsOf, annotateLiveness, annotateIntegrated } from "../payload";
 import type { SessionInfo } from "../sessions";
 import type { JourneyView } from "../../dashboard/snapshot";
 
@@ -73,4 +73,42 @@ test("estado terminal do ledger (verified→landed) permanece landed, ignora liv
 test("blocked→waiting e redirected→redirected vêm do ledger, não do live-set", () => {
   expect(liveOf({ status: "blocked" }, new Set(), false, () => false)).toBe("waiting");
   expect(liveOf({ status: "redirected" }, new Set(), false, () => false)).toBe("redirected");
+});
+
+// ── annotateIntegrated — a VERDADE do merge (defeito 2, j-20260829-dp): a tela lê
+// se o branch já está em main (merge-base --is-ancestor origin/main), independente
+// do status do ledger. Conservador: na dúvida, false, nunca um falso "integrado". ──
+const jv = (over: Record<string, unknown>) =>
+  [{ id: "j", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "/ws/aipe/.worktrees/j-jesse", status: "verified", ...over }] }] as unknown as JourneyView[];
+
+const intOf = (over: Record<string, unknown>, isAncestor: (r: string, b: string) => boolean) =>
+  (annotateIntegrated(jv(over), isAncestor)[0]!.dispatches[0] as { integrated?: boolean }).integrated;
+
+test("merged é integrado sem tocar em git (verdade declarada)", () => {
+  expect(intOf({ status: "merged" }, () => { throw new Error("git nao devia rodar"); })).toBe(true);
+});
+
+test("verified cujo branch JÁ está em main → integrated=true (a coluna que mentia)", () => {
+  expect(intOf({ status: "verified" }, () => true)).toBe(true);
+});
+
+test("verified NÃO em main permanece integrated=false (fica em 'pronto p/ integrar')", () => {
+  expect(intOf({ status: "verified" }, () => false)).toBe(false);
+});
+
+test("delivered já em main também é integrado", () => {
+  expect(intOf({ status: "delivered" }, () => true)).toBe(true);
+});
+
+test("dispatched/em progresso NUNCA é integrado, mesmo que o branch seja ancestral (branch vazio p.ex.)", () => {
+  expect(intOf({ status: "dispatched" }, () => true)).toBe(false);
+  expect(intOf({ status: "failed" }, () => true)).toBe(false);
+});
+
+test("sem worktree localizável → conservador false (não roda git)", () => {
+  expect(intOf({ status: "verified", worktree: "/no/worktrees/here" }, () => { throw new Error("nao localiza repo"); })).toBe(false);
+});
+
+test("removed sai como não-integrado (histórico puro, branch provavelmente já foi)", () => {
+  expect(intOf({ status: "removed" }, () => true)).toBe(false);
 });

@@ -67,9 +67,9 @@ test("the whole board is collapsed by default and expands to four columns on dem
   const toggle = container.querySelector(".board-toggle")! as HTMLButtonElement;
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(toggle);
-  // expanded: four columns, each with its comprehension sub-line
+  // expanded: five columns (incl. Integrados), each with its comprehension sub-line
   const cols = container.querySelectorAll(".board4 .bcol");
-  expect(cols.length).toBe(4);
+  expect(cols.length).toBe(5);
   // Carla (escalated) → needs-you; Bruno (delivered) → in-review; Ana → working
   expect(container.querySelector(".bcol-needs-you")!.textContent).toContain("Carla");
   expect(container.querySelector(".bcol-in-review")!.textContent).toContain("Bruno");

@@ -4,7 +4,8 @@
 // lives only on the serve path. Both the initial GET /api/snapshot and the SSE
 // /api/stream go through here, so first paint and live updates agree.
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { join, resolve } from "node:path";
 import { buildSnapshot, type Snapshot } from "../dashboard/snapshot";
 import { readLive, type SessionInfo } from "./sessions";
 import { dispatchPhase } from "../session/poll";
@@ -53,6 +54,66 @@ export function coordinatorSessionsOf(sessions: SessionInfo[], workspace: string
 /** A session-mode dispatch carrying its canonical liveness phase. */
 export type LiveDispatch = JourneyDispatch & { liveness?: UnitPhase };
 
+/** A dispatch carrying the server-computed merge truth (defect 2). */
+export type IntegratedDispatch = JourneyDispatch & { integrated?: boolean };
+
+// The git clone that owns a dispatch's branch. Derived from the worktree path —
+// `<clone>/.worktrees/<slug>` — which is the actual clone dir regardless of how
+// the repo is spelled in the ledger (org-prefixed or not). Without a worktree we
+// cannot reliably locate the clone, so we decline (conservative → not integrated).
+function repoDirOf(d: JourneyDispatch): string | null {
+  if (d.worktree && d.worktree.includes("/.worktrees/")) return d.worktree.split("/.worktrees/")[0] ?? null;
+  return null;
+}
+
+/** Real merge check: is `branch` already an ancestor of `origin/main` in the clone? */
+function gitIsAncestor(repoDir: string, branch: string): boolean {
+  if (!existsSync(join(repoDir, ".git"))) return false;
+  try {
+    const r = spawnSync("git", ["-C", repoDir, "merge-base", "--is-ancestor", branch, "origin/main"], { stdio: "ignore" });
+    return r.status === 0; // exit 0 ⇒ branch's commits are all in main
+  } catch {
+    return false; // git missing / unreadable → we cannot tell → not integrated
+  }
+}
+
+/**
+ * The merge TRUTH per dispatch (defect 2, SDD §4): `integrated` is `true` when the
+ * work is already in main, INDEPENDENT of the ledger status — so a `verified`
+ * whose branch already merged stops sitting in "ready to merge" lying about work
+ * that no longer needs the PE. The tell is checked ONLY for the states where an
+ * un-reconciled merge is the real bug — `merged` (declared truth), and
+ * `verified`/`delivered` (the "done, awaiting merge" states the board shows as
+ * ready/in-review). An in-progress unit is NEVER integrated, even if its branch
+ * happens to be an ancestor of main (a fresh branch with no commits yet would be)
+ * — that would be a false positive of exactly the kind this defect is about.
+ * Conservative throughout: any uncertainty ⇒ `false`, never a false "integrated".
+ */
+export function annotateIntegrated(
+  journeys: JourneyView[],
+  isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
+): JourneyView[] {
+  const memo = new Map<string, boolean>();
+  const check = (repoDir: string, branch: string): boolean => {
+    const key = `${repoDir}\0${branch}`;
+    const hit = memo.get(key);
+    if (hit !== undefined) return hit;
+    const val = isAncestor(repoDir, branch);
+    memo.set(key, val);
+    return val;
+  };
+  return journeys.map((j) => ({
+    ...j,
+    dispatches: j.dispatches.map((d): IntegratedDispatch => {
+      if (d.status === "merged") return { ...d, integrated: true };
+      if (d.status !== "verified" && d.status !== "delivered") return { ...d, integrated: false };
+      const repoDir = repoDirOf(d);
+      const integrated = !!repoDir && !!d.branch && check(repoDir, d.branch);
+      return { ...d, integrated };
+    }),
+  }));
+}
+
 /**
  * Annotate every SESSION-mode dispatch with its canonical liveness `UnitPhase` —
  * the SAME `dispatchPhase` derivation `aipe status` runs, so the web console
@@ -90,6 +151,7 @@ export async function buildServePayload(
   workspace: string,
   read: () => Promise<{ sessions: SessionInfo[]; liveIds: Set<string>; reliable: boolean }> = readLive,
   worktreeExists: (path: string) => boolean = existsSync,
+  isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
 ): Promise<ServePayload> {
   const snapshot = await buildSnapshot(workspace);
   // One agentop read covers the per-dispatch activity, the coordinator's own
@@ -100,7 +162,9 @@ export async function buildServePayload(
   const { sessions: all, liveIds, reliable } = hasSession
     ? await read()
     : { sessions: [] as SessionInfo[], liveIds: new Set<string>(), reliable: true };
-  const journeys = annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists);
+  // Liveness first, then the merge truth (defect 2): both annotate dispatches and
+  // compose cleanly (each spreads the whole dispatch, preserving the other's field).
+  const journeys = annotateIntegrated(annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists), isAncestor);
   const sessions = relevantSessions(all, snapshot.journeys);
   const coordinatorSessions = coordinatorSessionsOf(all, workspace);
   return { ...snapshot, journeys, sessions, coordinatorSessions };
