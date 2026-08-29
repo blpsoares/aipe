@@ -57,6 +57,51 @@ test("a unit carries persona role, fqid, branch, pr and ledger status (item 2)",
   expect(u.hasEvidence).toBe(true);
 });
 
+// v4 (j-20260829-dp): `aipe status --json` used to DROP the envelope, so the
+// coordinator had to read the YAMLs by hand to answer the PE. UnitRow now carries
+// harness/model/tier/intensity, plus the swept-in worktree and ciBypass.
+test("a unit exposes the envelope (harness/model/tier/intensity) and the swept fields", () => {
+  const ledgers: JourneyLedger[] = [
+    {
+      id: "j1",
+      dispatches: [
+        {
+          repo: "aipe",
+          specialist: "Jesse",
+          branch: "b",
+          worktree: "/ws/aipe/.worktrees/j1-jesse",
+          status: "delivered",
+          harness: "claude-code",
+          model: "claude-opus-4-8",
+          tier: "reasoning",
+          intensity: "ultracode",
+          ciBypass: "no-checks",
+          evidence: { by: "dev", commands: ["bun test"], summary: "green" },
+        },
+      ],
+    },
+  ];
+  const u = assemble({ ...base, ledgers, live: reliableLive([]) }).units[0]!;
+  expect(u.harness).toBe("claude-code");
+  expect(u.model).toBe("claude-opus-4-8");
+  expect(u.tier).toBe("reasoning");
+  expect(u.intensity).toBe("ultracode");
+  expect(u.worktree).toBe("/ws/aipe/.worktrees/j1-jesse");
+  expect(u.ciBypass).toBe("no-checks");
+});
+
+test("a legacy record with no envelope exposes nulls, never invented values", () => {
+  const ledgers: JourneyLedger[] = [
+    { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched" }] },
+  ];
+  const u = assemble({ ...base, ledgers, live: reliableLive([]) }).units[0]!;
+  expect(u.harness).toBeNull();
+  expect(u.model).toBeNull();
+  expect(u.tier).toBeNull();
+  expect(u.intensity).toBeNull();
+  expect(u.ciBypass).toBeNull();
+});
+
 test("role is null when the roster does not name the specialist (reported, not guessed)", () => {
   const ledgers: JourneyLedger[] = [
     { id: "j1", dispatches: [{ repo: "aipe", specialist: "Ghost", branch: "b", worktree: "w", status: "dispatched" }] },

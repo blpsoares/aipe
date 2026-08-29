@@ -37,6 +37,19 @@ export interface UnitRow {
   // to describe, and reporting one would be a lie of a different kind.
   liveness: UnitPhase | null;
   hasEvidence: boolean;
+  // The dispatch envelope (j-20260829-dp v4). `aipe status --json` used to drop
+  // these, forcing a hand-read of the YAMLs; they are audit + card fields now.
+  // null on legacy/subagent records that predate the envelope — absence is not an
+  // error, and MUST NOT be invented.
+  harness: string | null;
+  model: string | null;
+  tier: string | null;
+  intensity: "normal" | "ultracode" | null;
+  // Swept in with the envelope (the same "held-back field" class): the worktree
+  // (a copyable `cd` target for the read-only console) and the honest CI-waiver
+  // flag on a delivered/verified record.
+  worktree: string;
+  ciBypass: "no-checks" | null;
 }
 
 export interface JourneyRow {
