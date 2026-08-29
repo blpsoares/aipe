@@ -11,6 +11,11 @@ name: release
 #
 # The `latest` release the download domain redirects to is whatever GitHub
 # considers newest, so the Cloudflare rules never need touching.
+#
+# `dev` is the integration branch and is deliberately NOT in this trigger: work
+# accumulates there (verified continuously by ci.yml) and only ships when a
+# promotion PR merges `dev` into `main`. Pushing to `dev` must never publish —
+# that is the entire point of having it.
 
 on:
   push:

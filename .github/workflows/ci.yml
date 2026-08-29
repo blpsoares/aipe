@@ -1,13 +1,19 @@
 name: ci
 
-# Gate on every push to main and every PR: version guard, type-check, tests, and
-# a build smoke (compile the host binary and boot it). So a broken commit can't
-# reach main unnoticed — nobody has to remember to run these locally. The release
-# workflow re-runs the same gate before publishing, so a bad tag never ships.
+# Gate on every push to main/dev and every PR: version guard, type-check, tests,
+# and a build smoke (compile the host binary and boot it). So a broken commit
+# can't reach main unnoticed — nobody has to remember to run these locally. The
+# release workflow re-runs the same gate before publishing, so a bad tag never
+# ships.
+#
+# `dev` is the integration branch: pushes there (i.e. every PR merge into it)
+# run this same gate continuously, instead of the drift only surfacing at
+# promotion time when `dev` merges into `main`. `dev` is deliberately absent
+# from release.yml's trigger — this is CI-only, it never publishes.
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 permissions:
