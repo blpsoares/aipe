@@ -15,6 +15,11 @@ export interface DispatchEntry {
   // Two concurrent dispatches of ONE non-writing persona on distinct tasks are
   // lawful; the same task twice is not (see law.ts).
   task?: string;
+  // The paths (globs/prefixes) this dispatch will touch (j-20260826-xj). Two
+  // writing dispatches on one unit with DISJOINT path sets coexist; OVERLAPPING
+  // sets serialize. Absent/empty ⇒ the WHOLE unit (overlaps everything), which
+  // preserves the pre-path same-repo/same-package serialization exactly.
+  paths?: string[];
   // Optional model tier the coordinator assigned by task complexity. Adjudicated
   // by the model-policy CLI (`aipe model`), then carried into the hiring brief.
   tier?: string;

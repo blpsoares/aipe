@@ -56,11 +56,16 @@ export function parseBatch(value: unknown): Batch | null {
     // the default: a typo'd "session" must not quietly run as a subagent.
     if (r.mode !== undefined && r.mode !== "subagent" && r.mode !== "session") return null;
     if (r.intensity !== undefined && r.intensity !== "normal" && r.intensity !== "ultracode") return null;
+    // `paths` (optional): a JSON array of strings. A wrong-typed field is a
+    // REJECT, never a silent drop — a coordinator's mistyped paths must not fall
+    // back to a WHOLE-unit claim it did not intend.
+    if (r.paths !== undefined && (!Array.isArray(r.paths) || r.paths.some((p) => typeof p !== "string"))) return null;
     batch.push({
       repo: r.repo,
       specialist: r.specialist,
       ...(typeof r.package === "string" ? { package: r.package } : {}),
       ...(typeof r.task === "string" ? { task: r.task } : {}),
+      ...(Array.isArray(r.paths) ? { paths: r.paths as string[] } : {}),
       ...(typeof r.tier === "string" ? { tier: r.tier } : {}),
       ...(r.mode !== undefined ? { mode: r.mode as "subagent" | "session" } : {}),
       ...(r.intensity !== undefined ? { intensity: r.intensity as "normal" | "ultracode" } : {}),

@@ -1,4 +1,5 @@
 import { packageFqid } from "../context-brain/packages";
+import { normalizePath, overlappingPairs, pathSetsOverlap } from "./paths";
 import { roleWritesToRepo } from "./roles";
 import { MAX_CONCURRENT, SESSION_MAX_CONCURRENT } from "./types";
 import type { Batch, DispatchEntry, PersonaRegistryEntry, SessionContext, Verdict } from "./types";
@@ -101,8 +102,25 @@ export function validateBatch(
       (p) => p.repo === entry.repo && p.name.toLowerCase() === entry.specialist.toLowerCase(),
     )?.role;
 
+  // A dispatch's declared path set, canonicalized; [] ⇒ the WHOLE unit (overlaps
+  // everything). "Declares paths" means it named a proper subset — the trigger to
+  // reason per path instead of per unit.
+  const declaredOf = (e: DispatchEntry): string[] => {
+    const norm = [...new Set((e.paths ?? []).map(normalizePath))];
+    return norm.includes("**") ? [] : norm;
+  };
+  const declaresPaths = (e: DispatchEntry): boolean => declaredOf(e).length > 0;
+
   for (const [key, members] of groups) {
     if (members.length < 2) continue;
+
+    // Path-aware only when someone in the group named paths; otherwise the group
+    // is adjudicated exactly as before (per unit), so no existing verdict shifts.
+    if (members.some(declaresPaths)) {
+      pathAwareGroup(key, members, roleOf, declaredOf, rejects);
+      continue;
+    }
+
     const anyWrites = members.some((e) => roleWritesToRepo(roleOf(e)));
     if (anyWrites) {
       // Serialize: one reject per duplicate occurrence, preserving the prior
@@ -128,6 +146,75 @@ export function validateBatch(
   }
 
   return rejects.length === 0 ? { ok: true } : { ok: false, rejects };
+}
+
+// Adjudicate one unit-group where at least one member declared paths. The rule
+// mirrors the physical lock (see lock.ts):
+//   • only WRITING dispatches can collide over a file — a reviewer (non-writing)
+//     touches nothing, so it never path-collides and is not serialized here;
+//   • two writers with OVERLAPPING path sets serialize → `path-collision`, naming
+//     the paths so a coordinator sees exactly why (a WHOLE/undeclared writer
+//     overlaps everything, preserving same-unit serialization by default);
+//   • coexisting writers need a DISTINCT --task each, because identity — and the
+//     lock file that carries it — is per task.
+function pathAwareGroup(
+  key: string,
+  members: DispatchEntry[],
+  roleOf: (e: DispatchEntry) => string | undefined,
+  declaredOf: (e: DispatchEntry) => string[],
+  rejects: string[],
+): void {
+  const writers = members.filter((e) => roleWritesToRepo(roleOf(e)));
+  const nonWriters = members.filter((e) => !roleWritesToRepo(roleOf(e)));
+
+  // Writer × writer path overlap.
+  for (let i = 0; i < writers.length; i++) {
+    for (let j = i + 1; j < writers.length; j++) {
+      const a = writers[i]!;
+      const b = writers[j]!;
+      const pa = declaredOf(a);
+      const pb = declaredOf(b);
+      if (!pathSetsOverlap(pa, pb)) continue;
+      const pairs = overlappingPairs(pa, pb);
+      const on = pairs.length
+        ? pairs.map(([x, y]) => (x === y ? x : `${x}⋂${y}`)).join(", ")
+        : "the whole unit";
+      rejects.push(`path-collision ${key}: ${a.specialist} ⋂ ${b.specialist} on ${on}`);
+    }
+  }
+
+  // Coexisting writers must be addressable — a distinct --task each (the lock file
+  // and worktree are keyed by task).
+  if (writers.length >= 2) {
+    const seen = new Set<string>();
+    for (const w of writers) {
+      if (!w.task) {
+        rejects.push(`same-task ${key} (writers sharing a unit need a distinct --task each for identity)`);
+        continue;
+      }
+      if (seen.has(w.task)) {
+        rejects.push(`same-task ${key}#${w.task}`);
+        continue;
+      }
+      seen.add(w.task);
+    }
+  }
+
+  // Non-writers keep the identity-per-task rule (distinct present tasks).
+  if (nonWriters.length >= 2) {
+    const seen = new Set<string>();
+    for (const e of nonWriters) {
+      if (!e.task) {
+        rejects.push(`same-task ${key} (concurrent non-writing dispatches on one unit need a distinct --task each)`);
+        continue;
+      }
+      if (seen.has(e.task)) {
+        rejects.push(`same-task ${key}#${e.task}`);
+        continue;
+      }
+      seen.add(e.task);
+    }
+  }
 }
 
 // ── Cross-repo landing gate (the sequencing invariant, made deterministic) ──
