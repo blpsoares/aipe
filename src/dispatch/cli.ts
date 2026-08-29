@@ -9,7 +9,9 @@ import { readGraph } from "../relationship/read-graph";
 import { readLedger } from "../journey/ledger";
 import { packageFqid } from "../context-brain/packages";
 import { checkDependenciesLanded, validateBatch } from "./law";
-import { claimLock, claimUnit, releaseLock } from "./lock";
+import { claimLock, claimUnit, reconcileLockPaths, releaseLock } from "./lock";
+import { detectTouchedPaths } from "./detect";
+import { planOverlapResolution } from "./resolution";
 import { roleWritesToRepo } from "./roles";
 import { recordAuthorization } from "../journey/ledger";
 import { readPersonas } from "./personas";
@@ -315,14 +317,84 @@ async function releaseCommand(args: string[]): Promise<number> {
   return 2;
 }
 
+// `aipe dispatch reconcile <repo> --journey <id> --worktree <dir> [--package p]
+// [--task t] [--base ref]` — rewrite the live lock's paths to what the branch
+// ACTUALLY touched (read from git) and re-check the unit for overlap on the REAL
+// set. This is the honest-declaration guard: a declaration made at dispatch time
+// ages, so the lock is reconciled against verifiable git state, not trusted.
+async function reconcileCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const repo = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+  const journey = getFlag(args, "--journey");
+  const worktree = getFlag(args, "--worktree");
+  if (!repo || !journey || !worktree) {
+    console.log("ERROR args: usage: dispatch reconcile <repo> --journey <id> --worktree <dir> [--package p] [--task t] [--base ref]");
+    return 1;
+  }
+  const pkg = getFlag(args, "--package");
+  const task = getFlag(args, "--task");
+  const base = getFlag(args, "--base");
+  const actual = await detectTouchedPaths(worktree, { ...(base ? { base } : {}) });
+  const result = await reconcileLockPaths(workspace, {
+    repo,
+    ...(pkg ? { package: pkg } : {}),
+    ...(task ? { task } : {}),
+    journey,
+    actual,
+  });
+  const unit = claimUnit(repo, pkg);
+  const taskSuffix = task ? ` task=${task}` : "";
+  if (!result.ok) {
+    if (result.reason === "no-lock") {
+      console.log(`NOTE no lock for ${unit}${taskSuffix} to reconcile (claim it first)`);
+      return 0;
+    }
+    console.log(`SKIP foreign ${unit}${taskSuffix} held by journey=${result.holder.journey} (reconcile is owner-only)`);
+    return 2;
+  }
+  const pathsStr = result.paths.length ? result.paths.join(", ") : "(whole unit)";
+  const driftStr = result.drift.length ? result.drift.join(", ") : "none";
+  console.log(`RECONCILED ${unit}${taskSuffix} paths=${pathsStr} drift=${driftStr}`);
+  if (result.overlaps.length > 0) {
+    for (const o of result.overlaps) {
+      const on = o.pairs.map(([a, b]) => (a === b ? a : `${a}⋂${b}`)).join(", ");
+      console.log(`DRIFT-COLLISION ${unit}${taskSuffix} now overlaps journey=${o.holder.journey} specialist=${o.holder.specialist} on ${on}`);
+    }
+    console.log("WARN detection found the branch touching a path another live claim holds. Run the managed exception: aipe dispatch resolve-overlap.");
+    return 2;
+  }
+  return 0;
+}
+
+// `aipe dispatch resolve-overlap <repo> --branch <mine> --onto <holder> [--path
+// glob ...]` — print the deterministic managed-exception plan (wait → rebase →
+// resolve → review-over-merge). Prose lives in the skills; this is the exact,
+// ordered recovery a coordinator can follow step by step.
+function resolveOverlapCommand(args: string[]): number {
+  const repo = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+  const waiterBranch = getFlag(args, "--branch");
+  const holderBranch = getFlag(args, "--onto");
+  if (!repo || !waiterBranch || !holderBranch) {
+    console.log("ERROR args: usage: dispatch resolve-overlap <repo> --branch <waiter> --onto <holder> [--path glob ...]");
+    return 1;
+  }
+  const paths = getFlagAll(args, "--path");
+  const plan = planOverlapResolution({ waiterBranch, holderBranch, paths });
+  console.log(`PLAN overlap ${repo}: ${plan.waiter} waits and rebases onto ${plan.onto}`);
+  plan.steps.forEach((s, i) => console.log(`  ${i + 1}. ${s.action}: ${s.detail}`));
+  return 0;
+}
+
 export async function run(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   if (sub === "validate") return validateCommand(rest);
   if (sub === "claim") return claimCommand(rest);
   if (sub === "release") return releaseCommand(rest);
+  if (sub === "reconcile") return reconcileCommand(rest);
+  if (sub === "resolve-overlap") return resolveOverlapCommand(rest);
   if (sub === "authorize-force") return authorizeForceCommand(rest);
   console.log(`ERROR command: unknown dispatch command "${sub ?? ""}"`);
-  console.log("Usage: aipe dispatch <validate|claim|release|authorize-force> [options]");
+  console.log("Usage: aipe dispatch <validate|claim|release|reconcile|resolve-overlap|authorize-force> [options]");
   return 1;
 }
 

@@ -478,6 +478,75 @@ async function claimPathAware(workspaceDir: string, input: ClaimInput): Promise<
   }
 }
 
+// ── Reconciliation against branch reality (j-20260826-xj) ────────────────────
+//
+// A path set declared at claim time AGES (see detect.ts). This rewrites a live
+// lock's paths to what the branch ACTUALLY touched and re-checks the unit for
+// overlap on the REAL set — so a claim that quietly grew to touch another task's
+// files is caught by detection, not left to a trusted declaration. It runs under
+// the same per-unit guard as claim, so a reconcile and a concurrent claim never
+// interleave. `drift` is the touched paths the ORIGINAL declaration did not cover;
+// `overlaps` are active foreign writers the RECONCILED set now collides with (the
+// managed exception must then run — see resolution.ts).
+export type ReconcileResult =
+  | {
+      ok: true;
+      updated: boolean;
+      paths: string[];
+      drift: string[];
+      overlaps: { holder: Lock; pairs: [string, string][] }[];
+    }
+  | { ok: false; reason: "no-lock" }
+  | { ok: false; reason: "foreign"; holder: Lock };
+
+export async function reconcileLockPaths(
+  workspaceDir: string,
+  input: { repo: string; package?: string; task?: string; journey: string; actual: string[]; now?: () => string },
+): Promise<ReconcileResult> {
+  const now = input.now ?? (() => new Date().toISOString());
+  const nowMs = Date.parse(now());
+  const dir = locksDir(workspaceDir);
+  const myPath = lockPath(workspaceDir, input.repo, input.package, input.task);
+  const myFile = basename(myPath);
+
+  const release = await acquireGuard(workspaceDir, input.repo, input.package, process.pid, now);
+  try {
+    const existing = await readLock(myPath);
+    if (!existing) return { ok: false, reason: "no-lock" };
+    if (existing.journey !== input.journey) return { ok: false, reason: "foreign", holder: existing };
+
+    const oldDeclared = existing.paths ?? []; // [] ⇒ WHOLE
+    const actual = normalizeDeclared(input.actual);
+    // Drift: a touched path the ORIGINAL declaration did not already cover. A
+    // WHOLE original ([]) covers everything, so nothing is drift then.
+    const drift = actual.filter((p) => !pathSetsOverlap([p], oldDeclared.length ? oldDeclared : ["**"]));
+
+    const updated: Lock = {
+      ...existing,
+      timestamp: now(),
+      writes: true,
+      ...(actual.length ? { paths: actual } : {}),
+    };
+    if (!actual.length) delete updated.paths; // reconciled to the whole unit
+    await unlink(myPath).catch(() => {});
+    await writeFile(myPath, stringify(updated), "utf8");
+
+    const overlaps: { holder: Lock; pairs: [string, string][] }[] = [];
+    for (const { file, lock: other } of await readAllLocks(dir)) {
+      if (file === myFile) continue;
+      if (!sameUnit(other, input.repo, input.package)) continue;
+      if (other.writes !== true) continue;
+      if (!(await isLockActive(workspaceDir, other, nowMs))) continue;
+      if (!pathSetsOverlap(actual, other.paths ?? [])) continue;
+      overlaps.push({ holder: other, pairs: overlappingPairs(actual, other.paths ?? []) });
+    }
+
+    return { ok: true, updated: true, paths: actual, drift, overlaps };
+  } finally {
+    await release();
+  }
+}
+
 export type ReleaseResult =
   | { ok: true; released: boolean }
   | { ok: false; reason: "foreign"; holder: Lock };
