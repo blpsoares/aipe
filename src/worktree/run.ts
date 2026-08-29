@@ -2,6 +2,8 @@ import { access } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { readBrain } from "../make-workspace/read";
 import { personaSlug } from "../hire-specialists/render";
+import { readPersonas } from "../hire-specialists/read-personas";
+import type { PersonaRole } from "../hire-specialists/types";
 import { readLedger } from "../journey/ledger";
 import type { DispatchStatus, JourneyDispatch } from "../journey/types";
 import { deriveSpec, isValidJourneyId } from "./naming";
@@ -24,6 +26,24 @@ import type { CreateResult, RemoveResult, WorktreeRow } from "./types";
 const TERMINAL_STATUSES: DispatchStatus[] = ["merged", "removed"];
 function isActiveDispatch(status: DispatchStatus): boolean {
   return !TERMINAL_STATUSES.includes(status);
+}
+
+// `verified` is the END of a role that does not write code: a QA persona reads
+// the diff, runs the suite, records the verdict — and never reaches `merged`
+// (the dev's PR is what merges). Its worktree would otherwise be pinned forever.
+// So `verified` is terminal *for a non-writing role* — the dirty/unpushed guard
+// in removeWorktree still applies, and a writing role's (dev) verified worktree
+// is kept until its PR merges, because the dev may still address review on it.
+function isNonWritingRole(role: PersonaRole | undefined): boolean {
+  return role === "qa";
+}
+
+// prune's live-dispatch guard, role-aware. A verified dispatch of a non-writing
+// role is terminal; every other active status stays live.
+function isLiveForPrune(status: DispatchStatus, role: PersonaRole | undefined): boolean {
+  if (!isActiveDispatch(status)) return false;
+  if (status === "verified" && isNonWritingRole(role)) return false;
+  return true;
 }
 
 // Match a ledger dispatch to a live worktree row. The branch is the primary key
@@ -148,15 +168,30 @@ export async function pruneWorktrees(
   if (!isValidJourneyId(journey)) return [];
   const ledger = await readLedger(workspaceDir, journey);
   const dispatches = ledger?.dispatches ?? [];
+  // Role by persona slug — `verified` is terminal only for a non-writing role.
+  const roleBySlug = new Map<string, PersonaRole>();
+  for (const p of await readPersonas(workspaceDir)) {
+    if (p.role === "coordinator") continue;
+    roleBySlug.set(personaSlug(p.name), p.role);
+  }
   const rows: PruneRow[] = [];
   for (const wt of await listWorktrees(workspaceDir, journey)) {
     const dispatch = dispatchForRow(dispatches, wt);
+    const role = dispatch ? roleBySlug.get(personaSlug(dispatch.specialist)) : undefined;
     // The live-dispatch guard is UNCONDITIONAL: `--force` may override the
     // dirty-tree guard (inside removeWorktree), but it must never remove a
     // worktree a live dispatch is using. A re-dispatched unit is active work,
-    // not leftover. Only a terminal (merged/removed) or orphan worktree is prunable.
-    if (dispatch && isActiveDispatch(dispatch.status)) {
-      rows.push({ repo: wt.repo, slug: wt.slug, status: "skipped", detail: `active:${dispatch.status}` });
+    // not leftover. Only a terminal (merged/removed), a verified non-writing
+    // role, or an orphan worktree is prunable.
+    if (dispatch && isLiveForPrune(dispatch.status, role)) {
+      // End the message on the action: a live dispatch is kept on purpose;
+      // if it is genuinely dead work, close its ledger row (then it prunes).
+      rows.push({
+        repo: wt.repo,
+        slug: wt.slug,
+        status: "skipped",
+        detail: `active:${dispatch.status} — live dispatch; close it on the ledger to reclaim`,
+      });
       continue;
     }
     const result = await removeWorktree(workspaceDir, { repo: wt.repo, specialist: wt.slug, package: wt.package, task: wt.task, journey, force });

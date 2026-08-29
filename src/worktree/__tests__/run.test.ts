@@ -87,6 +87,73 @@ async function writeLedger(dir: string, id: string, dispatches: unknown[]): Prom
   );
 }
 
+async function writePersonas(dir: string, personas: unknown[]): Promise<void> {
+  await mkdir(join(dir, ".aipe"), { recursive: true });
+  await writeFile(join(dir, ".aipe", "personas.yaml"), stringify({ personas }), "utf8");
+}
+
+// A QA persona reaches `verified` and never `merged` (the dev's PR is what
+// merges), so `verified` is the END of its work — but prune treated it as active
+// and kept the worktree forever. It is terminal for a role that does not write.
+test("pruneWorktrees removes a verified worktree of a non-writing (qa) role (D8)", async () => {
+  const { dir } = await makeWorkspace();
+  try {
+    const qa = await createWorktree(dir, { repo: "embark", specialist: "Mike", journey: "jv" });
+    if (!qa.ok) throw new Error("setup");
+    await writePersonas(dir, [{ name: "Mike", role: "qa", repo: "embark", path: "./embark/.claude/skills/mike" }]);
+    await writeLedger(dir, "jv", [
+      { repo: "embark", specialist: "Mike", branch: qa.branch, worktree: qa.path, status: "verified" },
+    ]);
+
+    const rows = await pruneWorktrees(dir, "jv");
+    expect(rows.find((r) => r.slug === "mike")?.status).toBe("removed");
+    expect(await listWorktrees(dir, "jv")).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// A dev's verified delivery is NOT terminal for the worktree — it stays until
+// the PR merges, because the dev may still have to address review on it.
+test("pruneWorktrees keeps a verified worktree of a writing (dev-fullstack) role (D8)", async () => {
+  const { dir } = await makeWorkspace();
+  try {
+    const dev = await createWorktree(dir, { repo: "embark", specialist: "Jesse", journey: "jd" });
+    if (!dev.ok) throw new Error("setup");
+    await writePersonas(dir, [{ name: "Jesse", role: "dev-fullstack", repo: "embark", path: "./embark/.claude/skills/jesse" }]);
+    await writeLedger(dir, "jd", [
+      { repo: "embark", specialist: "Jesse", branch: dev.branch, worktree: dev.path, status: "verified" },
+    ]);
+
+    const rows = await pruneWorktrees(dir, "jd");
+    expect(rows.find((r) => r.slug === "jesse")?.status).toBe("skipped");
+    expect((await listWorktrees(dir, "jd")).map((r) => r.slug)).toEqual(["jesse"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// Relaxing `verified` for QA must NOT weaken the dirty/unpushed guard: a QA
+// worktree that somehow carries uncommitted work is still refused without force.
+test("pruneWorktrees still refuses a verified qa worktree that is dirty (D8 — guard survives)", async () => {
+  const { dir } = await makeWorkspace();
+  try {
+    const qa = await createWorktree(dir, { repo: "embark", specialist: "Mike", journey: "jg" });
+    if (!qa.ok) throw new Error("setup");
+    await writeFile(join(qa.path, "wip.txt"), "uncommitted\n", "utf8");
+    await writePersonas(dir, [{ name: "Mike", role: "qa", repo: "embark", path: "./embark/.claude/skills/mike" }]);
+    await writeLedger(dir, "jg", [
+      { repo: "embark", specialist: "Mike", branch: qa.branch, worktree: qa.path, status: "verified" },
+    ]);
+
+    const rows = await pruneWorktrees(dir, "jg");
+    expect(rows.find((r) => r.slug === "mike")?.status).toBe("blocked");
+    expect(await exists(qa.path)).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("createWorktree on a bare repo yields a working tree where git add/status work (A3)", async () => {
   const { dir } = await makeBareWorkspace();
   try {
