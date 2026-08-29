@@ -196,7 +196,27 @@ test("a journey with no units at all errors, for propose, instead of printing no
   await writeCapabilities(dir, caps);
   const r = await proposeCommand({ workspace: dir, journeyId: "empty" });
   expect(r.code).toBe(1);
-  expect(r.lines).toEqual(["ERROR journey: empty has no units yet — nothing to propose for"]);
+  expect(r.lines).toEqual([
+    "ERROR journey: empty has no units to propose for — declare them in the Orientation Spec first (aipe journey spec --journey empty --units <fqid,...> --workspace <workspace>), then re-run `aipe execution propose`",
+  ]);
+});
+
+test("propose prices the spec's units with ZERO dispatches on the ledger (pre-choice, before dispatch)", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  // An approved spec that declares one unit — and no dispatches at all.
+  await mkdir(join(dir, ".aipe", "journeys", "j1"), { recursive: true });
+  await writeFile(
+    join(dir, ".aipe", "journeys", "j1", "orientation.md"),
+    "# Orientation Spec — j1\n## Problem\nx\n## Per-package scope\n### embark\n- Scope\n## Sequencing\n- Wave 1\n## Out of scope\n- none\n",
+    "utf8",
+  );
+  await writeCapabilities(dir, caps);
+
+  const r = await proposeCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(0);
+  expect(r.lines[0]).toBe("UNIT embark");
+  expect(r.lines).toContain("  subagent claude-code fast normal cost-index=1");
 });
 
 test("unconfirmed capabilities still propose, but say so, as the last note", async () => {
@@ -315,7 +335,9 @@ test("a journey with no units at all errors, for plan, instead of printing an em
   await writeCapabilities(dir, caps);
   const r = await planCommand({ workspace: dir, journeyId: "empty" });
   expect(r.code).toBe(1);
-  expect(r.lines).toEqual(["ERROR journey: empty has no units yet — nothing to plan for"]);
+  expect(r.lines).toEqual([
+    "ERROR journey: empty has no dispatched units to plan — `plan` groups the envelopes you have already chosen, so run `aipe execution propose`, then record each unit's chosen envelope (aipe journey record … --mode/--harness/--tier/--intensity[/--model]) before planning",
+  ]);
 });
 
 test("a journey whose units carry no recorded envelope tells the human to approve the Orientation Spec first", async () => {

@@ -41,6 +41,38 @@ ${perUnit}
 `;
 }
 
+// The section whose `### <unit>` subsections ARE the journey's units. Kept as a
+// named constant so the writer (renderOrientationTemplate) and the reader
+// (parseOrientationUnits) can never drift on the heading text.
+const PER_PACKAGE_SCOPE = "Per-package scope";
+
+/**
+ * Pure: the units a spec declares, read back from its rendered form — the
+ * `### <unit>` subsections under `## Per-package scope`.
+ *
+ * A journey's units are never persisted structurally; the orientation.md
+ * headings are the record, and they exist BEFORE any dispatch. This is what lets
+ * `execution propose` price a spec's units with zero dispatches on the ledger.
+ * Scoped to the Per-package scope section on purpose: a real spec carries `###`
+ * headings under other sections too (`### Confirmados`, `### A verificar`), and
+ * those are prose, not units.
+ */
+export function parseOrientationUnits(md: string): string[] {
+  const units: string[] = [];
+  let inScope = false;
+  for (const line of md.split("\n")) {
+    const h2 = line.match(/^##\s+(.+?)\s*$/);
+    if (h2) {
+      inScope = h2[1] === PER_PACKAGE_SCOPE;
+      continue;
+    }
+    if (!inScope) continue;
+    const h3 = line.match(/^###\s+(.+?)\s*$/);
+    if (h3) units.push(h3[1]!.trim());
+  }
+  return units;
+}
+
 export interface OrientationCheck {
   ok: boolean;
   missingSections: string[];

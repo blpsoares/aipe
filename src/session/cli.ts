@@ -3,6 +3,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { packageFqid } from "../context-brain/packages";
+import { repoDir } from "../context-brain/layout";
+import { readBrain } from "../make-workspace/read";
 import { readLedger, recordDispatch } from "../journey/ledger";
 import type { JourneyDispatch } from "../journey/types";
 import { getAdapter, resolveAdapter } from "../harness/registry";
@@ -405,6 +407,17 @@ export async function dispatchCommand(
 
   const adapter = await resolveAdapter(workspace);
 
+  // A repo does NOT necessarily live at `<workspace>/<repo>`: under the `repos/`
+  // layout it is `<workspace>/repos/<repo>`, and the brain is the single source
+  // of truth for where. Resolve the persona through the brain like the rest of
+  // the CLI, never by assuming the bare name is the directory. A workspace with
+  // no brain on disk (or a repo the brain does not name) predates the
+  // convention and falls back to the bare name — exactly the legacy behavior.
+  const brainResult = await readBrain(workspace);
+  const brainRepos = brainResult.ok ? brainResult.brain.repos : null;
+  const repoRelDir = (repo: string): string =>
+    (brainRepos ? repoDir(brainRepos, repo) : undefined) ?? repo;
+
   // Pass 1: resolve every unit's persona body before writing anything. A
   // prompt file is the audit trail of what a specialist was told, so a
   // dispatch that fails partway (persona missing for unit 2 of 3, say) must
@@ -457,7 +470,7 @@ export async function dispatchCommand(
 
     const target = adapter.personaTarget(personaSlug(d.specialist));
     try {
-      const personaBody = await readFile(join(workspace, d.repo, target.relDir, target.filename), "utf8");
+      const personaBody = await readFile(join(workspace, repoRelDir(d.repo), target.relDir, target.filename), "utf8");
       resolved.push({ d, fqid, personaBody, agentopHarness, unitAdapter });
     } catch {
       lines.push(`ERROR persona: could not read the persona for ${d.specialist}@${d.repo}`);

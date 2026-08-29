@@ -12,14 +12,17 @@
 // gate reasons. This is the ONLY path by which the wave-level policy limits
 // (gateAboveSessions, maxCostIndexPerWave) reach a human — groupIntoWaves has
 // no other caller in this codebase.
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { packageFqid } from "../context-brain/packages";
+import { parseOrientationUnits } from "../journey/spec";
 import { probeAll, realProbeRunner } from "../capabilities/probe";
 import { fromProbes, readCapabilities, writeCapabilities } from "../capabilities/store";
 import type { Capabilities, ProbeRunner } from "../capabilities/types";
 import { getAdapter, hasAdapter } from "../harness/registry";
 import { isContainable } from "../harness/types";
 import { readLedger } from "../journey/ledger";
-import type { DispatchStatus, JourneyDispatch } from "../journey/types";
+import type { DispatchStatus, JourneyDispatch, JourneyLedger } from "../journey/types";
 import { isTier } from "../model/types";
 import { readExecutionPolicy } from "./policy";
 import { proposeForUnit } from "./propose";
@@ -141,6 +144,30 @@ async function loadOrProbeCapabilities(
   return { ok: true, caps, leadingLines: [AUTO_PROBED_NOTE], trailingNotes: [UNCONFIRMED_NOTE] };
 }
 
+// The units `propose` prices. They come from the SPEC — the `### <unit>`
+// subsections of the approved Orientation Spec — which exist BEFORE any dispatch.
+// That is the whole point: pricing the envelope happens before dispatching, so a
+// journey with zero dispatches must still be priceable. Only when the spec
+// declares no units yet do we fall back to whatever the ledger already
+// dispatched, so pricing still works post-dispatch and a journey that skipped
+// the spec scaffold is not stranded. Deduped: `propose` prices a UNIT once, even
+// when a dev and a QA row share its fqid.
+async function resolveProposeUnits(
+  workspace: string,
+  journeyId: string,
+  ledger: JourneyLedger,
+): Promise<string[]> {
+  const relPath = ledger.spec?.path ?? join(".aipe", "journeys", journeyId, "orientation.md");
+  let specUnits: string[] = [];
+  try {
+    specUnits = parseOrientationUnits(await readFile(join(workspace, relPath), "utf8"));
+  } catch {
+    // No orientation.md on disk yet — fall through to the ledger.
+  }
+  const source = specUnits.length > 0 ? specUnits : ledger.dispatches.map((d) => packageFqid(d.repo, d.package));
+  return [...new Set(source)];
+}
+
 export interface ProposeCommandOptions {
   workspace: string;
   journeyId: string;
@@ -164,18 +191,20 @@ export async function proposeCommand(
   if (!ledger) {
     return { code: 1, lines: [`ERROR journey: no ledger for ${opts.journeyId}`] };
   }
-  if (ledger.dispatches.length === 0) {
+  const units = await resolveProposeUnits(opts.workspace, opts.journeyId, ledger);
+  if (units.length === 0) {
     return {
       code: 1,
-      lines: [`ERROR journey: ${opts.journeyId} has no units yet — nothing to propose for`],
+      lines: [
+        `ERROR journey: ${opts.journeyId} has no units to propose for — declare them in the Orientation Spec first (aipe journey spec --journey ${opts.journeyId} --units <fqid,...> --workspace <workspace>), then re-run \`aipe execution propose\``,
+      ],
     };
   }
 
   const policy = await readExecutionPolicy(opts.workspace);
   const lines: string[] = [...leadingLines];
 
-  for (const d of ledger.dispatches) {
-    const fqid = packageFqid(d.repo, d.package);
+  for (const fqid of units) {
     const proposal = proposeForUnit(fqid, caps, policy, {});
     lines.push(`UNIT ${fqid}`);
     for (const o of proposal.options) {
@@ -281,9 +310,16 @@ export async function planCommand(
     return { code: 1, lines: [`ERROR journey: no ledger for ${opts.journeyId}`] };
   }
   if (ledger.dispatches.length === 0) {
+    // Unlike `propose` (pre-choice, prices the spec's units), `plan` is
+    // post-choice: it groups the envelopes ALREADY chosen into waves, and a
+    // chosen envelope lives on a dispatch record. So `plan` genuinely needs
+    // dispatched units — but the old message ("no units yet") sent the operator
+    // to a dead end. Name the step that comes first.
     return {
       code: 1,
-      lines: [`ERROR journey: ${opts.journeyId} has no units yet — nothing to plan for`],
+      lines: [
+        `ERROR journey: ${opts.journeyId} has no dispatched units to plan — \`plan\` groups the envelopes you have already chosen, so run \`aipe execution propose\`, then record each unit's chosen envelope (aipe journey record … --mode/--harness/--tier/--intensity[/--model]) before planning`,
+      ],
     };
   }
 

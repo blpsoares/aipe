@@ -92,6 +92,31 @@ test("flags an empty description", async () => {
   }
 });
 
+test("detects persona-path drift against the brain and names the fix (migrate-layout)", async () => {
+  const dir = await ws();
+  try {
+    // The brain (and disk) are on the repos/ layout; the roster still points at
+    // the old root path — the exact drift a persona-blind migration leaves behind.
+    await writeFile(
+      join(dir, ".aipe", "brain.yaml"),
+      stringify({ context: { name: "c", coordinator: "Nicolas" }, repos: [{ name: "embark", url: "u", path: "./repos/embark" }] }),
+      "utf8",
+    );
+    await roster(dir, [
+      { name: "Joaquim", role: "dev-fullstack", repo: "embark", package: null, fqid: "embark", path: "./embark/.claude/skills/joaquim" },
+    ]);
+    await skill(dir, "repos/embark/.claude/skills/joaquim", "joaquim", "Fullstack specialist for embark.");
+
+    const result = await checkPersonaReadiness(dir);
+    expect(result.ready).toBe(0);
+    const issues = result.results[0]!.issues.join(" ");
+    expect(issues).toContain("aipe workspace migrate-layout");
+    expect(issues).toContain("./repos/embark/.claude/skills/joaquim");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("empty roster → 0/0 ready", async () => {
   const dir = await ws();
   try {

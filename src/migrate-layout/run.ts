@@ -21,7 +21,14 @@ import { mkdir, rename, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { stringify } from "yaml";
 import { normalizePath } from "../context-brain/layout";
-import type { BrainFile, RepoEntry } from "../context-brain/types";
+import type { BrainFile } from "../context-brain/types";
+import { readPersonas } from "../hire-specialists/read-personas";
+import {
+  reconcilePersonaPaths,
+  renderPersonasYaml,
+  type PersonaPathChange,
+} from "../hire-specialists/registry";
+import type { PersonaRegistryEntry } from "../hire-specialists/types";
 import { listJourneys } from "../journey/ledger";
 import type { DispatchStatus } from "../journey/types";
 import { readBrain } from "../make-workspace/read";
@@ -48,10 +55,13 @@ export interface MigrateDeps {
   exists: (absPath: string) => Promise<boolean>;
   move: (fromAbs: string, toAbs: string) => Promise<void>;
   writeBrain: (workspaceDir: string, brain: BrainFile) => Promise<void>;
+  /** The persona registry (.aipe/personas.yaml) — empty when there is none. */
+  personas: (workspaceDir: string) => Promise<PersonaRegistryEntry[]>;
+  writePersonas: (workspaceDir: string, entries: PersonaRegistryEntry[]) => Promise<void>;
 }
 
 export type MigrateResult =
-  | { ok: true; plan: MigrationPlan; applied: boolean }
+  | { ok: true; plan: MigrationPlan; applied: boolean; personaChanges: PersonaPathChange[] }
   | { ok: false; blockers: string[]; plan?: MigrationPlan }
   | { ok: false; error: string };
 
@@ -83,6 +93,10 @@ export const defaultDeps: MigrateDeps = {
   },
   writeBrain: async (workspaceDir, brain) => {
     await Bun.write(join(workspaceDir, ".aipe", "brain.yaml"), stringify(brain));
+  },
+  personas: readPersonas,
+  writePersonas: async (workspaceDir, entries) => {
+    await Bun.write(join(workspaceDir, ".aipe", "personas.yaml"), renderPersonasYaml(entries));
   },
 };
 
@@ -151,12 +165,25 @@ export async function migrateLayout(
   const brain = brainResult.brain;
 
   const plan = planMigration(brain.repos);
-  if (plan.moves.length === 0) return { ok: true, plan, applied: false };
+
+  // The brain AFTER migration — repos rewritten to their repos/ paths. The
+  // persona registry must agree with THIS, whether the repos move now or already
+  // moved in a prior (persona-blind) migration that left the registry pointing
+  // at the old location. That second case is drift nobody was warned about:
+  // even with zero moves to make, a stale personas.yaml is still work to do.
+  const migratedBrain: BrainFile = { ...brain, repos: applyPlanToRepos(brain.repos, plan) };
+  const personas = await d.personas(workspaceDir);
+  const reconciled = reconcilePersonaPaths(migratedBrain, personas);
+  const personaChanges = reconciled.changed;
+
+  if (plan.moves.length === 0 && personaChanges.length === 0) {
+    return { ok: true, plan, applied: false, personaChanges };
+  }
 
   const blockers = await collectBlockers(workspaceDir, plan, opts, d);
   if (blockers.length > 0) return { ok: false, blockers, plan };
 
-  if (!opts.apply) return { ok: true, plan, applied: false };
+  if (!opts.apply) return { ok: true, plan, applied: false, personaChanges };
 
   // Disk first, brain last. Every move that succeeded is remembered so a
   // failure halfway can put the workspace back exactly as it was.
@@ -182,8 +209,15 @@ export async function migrateLayout(
     await d.repair(moved.toAbs).catch(() => {});
   }
 
-  const migrated: RepoEntry[] = applyPlanToRepos(brain.repos, plan);
-  await d.writeBrain(workspaceDir, { ...brain, repos: migrated });
+  await d.writeBrain(workspaceDir, migratedBrain);
 
-  return { ok: true, plan, applied: true };
+  // Keep the persona registry truthful to disk, exactly as the brain is: the
+  // SKILL.md files moved with their repos, so their recorded paths must move too
+  // (this is what stops `validate-personas` reporting every persona broken after
+  // a migration). Only written when something actually changed.
+  if (personaChanges.length > 0) {
+    await d.writePersonas(workspaceDir, reconciled.entries);
+  }
+
+  return { ok: true, plan, applied: true, personaChanges };
 }

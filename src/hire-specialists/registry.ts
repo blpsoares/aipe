@@ -40,6 +40,45 @@ export function renderPersonasYaml(entries: PersonaRegistryEntry[]): string {
   return stringify({ personas: entries });
 }
 
+export interface PersonaPathChange {
+  name: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * Pure: rewrite every persona's `path` so it agrees with where its repo now
+ * lives in the brain.
+ *
+ * A persona's recorded `path` embeds its repo directory (`./<repo>/.claude/…`),
+ * so when a repo moves under `repos/` that path goes stale — the SKILL.md is now
+ * at `./repos/<repo>/.claude/…` but the registry still points at the old spot,
+ * and `validate-personas` reports the persona broken. This recomputes the
+ * canonical install path (`<repo.path>/<personaSkillDir>`, byte-for-byte what
+ * `buildRegistry` writes) from the brain, so it fixes BOTH a repo that is moving
+ * now and a registry that drifted from an already-migrated brain (the silent
+ * breakage nobody was warned about). Coordinator rows (`repo === null`) and
+ * personas whose repo the brain does not name are left untouched.
+ */
+export function reconcilePersonaPaths(
+  brain: BrainFile,
+  entries: PersonaRegistryEntry[],
+  adapter: HarnessAdapter = claudeCodeAdapter,
+): { entries: PersonaRegistryEntry[]; changed: PersonaPathChange[] } {
+  const pathByRepo = new Map(brain.repos.map((r) => [r.name, r.path]));
+  const changed: PersonaPathChange[] = [];
+  const next = entries.map((entry) => {
+    if (entry.repo === null) return entry;
+    const repoPath = pathByRepo.get(entry.repo);
+    if (repoPath === undefined) return entry;
+    const want = `${repoPath}/${personaSkillDir(adapter, personaSlug(entry.name))}`;
+    if (entry.path === want) return entry;
+    changed.push({ name: entry.name, from: entry.path ?? "(none)", to: want });
+    return { ...entry, path: want };
+  });
+  return { entries: next, changed };
+}
+
 // The unit a persona occupies in the roster: (repo, role, package). The
 // package is PART of the key — in a monorepo one (repo, role) has many
 // personas, one per package, and they must not evict one another. A package-

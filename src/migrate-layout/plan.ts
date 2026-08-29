@@ -61,8 +61,19 @@ export function applyPlanToRepos(repos: RepoEntry[], plan: MigrationPlan): RepoE
   });
 }
 
+/** One persona whose registry path had to move to follow its repo. */
+export interface PersonaPathChangeLine {
+  name: string;
+  from: string;
+  to: string;
+}
+
 /** Pure: the human-readable dry-run report. */
-export function renderPlan(plan: MigrationPlan, applied: boolean): string[] {
+export function renderPlan(
+  plan: MigrationPlan,
+  applied: boolean,
+  personaChanges: PersonaPathChangeLine[] = [],
+): string[] {
   const lines: string[] = [];
   for (const m of plan.moves) {
     lines.push(`${applied ? "OK moved" : "PLAN move"} ${m.repo}: ${normalizePath(m.from)} → ${normalizePath(m.to)}`);
@@ -70,12 +81,20 @@ export function renderPlan(plan: MigrationPlan, applied: boolean): string[] {
   for (const u of plan.untouched) {
     lines.push(`SKIP ${u.repo} (${u.reason})`);
   }
-  if (plan.moves.length === 0) {
+  // Persona-registry drift: paths that no longer point at where the repo lives.
+  // Surfaced whether or not any repo is moving — a workspace migrated by an
+  // older, persona-blind migration is broken today with no other warning.
+  for (const c of personaChanges) {
+    lines.push(`${applied ? "OK persona" : "PLAN persona"} ${c.name}: ${c.from} → ${c.to}`);
+  }
+  if (plan.moves.length === 0 && personaChanges.length === 0) {
     lines.push("STATE migrate-layout=nothing-to-do");
   } else if (!applied) {
-    lines.push(`STATE migrate-layout=dry-run (${plan.moves.length} repo(s); re-run with --apply)`);
+    lines.push(
+      `STATE migrate-layout=dry-run (${plan.moves.length} repo(s), ${personaChanges.length} persona path(s); re-run with --apply)`,
+    );
   } else {
-    lines.push(`STATE migrate-layout=done (${plan.moves.length} repo(s))`);
+    lines.push(`STATE migrate-layout=done (${plan.moves.length} repo(s), ${personaChanges.length} persona path(s))`);
   }
   return lines;
 }

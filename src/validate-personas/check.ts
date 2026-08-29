@@ -1,8 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { normalizePath } from "../context-brain/layout";
+import { personaSkillDir } from "../harness/persona-install";
+import { claudeCodeAdapter } from "../harness/claude-code";
 import { makeFqid } from "../relationship/fqid";
 import { personaSlug } from "../hire-specialists/render";
 import { readPersonas } from "../hire-specialists/read-personas";
+import { readBrain } from "../make-workspace/read";
 
 export interface PersonaCheck {
   name: string;
@@ -45,12 +49,20 @@ export function parseFrontmatter(text: string): Frontmatter | null {
   return fm;
 }
 
-async function checkOne(workspaceDir: string, persona: {
-  name: string;
-  fqid: string | null;
-  repo: string | null;
-  path: string | null;
-}): Promise<PersonaCheck> {
+async function checkOne(
+  workspaceDir: string,
+  persona: {
+    name: string;
+    fqid: string | null;
+    repo: string | null;
+    path: string | null;
+  },
+  // The repo's path as the brain records it (`repo.path`), when a brain is on
+  // disk and names this persona's repo. Used to catch a registry that drifted
+  // from the brain after a migration — the silent breakage that reported 0/N
+  // ready with no clue why.
+  brainRepoPath: string | undefined,
+): Promise<PersonaCheck> {
   const issues: string[] = [];
   const slug = personaSlug(persona.name);
 
@@ -63,6 +75,20 @@ async function checkOne(workspaceDir: string, persona: {
   const expectedTail = join(".claude", "skills", slug);
   if (!persona.path.replace(/\/+$/, "").endsWith(expectedTail)) {
     issues.push(`path does not end with .claude/skills/${slug}`);
+  }
+
+  // Drift: the recorded path disagrees with where the brain says the repo lives.
+  // This is the actionable half of a `SKILL.md is missing on disk` failure — the
+  // file is fine, the registry is stale — so name the one command that fixes it
+  // instead of leaving the operator to guess.
+  if (brainRepoPath !== undefined) {
+    const expected = `${brainRepoPath}/${personaSkillDir(claudeCodeAdapter, slug)}`;
+    if (normalizePath(persona.path) !== normalizePath(expected)) {
+      issues.push(
+        `path out of sync with brain (recorded ${persona.path}, repo ${persona.repo} is at ${brainRepoPath} → expected ${expected}) — run \`aipe workspace migrate-layout\``,
+      );
+      return { ...persona, ok: false, issues };
+    }
   }
 
   const skillFile = join(workspaceDir, persona.path, "SKILL.md");
@@ -95,9 +121,22 @@ export async function checkPersonaReadiness(workspaceDir: string): Promise<Readi
   const roster = await readPersonas(workspaceDir);
   const personas = roster.filter((p) => p.role !== "coordinator");
 
+  // Best-effort: a workspace with no brain on disk predates the convention and
+  // gets no drift check (undefined per repo), exactly as before.
+  const brainResult = await readBrain(workspaceDir);
+  const repoPathByName = brainResult.ok
+    ? new Map(brainResult.brain.repos.map((r) => [r.name, r.path]))
+    : new Map<string, string>();
+
   const results: PersonaCheck[] = [];
   for (const p of personas) {
-    results.push(await checkOne(workspaceDir, { name: p.name, fqid: p.repo ? makeFqid(p.repo, p.package) : null, repo: p.repo, path: p.path }));
+    results.push(
+      await checkOne(
+        workspaceDir,
+        { name: p.name, fqid: p.repo ? makeFqid(p.repo, p.package) : null, repo: p.repo, path: p.path },
+        p.repo ? repoPathByName.get(p.repo) : undefined,
+      ),
+    );
   }
   return { results, ready: results.filter((r) => r.ok).length, total: results.length };
 }

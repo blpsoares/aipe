@@ -50,7 +50,7 @@ export async function run(args: string[]): Promise<number> {
     console.log(`STATE migrate-layout=blocked (${result.blockers.length} blocker(s))`);
     return 1;
   }
-  for (const line of renderPlan(result.plan, result.applied)) console.log(line);
+  for (const line of renderPlan(result.plan, result.applied, result.personaChanges)) console.log(line);
   return 0;
 }
 
