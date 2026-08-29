@@ -21,10 +21,10 @@ afterEach(() => {
   navigate("/");
 });
 
-test("route contract: Equipe at /team, order 1", () => {
+test("route contract: Equipe at /team, order 2 (after the new Atividade screen)", () => {
   expect(route.path).toBe("/team");
   expect(route.nav.label).toBe("nav_team");
-  expect(route.nav.order).toBe(1);
+  expect(route.nav.order).toBe(2);
 });
 
 test("one screen consolidates org chart + roster + toolbox (decision B)", () => {
