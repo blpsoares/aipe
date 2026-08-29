@@ -62,11 +62,19 @@ landed alongside it, shipping one release instead of three.
 `main` has no branch protection today; a direct push from anyone with write
 access still works. The plan, once enabled, is a ruleset requiring an open
 PR with `ci.yml`'s `check` run green before merging, with a standing bypass
-for the `github-actions` app — because step 8 above (commit the bump, tag,
-push both) pushes directly to `main`, outside a PR, right after the
-promotion PR itself was already gated. Without that bypass, turning on
-"require PR" would break this workflow the first time it ran after being
-enabled.
+— because step 8 above (commit the bump, tag, push both) pushes directly to
+`main`, outside a PR, right after the promotion PR itself was already
+gated. Without that bypass, turning on "require PR" would break this
+workflow the first time it ran after being enabled.
+
+That bypass is a `RepositoryRole` actor (`actor_id: 5`, admin) with
+`bypass_mode: always` — **not** an `Integration` actor for the
+`github-actions` app. This repository is personal, not org-owned, and
+GitHub rejects an `Integration` bypass actor on a personal repo's ruleset
+with `422 Validation Failed: Actor GitHub Actions integration must be part
+of the ruleset source or owner organization` — confirmed by hand against
+this repo, not a guess. The workflow's default `GITHUB_TOKEN` push is
+authorized through the admin-role bypass instead.
 
 ## Version single source of truth
 
