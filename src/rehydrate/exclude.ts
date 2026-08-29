@@ -1,0 +1,45 @@
+// Keep `rehydrate`'s footprint out of the PE's git status.
+//
+// `rehydrate` writes persona skills and agent types into `<repo>/.claude/`.
+// `.claude/` is in nobody's committed `.gitignore`, so every repo it touches
+// goes dirty — and a dirty repo blocks BOTH `migrate-layout` and
+// `worktree prune`. The upgrade then prints "run migrate-layout" while, in the
+// same command, manufacturing the very condition that makes it refuse.
+//
+// The fix is at the root (scope item 4): make `.claude/` locally ignored in
+// every repo of the workspace. `.git/info/exclude` is untracked, idempotent,
+// and — crucially — shared by all of a repo's worktrees, so a live session's
+// worktree stops going dirty too. No committed `.gitignore` is touched.
+import { resolve } from "node:path";
+import { readBrain } from "../make-workspace/read";
+import { ensureExcluded, run as git } from "../worktree/git";
+
+/** The entry we exclude — a trailing slash so only the directory is matched. */
+export const CLAUDE_EXCLUDE = ".claude/";
+
+async function isGitRepo(repoAbs: string): Promise<boolean> {
+  const r = await git(["git", "-C", repoAbs, "rev-parse", "--is-inside-work-tree"]);
+  return r.code === 0 && r.stdout.trim() === "true";
+}
+
+/**
+ * Ensures `.claude/` is in `.git/info/exclude` for every repo of the workspace
+ * that is a git checkout. Returns the repos actually excluded. Best-effort and
+ * idempotent: a missing/unclonable repo is skipped, a second run is a no-op.
+ */
+export async function ensureReposExcludeClaude(workspaceDir: string): Promise<string[]> {
+  const brain = await readBrain(workspaceDir).catch(() => null);
+  if (!brain || !brain.ok) return [];
+  const excluded: string[] = [];
+  for (const repo of brain.brain.repos) {
+    const repoAbs = resolve(workspaceDir, repo.path);
+    if (!(await isGitRepo(repoAbs))) continue;
+    try {
+      await ensureExcluded(repoAbs, CLAUDE_EXCLUDE);
+      excluded.push(repoAbs);
+    } catch {
+      // best-effort — never fail rehydrate over a single repo's exclude file
+    }
+  }
+  return excluded;
+}

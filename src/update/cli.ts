@@ -35,6 +35,7 @@ import {
   startBackgroundUpgrade,
 } from "./install";
 import { runInstall } from "./run";
+import { enclosingWorkspace } from "../runtime/workspaces";
 
 /** True when update checks are suppressed (hooks, CI, the install's own probe). */
 export function updateChecksDisabled(env: Record<string, string | undefined> = process.env): boolean {
@@ -206,10 +207,16 @@ export async function upgrade(args: string[]): Promise<number> {
   }
 
   console.log("Applying the update…");
-  const applied = await applyUpgrade(currentBin).catch((err) => ({
+  // Default migration scope = the workspace this upgrade was invoked from (safe,
+  // non-interactive). `--migrate-all` reaches every known legacy workspace.
+  const currentWorkspace = enclosingWorkspace(process.cwd());
+  const migrateAll = args.includes("--migrate-all");
+  const applied = await applyUpgrade(currentBin, { currentWorkspace, migrateAll }).catch((err) => ({
     ok: false,
     rehydrated: [] as string[],
     restarted: [] as number[],
+    migrated: [] as { workspace: string; repos: number }[],
+    deferredLegacy: [] as string[],
     failures: [`unexpected error: ${err?.message ?? String(err)}`],
   }));
 
@@ -223,8 +230,10 @@ export async function upgrade(args: string[]): Promise<number> {
     return 1;
   }
 
+  const reposMoved = applied.migrated.reduce((n, m) => n + m.repos, 0);
   const bits = [
     `${applied.rehydrated.length} workspace${applied.rehydrated.length === 1 ? "" : "s"} rehydrated`,
+    ...(reposMoved > 0 ? [`${reposMoved} repo${reposMoved === 1 ? "" : "s"} migrated`] : []),
     `${applied.restarted.length} web console${applied.restarted.length === 1 ? "" : "s"} restarted`,
   ];
   console.log(`\n${GR}${B}Done — now running aipe ${targetVersion}.${R} ${D}(${bits.join(", ")})${R}\n`);
