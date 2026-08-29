@@ -60,6 +60,11 @@ export function ActivityCard({ card, norm }: { card: BoardCard; norm: Envelope }
           {d.journey ? <span class="ac-journey sub">· {d.journey}</span> : null}
         </div>
         <Envelope_ card={card} norm={norm} />
+        {d.integrationPending ? (
+          <div class="ac-pending sub" title={t("ac_checking_merge_t")}>
+            <Icon name="history" size={11} /> {t("ac_checking_merge")}
+          </div>
+        ) : null}
         {actor ? (
           <div class="ac-actor sub">
             <span class="ac-k">{t("board_actor_pre")}</span> <b>{actor}</b>

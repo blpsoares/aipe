@@ -615,6 +615,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .ac-env { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .ac-env-i { font-family: var(--mono); font-size: 10px; color: var(--ink-3); background: var(--panel-2); padding: 1px 6px; border-radius: 999px; display: inline-flex; align-items: center; gap: 3px; }
 .ac-env-i.is-exc { color: rgb(var(--st-escalated)); background: rgb(var(--st-escalated) / .13); font-weight: 650; }
+.ac-pending { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: rgb(var(--st-running)); font-style: italic; }
 .ac-actor { font-size: 11px; }
 .ac-actor .ac-k { color: var(--ink-3); }
 .ac-pr { display: inline-block; margin: 0 11px 9px; font-size: 11.5px; }

@@ -106,6 +106,14 @@ de ser computada **server-side** e viajar no payload, do mesmo jeito que
   (nunca rebaixa sob falha). O build nunca faz rede; a console segue **read-only**
   (o refresher não escreve o ledger). Guarda: o build é síncrono (não aguarda
   rede) e o refresher prova sticky/TTL/no-downgrade.
+
+  **Cache frio não afirma o que não estabeleceu.** Enquanto o refresher ainda não
+  conferiu um PR (janela fria no boot, ou PR novo entre ciclos), o sinal é tri-
+  estado: `merged` (→ Integrados), `open` (**confirmado** não-mergeado → ready), e
+  `unknown`. No `unknown` a unidade fica em ready **com `integrationPending`**, e o
+  card diz *"verificando se já integrou…"* — nunca a apresenta como confirmada-
+  pendente. Sem isso, o cache frio seria o defeito do `--is-ancestor` de roupa
+  nova: a tela afirmando com confiança um estado de merge que ainda não checou.
 - `integrated` é **aditivo e conservador**: na dúvida (repo ausente, branch
   desconhecida, git indisponível) → `false`, nunca um falso "integrado". A tela
   consome `integrated`; **não** roda git.

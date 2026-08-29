@@ -119,3 +119,21 @@ test("a needs-you card offers a copyable next-step command (console stays read-o
   // Carla has no sessionId → the copyable command is `cd <worktree>`
   expect(needs.querySelector(".ic-cmd-text")!.textContent).toContain("cd /wt");
 });
+
+// re-gate B2 follow-up: cache frio não pode afirmar o que não estabeleceu. Um
+// verified com merge-status ainda não conferido (integrationPending) aparece em
+// "ready" MAS com a nota "verificando", não como confirmado-pendente.
+test("um card com integração pendente diz 'verificando', não afirma pendência", () => {
+  const pendSnap = {
+    ok: true,
+    context: { name: "demo", coordinator: "C" },
+    journeys: [{ id: "j-p", dispatches: [
+      { repo: "aipe", specialist: "Gwen", task: "cold-cache", branch: "b", worktree: "/wt", status: "verified", liveness: "landed", pr: "https://github.com/x/y/pull/40", integrationPending: true },
+    ] as unknown[] }],
+  } as RawSnapshot;
+  applySnapshot(pendSnap, 1_700_000_000_000);
+  const { container } = render(<ActivityView />);
+  const ready = container.querySelector(".bcol-ready")!;
+  expect(ready.textContent).toContain("Gwen");
+  expect(ready.textContent).toContain(t("ac_checking_merge"));
+});

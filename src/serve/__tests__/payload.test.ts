@@ -7,9 +7,11 @@ import {
   annotateIntegrated,
   refreshPrMergeCache,
   prMergedFromCache,
+  prStateFromCache,
   _seedPrCache,
   _clearPrCache,
   PR_TTL_MS,
+  type PrMergeState,
 } from "../payload";
 import type { SessionInfo } from "../sessions";
 import type { JourneyView } from "../../dashboard/snapshot";
@@ -94,14 +96,17 @@ test("blocked→waiting e redirected→redirected vêm do ledger, não do live-s
 const jv = (over: Record<string, unknown>) =>
   [{ id: "j", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "/ws/aipe/.worktrees/j-jesse", status: "verified", ...over }] }] as unknown as JourneyView[];
 
-// annotateIntegrated is now SYNCHRONOUS and reads a SYNC prMerged resolver (re-gate
-// B2): the render path never awaits the network.
-const NEVER = (): boolean => false;
-const intOf = (
+// annotateIntegrated is SYNCHRONOUS and reads a SYNC tri-state prState resolver
+// (re-gate B2): the render path never awaits the network. Unknown ⇒ not integrated
+// but PENDING (shown as "verifying"), so a cold read never asserts a merge status.
+const UNKNOWN = (): PrMergeState => "unknown";
+const recOf = (
   over: Record<string, unknown>,
   isAncestor: (r: string, b: string) => boolean,
-  prMerged: (u: string) => boolean = NEVER,
-) => (annotateIntegrated(jv(over), isAncestor, prMerged)[0]!.dispatches[0] as { integrated?: boolean }).integrated;
+  prState: (u: string) => PrMergeState = UNKNOWN,
+) => annotateIntegrated(jv(over), isAncestor, prState)[0]!.dispatches[0] as { integrated?: boolean; integrationPending?: boolean };
+const intOf = (over: Record<string, unknown>, isAncestor: (r: string, b: string) => boolean, prState?: (u: string) => PrMergeState) =>
+  recOf(over, isAncestor, prState).integrated;
 
 test("merged é integrado sem tocar em git (verdade declarada)", () => {
   expect(intOf({ status: "merged" }, () => { throw new Error("git nao devia rodar"); })).toBe(true);
@@ -114,47 +119,64 @@ test("verified cujo branch JÁ está em main (ancestral) → integrated=true", (
 // re-gate B: o defeito sistemático. aipe mergeia por SQUASH, então --is-ancestor é
 // SEMPRE false; a verdade vem do PR MERGED (agora do cache, não da rede).
 test("SQUASH: branch NÃO-ancestral mas PR MERGED (cache) → integrado (o falso-negativo curado)", () => {
-  expect(intOf({ status: "verified", pr: "https://github.com/blpsoares/aipe/pull/22" }, () => false, () => true)).toBe(true);
+  expect(intOf({ status: "verified", pr: "https://github.com/blpsoares/aipe/pull/22" }, () => false, () => "merged")).toBe(true);
 });
 
-test("verified sem ancestral E PR não-merged → fica em 'pronto p/ integrar' (honesto)", () => {
-  expect(intOf({ status: "verified", pr: "https://github.com/x/y/pull/99" }, () => false, () => false)).toBe(false);
+test("verified com PR CONFIRMADO aberto → não integrado, e NÃO pendente (verdade estabelecida)", () => {
+  const r = recOf({ status: "verified", pr: "https://github.com/x/y/pull/99" }, () => false, () => "open");
+  expect(r.integrated).toBe(false);
+  expect(r.integrationPending).toBeUndefined();
+});
+
+// re-gate B2 follow-up: cache FRIO não pode afirmar o que não estabeleceu. Um
+// verified com PR ainda não conferido é integrated=false MAS integrationPending —
+// a tela mostra "verificando", não "confirmado pendente".
+test("cache FRIO (unknown): não integrado, porém PENDENTE — a tela diz 'verificando'", () => {
+  const r = recOf({ status: "verified", pr: "https://github.com/x/y/pull/40" }, () => false, () => "unknown");
+  expect(r.integrated).toBe(false);
+  expect(r.integrationPending).toBe(true);
 });
 
 test("delivered squash-mergeado (PR MERGED) também é integrado", () => {
-  expect(intOf({ status: "delivered", pr: "https://github.com/x/y/pull/1" }, () => false, () => true)).toBe(true);
+  expect(intOf({ status: "delivered", pr: "https://github.com/x/y/pull/1" }, () => false, () => "merged")).toBe(true);
 });
 
-test("dispatched/em progresso NUNCA é integrado, nem por ancestral nem por PR", () => {
-  expect(intOf({ status: "dispatched", pr: "https://github.com/x/y/pull/1" }, () => true, () => true)).toBe(false);
-  expect(intOf({ status: "failed", pr: "https://github.com/x/y/pull/1" }, () => true, () => true)).toBe(false);
+test("dispatched/em progresso NUNCA é integrado nem pendente, mesmo com PR desconhecido", () => {
+  const a = recOf({ status: "dispatched", pr: "https://github.com/x/y/pull/1" }, () => true, () => "unknown");
+  expect(a.integrated).toBe(false);
+  expect(a.integrationPending).toBeUndefined();
+  expect(intOf({ status: "failed", pr: "https://github.com/x/y/pull/1" }, () => true, () => "merged")).toBe(false);
 });
 
-test("sem worktree E sem PR → conservador false (não dá para saber)", () => {
-  expect(intOf({ status: "verified", worktree: "/no/worktrees/here" }, () => { throw new Error("nao localiza repo"); })).toBe(false);
+test("sem worktree E sem PR → não integrado e NÃO pendente (nada a estabelecer)", () => {
+  const r = recOf({ status: "verified", worktree: "/no/worktrees/here" }, () => { throw new Error("nao localiza repo"); });
+  expect(r.integrated).toBe(false);
+  expect(r.integrationPending).toBeUndefined();
 });
 
 test("removed sai como não-integrado (histórico puro)", () => {
-  expect(intOf({ status: "removed" }, () => true, () => true)).toBe(false);
+  expect(intOf({ status: "removed" }, () => true, () => "merged")).toBe(false);
 });
 
 // ── re-gate B2: a rede está FORA do render ──────────────────────────────────────
 test("annotateIntegrated é SÍNCRONO — o render nunca pode aguardar a rede", () => {
-  const r = annotateIntegrated(jv({ status: "verified", pr: "https://x/y/pull/1" }), () => false, () => true);
+  const r = annotateIntegrated(jv({ status: "verified", pr: "https://x/y/pull/1" }), () => false, () => "merged");
   expect(r instanceof Promise).toBe(false);
 });
 
-test("o resolver de PR do build lê o CACHE, nunca dispara chamada externa", () => {
+test("o resolver de PR do build lê o CACHE (sync tri-state), nunca dispara rede", () => {
   _clearPrCache();
-  // resolver que EXPLODE se for tratado como rede (assíncrono) — o build usa a versão sync
   const spy = { calls: 0 };
-  const cacheReader = (u: string): boolean => { spy.calls++; return false; };
+  const cacheReader = (_u: string): PrMergeState => { spy.calls++; return "unknown"; };
   annotateIntegrated(jv({ status: "verified", pr: "https://x/y/pull/1" }), () => false, cacheReader);
   expect(spy.calls).toBe(1); // consultou o resolver sync uma vez, sem await/rede
-  // e o cache é lido de forma síncrona pelo default
+  // o cache tri-state distingue merged / open / unknown, de forma síncrona
   _seedPrCache("https://x/y/pull/7", true);
+  _seedPrCache("https://x/y/pull/8", false);
+  expect(prStateFromCache("https://x/y/pull/7")).toBe("merged");
+  expect(prStateFromCache("https://x/y/pull/8")).toBe("open");
+  expect(prStateFromCache("https://x/y/pull/none")).toBe("unknown");
   expect(prMergedFromCache("https://x/y/pull/7")).toBe(true);
-  expect(prMergedFromCache("https://x/y/pull/none")).toBe(false);
 });
 
 test("refreshPrMergeCache: MERGED é sticky e NUNCA rebaixa sob rate-limit (null)", async () => {

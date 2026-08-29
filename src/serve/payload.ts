@@ -56,8 +56,10 @@ export function coordinatorSessionsOf(sessions: SessionInfo[], workspace: string
 /** A session-mode dispatch carrying its canonical liveness phase. */
 export type LiveDispatch = JourneyDispatch & { liveness?: UnitPhase };
 
-/** A dispatch carrying the server-computed merge truth (defect 2). */
-export type IntegratedDispatch = JourneyDispatch & { integrated?: boolean };
+/** A dispatch carrying the server-computed merge truth (defect 2). `integrationPending`
+ *  marks a unit whose squash tell is not yet known (cold cache) — shown as
+ *  "verifying", never asserted as confirmed-pending. */
+export type IntegratedDispatch = JourneyDispatch & { integrated?: boolean; integrationPending?: boolean };
 
 // The git clone that owns a dispatch's branch. Derived from the worktree path —
 // `<clone>/.worktrees/<slug>` — which is the actual clone dir regardless of how
@@ -102,6 +104,16 @@ export const PR_TTL_MS = 90_000;
 /** Synchronous cache read used by the build — no network, ever. Unknown ⇒ false. */
 export function prMergedFromCache(prUrl: string): boolean {
   return prCache.get(prUrl)?.merged ?? false;
+}
+
+// Tri-state so the build can tell "confirmed not merged" (open) from "not checked
+// yet" (unknown) — the distinction that keeps a COLD cache from asserting a merge
+// status it hasn't established (re-gate B2 follow-up). `unknown` is honestly shown
+// as "verifying", never as "confirmed pending".
+export type PrMergeState = "merged" | "open" | "unknown";
+export function prStateFromCache(prUrl: string): PrMergeState {
+  const e = prCache.get(prUrl);
+  return e === undefined ? "unknown" : e.merged ? "merged" : "open";
 }
 
 /** Test seam: seed/clear the cache deterministically. */
@@ -193,7 +205,7 @@ export function startPrMergeRefresher(
 export function annotateIntegrated(
   journeys: JourneyView[],
   isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
-  prMerged: (prUrl: string) => boolean = prMergedFromCache,
+  prState: (prUrl: string) => PrMergeState = prStateFromCache,
 ): JourneyView[] {
   const ancMemo = new Map<string, boolean>();
   const ancestor = (repoDir: string, branch: string): boolean => {
@@ -204,17 +216,29 @@ export function annotateIntegrated(
     ancMemo.set(key, val);
     return val;
   };
-  const integratedOf = (d: JourneyDispatch): boolean => {
-    if (d.status === "merged") return true;
-    if (d.status !== "verified" && d.status !== "delivered") return false;
+  // `integrated` is only ever set on a POSITIVE, established signal. `pending` says
+  // the squash tell is not yet known (cold cache) — so the card can say "verifying"
+  // instead of asserting "confirmed pending", which would be the --is-ancestor lie
+  // in new clothes (re-gate B2 follow-up).
+  const truthOf = (d: JourneyDispatch): { integrated: boolean; pending: boolean } => {
+    if (d.status === "merged") return { integrated: true, pending: false };
+    if (d.status !== "verified" && d.status !== "delivered") return { integrated: false, pending: false };
     const repoDir = repoDirOf(d);
-    if (repoDir && d.branch && ancestor(repoDir, d.branch)) return true; // ff / merge-commit
-    if (typeof d.pr === "string" && d.pr && prMerged(d.pr)) return true; // squash (cached, no network)
-    return false;
+    if (repoDir && d.branch && ancestor(repoDir, d.branch)) return { integrated: true, pending: false }; // ff / merge-commit
+    if (typeof d.pr === "string" && d.pr) {
+      const st = prState(d.pr); // cached, no network
+      if (st === "merged") return { integrated: true, pending: false }; // squash
+      if (st === "open") return { integrated: false, pending: false }; // CONFIRMED not merged
+      return { integrated: false, pending: true }; // unknown — not yet verified
+    }
+    return { integrated: false, pending: false }; // no PR + not ancestor → nothing to establish
   };
   return journeys.map((j) => ({
     ...j,
-    dispatches: j.dispatches.map((d): IntegratedDispatch => ({ ...d, integrated: integratedOf(d) })),
+    dispatches: j.dispatches.map((d): IntegratedDispatch => {
+      const { integrated, pending } = truthOf(d);
+      return pending ? { ...d, integrated, integrationPending: true } : { ...d, integrated };
+    }),
   }));
 }
 
@@ -256,7 +280,7 @@ export async function buildServePayload(
   read: () => Promise<{ sessions: SessionInfo[]; liveIds: Set<string>; reliable: boolean }> = readLive,
   worktreeExists: (path: string) => boolean = existsSync,
   isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
-  prMerged: (prUrl: string) => boolean = prMergedFromCache,
+  prState: (prUrl: string) => PrMergeState = prStateFromCache,
 ): Promise<ServePayload> {
   const snapshot = await buildSnapshot(workspace);
   // One agentop read covers the per-dispatch activity, the coordinator's own
@@ -269,7 +293,7 @@ export async function buildServePayload(
     : { sessions: [] as SessionInfo[], liveIds: new Set<string>(), reliable: true };
   // Liveness first, then the merge truth (defect 2): both annotate dispatches and
   // compose cleanly (each spreads the whole dispatch, preserving the other's field).
-  const journeys = annotateIntegrated(annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists), isAncestor, prMerged);
+  const journeys = annotateIntegrated(annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists), isAncestor, prState);
   const sessions = relevantSessions(all, snapshot.journeys);
   const coordinatorSessions = coordinatorSessionsOf(all, workspace);
   return { ...snapshot, journeys, sessions, coordinatorSessions };
