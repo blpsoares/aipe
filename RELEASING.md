@@ -1,8 +1,9 @@
 # Releasing AIPe
 
-**Releases are automatic.** Merging to `main` cuts one. Nobody bumps a version
-by hand and nobody pushes a tag — the two steps that used to need the PE (and
-tag-push permission a session does not have) are now the workflow's job.
+**Releases are automatic.** Merging to `main` cuts one — `dev` never does.
+Nobody bumps a version by hand and nobody pushes a tag — the two steps that
+used to need the PE (and tag-push permission a session does not have) are now
+the workflow's job.
 
 The download domain is **`openvibes.tech`** (the open-source umbrella),
 overridable at runtime via `AIPE_DOWNLOAD_BASE`.
@@ -32,6 +33,48 @@ overridable at runtime via `AIPE_DOWNLOAD_BASE`.
 
 `concurrency: release-main` serialises runs: two at once would each compute a
 version from a tag the other has not pushed yet.
+
+## `dev` never releases
+
+Every push to `dev` runs `ci.yml` — the same gate a PR runs — but `dev` is
+deliberately absent from `release.yml`'s trigger (`on: push: branches:
+[main]` only). Work accumulates on `dev` and is verified continuously; a
+release only happens when a promotion PR merges `dev` into `main`.
+
+## Who promotes `dev` → `main`, and when
+
+The coordinator persona promotes — never a specialist, and never
+automatically on every merge to `dev`. A promotion PR goes out when either:
+
+- at least one complete feature has landed on `dev`, or
+- there's a fix the PE needs to consume with urgency.
+
+Green CI on `dev` is a precondition for promoting, not the trigger — the
+point is bundling related, verified work into one release with actual
+content. The alternative, releasing on every merge, is what produced five
+releases in a single day for this repository, several of them a single
+feature sliced across patch bumps. `agentistics` set the precedent: the
+coordinator held one commit's promotion until two more specialists' work
+landed alongside it, shipping one release instead of three.
+
+## Branch protection on `main` — pending
+
+`main` has no branch protection today; a direct push from anyone with write
+access still works. The plan, once enabled, is a ruleset requiring an open
+PR with `ci.yml`'s `check` run green before merging, with a standing bypass
+— because step 8 above (commit the bump, tag, push both) pushes directly to
+`main`, outside a PR, right after the promotion PR itself was already
+gated. Without that bypass, turning on "require PR" would break this
+workflow the first time it ran after being enabled.
+
+That bypass is a `RepositoryRole` actor (`actor_id: 5`, admin) with
+`bypass_mode: always` — **not** an `Integration` actor for the
+`github-actions` app. This repository is personal, not org-owned, and
+GitHub rejects an `Integration` bypass actor on a personal repo's ruleset
+with `422 Validation Failed: Actor GitHub Actions integration must be part
+of the ruleset source or owner organization` — confirmed by hand against
+this repo, not a guess. The workflow's default `GITHUB_TOKEN` push is
+authorized through the admin-role bypass instead.
 
 ## Version single source of truth
 
