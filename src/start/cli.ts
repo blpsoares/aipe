@@ -1,4 +1,5 @@
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   findHarness,
@@ -17,6 +18,7 @@ import type { ProbeRunner } from "../capabilities/types";
 import { getAdapter, hasAdapter, writeHarness } from "../harness/registry";
 import { scaffoldWorkspace } from "./scaffold";
 import { askLine, selectInteractive } from "./prompt";
+import { suggestInstallLine } from "../shell-hook/cli";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -55,6 +57,11 @@ export interface StartCommandOptions {
   // real subprocess runner outside tests.
   runner?: ProbeRunner;
   now?: string;
+  // The user's home, for the one-line shell-hook OFFER printed after the next
+  // steps. Injectable so tests drive a disposable HOME; `run()` passes the real
+  // `homedir()`. When absent, no offer is evaluated (there is no rc to suggest
+  // against) — this keeps `startCommand`'s deterministic tests home-independent.
+  home?: string;
 }
 
 // The workspace-creation half of `aipe start`, split out from `run()` so it
@@ -108,6 +115,16 @@ export async function startCommand(
   }
 
   lines.push(...renderNextSteps(folder));
+
+  // The discoverability line for `aipe shell-hook` (the whole reason the command
+  // exists: a coordinator ran a day on a stale version with nothing warning
+  // them). It only SUGGESTS — installing is the user's act — and `suggestInstallLine`
+  // returns null once the hook is installed, so it never becomes per-run noise.
+  if (opts.home !== undefined) {
+    const offer = await suggestInstallLine(opts.home);
+    if (offer) lines.push("", `aipe: ${offer}`);
+  }
+
   return { code: 0, lines };
 }
 
@@ -148,7 +165,7 @@ export async function run(args: string[], runner?: ProbeRunner): Promise<number>
     name = await askLine("Workspace name: ");
   }
 
-  const result = await startCommand({ parentDir: parent, harness, name: name ?? "", runner });
+  const result = await startCommand({ parentDir: parent, harness, name: name ?? "", runner, home: homedir() });
   print(result.lines);
   return result.code;
 }
