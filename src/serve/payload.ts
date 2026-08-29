@@ -7,7 +7,8 @@ import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { buildSnapshot, type Snapshot } from "../dashboard/snapshot";
-import { ghPrState } from "../journey/reconcile";
+import { ghPrState, type PrState, type PrStateFetcher } from "../journey/reconcile";
+import { listJourneys } from "../journey/ledger";
 import { readLive, type SessionInfo } from "./sessions";
 import { dispatchPhase } from "../session/poll";
 import type { UnitPhase } from "../session/types";
@@ -78,40 +79,122 @@ function gitIsAncestor(repoDir: string, branch: string): boolean {
   }
 }
 
-// Whether a PR has MERGED, the way GitHub records it. This is the ONLY reliable
-// tell for a SQUASH merge — `--is-ancestor` is structurally ALWAYS false there,
-// because a squash lands a brand-new commit and the branch's own commits never
-// become ancestors of main (aipe merges by squash, so this was a systematic false
-// negative, not an edge case). Monotonic cache: once MERGED a PR stays merged, so
-// it is queried at most once; still-open PRs re-query (a bounded, small set), and
-// a gh failure returns false (conservative — never a false "integrated").
-const mergedPrCache = new Map<string, boolean>();
-async function ghPrMerged(prUrl: string): Promise<boolean> {
-  if (mergedPrCache.get(prUrl)) return true;
-  const merged = (await ghPrState(prUrl)) === "MERGED";
-  if (merged) mergedPrCache.set(prUrl, true);
-  return merged;
+// ── PR-merge cache (re-gate B2): the network is OUT of the render ─────────────
+// The build path (buildServePayload, run per SSE client on a 3s reconcile + every
+// fs event) must NEVER call the network — putting `gh pr view` there hammered the
+// API (~1 call/s/client) and, when rate-limited, returned null → merged units
+// flipped BACK to "ready", the very lie item 2 kills, now worst exactly under load.
+// So the build reads this in-memory cache SYNCHRONOUSLY; a single server-owned
+// refresher (startPrMergeRefresher) is the only thing that touches `gh`.
+//
+// `merged` is STICKY: once true it is never re-polled and never downgraded, so a
+// later rate-limited/failed poll can't turn an integrated unit back into "ready".
+// Open/unknown entries carry a timestamp and refresh past a TTL. Any failure
+// (timeout, gh error → null) leaves the prior entry untouched — never a downgrade,
+// never a false positive.
+interface PrCacheEntry {
+  merged: boolean;
+  at: number;
+}
+const prCache = new Map<string, PrCacheEntry>();
+export const PR_TTL_MS = 90_000;
+
+/** Synchronous cache read used by the build — no network, ever. Unknown ⇒ false. */
+export function prMergedFromCache(prUrl: string): boolean {
+  return prCache.get(prUrl)?.merged ?? false;
+}
+
+/** Test seam: seed/clear the cache deterministically. */
+export function _seedPrCache(prUrl: string, merged: boolean, at = Date.now()): void {
+  prCache.set(prUrl, { merged, at });
+}
+export function _clearPrCache(): void {
+  prCache.clear();
+}
+
+/** `ghPrState` with a hard timeout, so a hung `gh` can never wedge the refresher. */
+async function ghPrStateTimed(prUrl: string, ms = 4000): Promise<PrState> {
+  return await Promise.race([ghPrState(prUrl), new Promise<PrState>((r) => setTimeout(() => r(null), ms))]);
+}
+
+/**
+ * Refresh the cache for the given PR URLs — the ONLY place `gh` runs. Skips
+ * sticky-merged and still-fresh entries (so at most one poll per open PR per TTL,
+ * regardless of client/tab count); bounded concurrency; a null (rate-limit/
+ * timeout/error) is a no-op that keeps the prior entry (never a downgrade).
+ */
+export async function refreshPrMergeCache(
+  urls: string[],
+  fetchState: PrStateFetcher = ghPrStateTimed,
+  now: number = Date.now(),
+): Promise<void> {
+  const due = [...new Set(urls)].filter((u) => {
+    const e = prCache.get(u);
+    if (e?.merged) return false; // sticky merged — never re-poll
+    return !e || now - e.at >= PR_TTL_MS; // unknown or stale
+  });
+  const LIMIT = 4;
+  for (let i = 0; i < due.length; i += LIMIT) {
+    const batch = due.slice(i, i + LIMIT);
+    const states = await Promise.all(batch.map((u) => fetchState(u)));
+    batch.forEach((u, k) => {
+      const st = states[k];
+      if (st === null || st === undefined) return; // couldn't tell → keep prior, never downgrade
+      prCache.set(u, { merged: st === "MERGED", at: now });
+    });
+  }
+}
+
+/**
+ * Start the single, server-owned PR-merge refresher: on a slow timer it reads the
+ * workspace ledgers (fs, cheap) for the verified/delivered PRs and refreshes the
+ * cache off the render path. Returns a stop fn. Decoupled from the build entirely,
+ * so gh usage is bounded by (open PRs / interval), NOT by clients × builds.
+ */
+export function startPrMergeRefresher(
+  workspace: string,
+  intervalMs = 60_000,
+  fetchState: PrStateFetcher = ghPrStateTimed,
+): () => void {
+  const tick = async (): Promise<void> => {
+    try {
+      const ledgers = await listJourneys(workspace);
+      const urls: string[] = [];
+      for (const l of ledgers) {
+        for (const d of l.dispatches) {
+          if ((d.status === "verified" || d.status === "delivered") && typeof d.pr === "string" && d.pr) urls.push(d.pr);
+        }
+      }
+      await refreshPrMergeCache(urls, fetchState);
+    } catch {
+      // best-effort: on any failure the build degrades to ancestor-only (never lies)
+    }
+  };
+  void tick(); // warm immediately
+  const timer = setInterval(() => void tick(), intervalMs);
+  timer.unref?.(); // never keep the process/event loop alive for the poller
+  return () => clearInterval(timer);
 }
 
 /**
  * The merge TRUTH per dispatch (defect 2, SDD §4): `integrated` is `true` when the
  * work is already in main, INDEPENDENT of the ledger status — so a `verified`
  * whose branch already merged stops sitting in "ready to merge" lying about work
- * that no longer needs the PE. Two signals, both needed:
+ * that no longer needs the PE. Two signals, both needed, BOTH non-blocking:
  *   • `--is-ancestor` — catches a fast-forward / merge-commit landing (local, cheap).
- *   • the PR's MERGED state — catches a SQUASH merge, which `--is-ancestor` can
- *     NEVER see (re-gate B). aipe squash-merges, so without this every verified
- *     squash-merged unit falsely stayed in "ready".
+ *   • the PR's cached MERGED state — catches a SQUASH merge, which `--is-ancestor`
+ *     can NEVER see (re-gate B). Read from the in-memory cache (populated off the
+ *     render path by startPrMergeRefresher), so the build does NO network (re-gate B2).
  * Checked ONLY for `merged` (declared truth) and `verified`/`delivered` (the
  * "done, awaiting merge" states); an in-progress unit is NEVER integrated, even if
- * its branch happens to be an ancestor of main (a fresh branch with no commits
- * yet). Conservative throughout: any uncertainty ⇒ `false`, never a false positive.
+ * its branch happens to be an ancestor of main. Conservative: any uncertainty ⇒
+ * `false`, never a false positive.
  */
-export async function annotateIntegrated(
+export function annotateIntegrated(
   journeys: JourneyView[],
   isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
-  prMerged: (prUrl: string) => Promise<boolean> = ghPrMerged,
-): Promise<JourneyView[]> {
+  prMerged: (prUrl: string) => boolean = prMergedFromCache,
+): JourneyView[] {
   const ancMemo = new Map<string, boolean>();
   const ancestor = (repoDir: string, branch: string): boolean => {
     const key = [repoDir, branch].join("|");
@@ -121,21 +204,18 @@ export async function annotateIntegrated(
     ancMemo.set(key, val);
     return val;
   };
-  const integratedOf = async (d: JourneyDispatch): Promise<boolean> => {
+  const integratedOf = (d: JourneyDispatch): boolean => {
     if (d.status === "merged") return true;
     if (d.status !== "verified" && d.status !== "delivered") return false;
     const repoDir = repoDirOf(d);
     if (repoDir && d.branch && ancestor(repoDir, d.branch)) return true; // ff / merge-commit
-    if (typeof d.pr === "string" && d.pr && (await prMerged(d.pr))) return true; // squash
+    if (typeof d.pr === "string" && d.pr && prMerged(d.pr)) return true; // squash (cached, no network)
     return false;
   };
-  const out: JourneyView[] = [];
-  for (const j of journeys) {
-    const dispatches: IntegratedDispatch[] = [];
-    for (const d of j.dispatches) dispatches.push({ ...d, integrated: await integratedOf(d) });
-    out.push({ ...j, dispatches });
-  }
-  return out;
+  return journeys.map((j) => ({
+    ...j,
+    dispatches: j.dispatches.map((d): IntegratedDispatch => ({ ...d, integrated: integratedOf(d) })),
+  }));
 }
 
 /**
@@ -176,7 +256,7 @@ export async function buildServePayload(
   read: () => Promise<{ sessions: SessionInfo[]; liveIds: Set<string>; reliable: boolean }> = readLive,
   worktreeExists: (path: string) => boolean = existsSync,
   isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
-  prMerged: (prUrl: string) => Promise<boolean> = ghPrMerged,
+  prMerged: (prUrl: string) => boolean = prMergedFromCache,
 ): Promise<ServePayload> {
   const snapshot = await buildSnapshot(workspace);
   // One agentop read covers the per-dispatch activity, the coordinator's own
@@ -189,7 +269,7 @@ export async function buildServePayload(
     : { sessions: [] as SessionInfo[], liveIds: new Set<string>(), reliable: true };
   // Liveness first, then the merge truth (defect 2): both annotate dispatches and
   // compose cleanly (each spreads the whole dispatch, preserving the other's field).
-  const journeys = await annotateIntegrated(annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists), isAncestor, prMerged);
+  const journeys = annotateIntegrated(annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists), isAncestor, prMerged);
   const sessions = relevantSessions(all, snapshot.journeys);
   const coordinatorSessions = coordinatorSessionsOf(all, workspace);
   return { ...snapshot, journeys, sessions, coordinatorSessions };
