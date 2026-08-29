@@ -416,7 +416,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
   .hero { flex-wrap: wrap; } .hero .cta { margin-left: 0; width: 100%; } .hero .cta .btn { width: 100%; justify-content: center; }
   /* bottom tab bar — the primary mobile nav */
   .tabbar {
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 46;
     background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(18px) saturate(1.4);
     border-top: 1px solid var(--line); padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
@@ -430,3 +430,109 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
   .tabbar .tbadge.crit { background: var(--rose); animation: pulse 2s infinite; }
 }
 @media (min-width: 861px) { #hamb { display: none; } }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Redesign (j-20260827-s9) — Agora / Equipe / Histórico / Glossário.
+   One visual system: tokens only, both themes, no hard-coded color. Every wide
+   block (the board, the jargon table) collapses rather than scrolls the page.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Section + zone scaffolding ------------------------------------------------ */
+.sec-h { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; color: var(--ink); }
+.zone { display: grid; gap: 12px; min-width: 0; }
+.zone-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.zone-title { margin: 0; font-size: 15px; font-weight: 650; color: var(--ink); }
+.zone-sub { color: var(--ink-3); font-size: 12.5px; line-height: 1.45; }
+.zone-n { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--ink-2); background: var(--panel-3); border-radius: 999px; padding: 1px 10px; flex: none; }
+.zone-cards { display: grid; gap: 10px; min-width: 0; }
+.zone-empty { padding: 14px; border: 1px dashed var(--line-2); border-radius: var(--radius); text-align: center; }
+
+/* Zone 1 — "Needs you": loud when it has cards, calm when empty ------------- */
+.zone-needs .zone-n { color: #000; background: var(--amber); }
+.allclear { display: flex; align-items: center; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--accent-wash); }
+.allclear-orb { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--accent-ink); flex: none; }
+.allclear b { font-size: 14.5px; }
+.allclear p { margin: 3px 0 0; }
+
+/* Zone 2 — "Happening now" -------------------------------------------------- */
+.happening-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.happening-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); cursor: pointer; min-width: 0; transition: border-color .15s, background .15s; }
+.happening-row:hover { border-color: var(--line-2); background: var(--panel-2); }
+.happening-name { font-weight: 600; flex: none; }
+.happening-task, .happening-flag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Zone 3 — the collapsible whole board ------------------------------------- */
+.board-toggle { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); cursor: pointer; }
+.board-toggle:hover { border-color: var(--line-2); }
+.board-toggle .zone-sub { margin-left: auto; }
+.board-wrap { display: grid; gap: 14px; margin-top: 12px; }
+.board-lead { margin: 0; }
+.observations { display: grid; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--line-2); }
+.obs-h { font-size: 13.5px; }
+
+/* The four-column board ---------------------------------------------------- */
+.board4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; min-width: 0; }
+.bcol { display: flex; flex-direction: column; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.bcol-head { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.bcol-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 13px; }
+.bcol-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--slate); }
+.bcol-working  .bcol-dot { background: var(--sky); }
+.bcol-needs-you .bcol-dot { background: var(--amber); }
+.bcol-in-review .bcol-dot { background: var(--accent); }
+.bcol-ready     .bcol-dot { background: var(--accent-2); }
+.bcol-count { margin-left: auto; font-family: var(--mono); color: var(--ink-3); background: var(--panel-3); border-radius: 999px; padding: 0 8px; }
+.bcol-sub { margin-top: 5px; color: var(--ink-3); font-size: 11.5px; line-height: 1.4; }
+.bcol-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+.bcol-empty { padding: 8px 2px; }
+
+/* A board card — task/persona/branch/PR/state together --------------------- */
+.bcard { display: grid; gap: 6px; width: 100%; text-align: left; padding: 10px; border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: 10px; background: var(--panel); cursor: pointer; min-width: 0; transition: border-color .15s, box-shadow .15s; }
+.bcard:hover { border-color: var(--line-2); box-shadow: var(--shadow-1); }
+.bcol-needs-you .bcard.actor-you { border-left-color: var(--amber); background: var(--amber-w); }
+.bcol-needs-you .bcard.actor-dev, .bcol-needs-you .bcard.actor-coord { opacity: .82; }
+.bc-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bc-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.bc-chip { margin-left: auto; color: var(--ink-2); flex: none; display: inline-flex; }
+.bc-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); min-width: 0; }
+.bc-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.bc-branch, .bc-actor { font-size: 11px; color: var(--ink-3); min-width: 0; }
+.bc-branch code { font-family: var(--mono); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; vertical-align: bottom; }
+.bc-k { color: var(--ink-3); }
+.bc-actor b { color: var(--ink-2); }
+.bc-note { font-size: 11px; display: flex; align-items: center; gap: 5px; }
+.bc-note.you { color: var(--amber); font-weight: 600; }
+.bc-note.warn { color: var(--rose); }
+.bc-note.muted { color: var(--ink-3); font-style: italic; }
+.bc-pr { font-size: 11.5px; font-weight: 600; }
+
+/* Equipe — sections + toolbox rows ----------------------------------------- */
+.team-sec { min-width: 0; }
+.tb-row { padding: 10px 0; border-top: 1px solid var(--line); gap: 10px; }
+.tb-row:first-of-type { border-top: 0; }
+
+/* Histórico — the honest metrics placeholder ------------------------------- */
+.pill-pending { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--amber); background: var(--amber-w); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); border-radius: 999px; padding: 3px 10px; flex: none; }
+.metric-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.metric-tile { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); text-align: center; }
+.metric-tile.is-pending { border-style: dashed; }
+.mt-n { font-size: 26px; font-weight: 750; }
+.mt-n.muted { color: var(--ink-3); }
+.mt-k { margin-top: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.hist-metrics-note { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; }
+
+/* Glossário — jargon translation table ------------------------------------- */
+.jargon-tbl { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.jargon-row { display: grid; grid-template-columns: minmax(120px, 0.9fr) 2fr; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); min-width: 0; }
+.jargon-row:first-child { border-top: 0; }
+.jargon-head { background: var(--panel-2); font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.jargon-term { font-weight: 650; color: var(--accent-ink); }
+.jargon-plain { color: var(--ink-2); }
+
+/* Responsive: the board and tables collapse instead of scrolling the page --- */
+@media (max-width: 1100px) { .board4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .board4 { grid-template-columns: 1fr; }
+  .jargon-row { grid-template-columns: 1fr; gap: 3px; }
+  .jargon-head { display: none; }
+  .zone-h { flex-wrap: wrap; }
+}
