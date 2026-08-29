@@ -81,11 +81,21 @@ de ser computada **server-side** e viajar no payload, do mesmo jeito que
 
 - Uma nova anotação server-side `integrated: boolean` por dispatch (em
   `serve/payload.ts`, ao lado de `annotateLiveness`), positiva quando o trabalho
-  **está em `main`** independentemente do status do ledger. Sinais, em ordem de
-  confiança e custo:
-  1. **`merge-base --is-ancestor <branch> origin/main`** no clone do repo — prova
-     local, barata, sem rede: os commits da branch já estão em `main`.
-  2. status de ledger `merged` — já é a verdade declarada.
+  **está em `main`** independentemente do status do ledger. Sinais, ambos
+  necessários:
+  1. status de ledger `merged` — a verdade declarada.
+  2. **`merge-base --is-ancestor <branch> origin/main`** no clone — prova local,
+     barata, sem rede: pega _fast-forward_ e _merge-commit_.
+  3. **estado `MERGED` do PR** (via `gh`, `d.pr`) — pega o **squash-merge**, que
+     o `--is-ancestor` **nunca** enxerga: o squash cria um commit novo e os
+     commits originais da branch jamais viram ancestrais de `main`. Como o aipe
+     mergeia por squash, sem este sinal *todo* verified squash-mergeado ficava
+     preso em "pronto para integrar" (falso-negativo sistemático — re-gate B).
+     Cache monotônico (uma consulta por PR mergeada); falha do `gh` → `false`
+     (conservador). **Lição do teste:** medir _queda de contagem_ (34→7) não é
+     medir _verdade de merge_ — o teste que fecha o buraco afirma que um
+     `verified` com PR `MERGED` mas branch não-ancestral **não** aparece em
+     "pronto para integrar" (prova real: 9→0).
 - `integrated` é **aditivo e conservador**: na dúvida (repo ausente, branch
   desconhecida, git indisponível) → `false`, nunca um falso "integrado". A tela
   consome `integrated`; **não** roda git.
