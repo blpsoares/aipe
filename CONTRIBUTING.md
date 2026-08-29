@@ -52,10 +52,43 @@ if written to a brief (they were), and a codebase that is unusually strict
 about tests and evidence for its size (the ledger enforces it internally, and
 review holds outside PRs to the same bar).
 
+## Branches: `dev` and `main`
+
+This repository runs a two-branch flow, mirrored from `agentistics`:
+
+- **`dev` is the integration branch.** Branch from `dev`, and open your PR
+  against `dev` — not `main`. Every push to `dev` runs the same CI gate as a
+  PR (`.github/workflows/ci.yml`), so what accumulates there stays verified
+  continuously, not just at promotion time.
+- **`main` only receives promotion PRs**, and every push to `main` publishes
+  a release automatically (`.github/workflows/release.yml`) — the next
+  version is computed from the conventional-commit subjects merged since the
+  last tag. `main` is never the target of a contribution PR.
+- **Who promotes `dev` → `main`, and when.** The coordinator persona
+  (`skills/operate/SKILL.md`) opens the promotion PR — not on every merge to
+  `dev`. A promotion goes out when either (a) at least one complete feature
+  has landed on `dev`, or (b) there is a fix the PE needs to consume with
+  urgency. That's deliberate, not lag: promoting on every merge is what
+  produced five releases in a single day for this repository, several of
+  them a single feature sliced across patch bumps. `agentistics` set the
+  precedent — the coordinator held back one commit's promotion to bundle it
+  with two other specialists' work into one release with actual content,
+  instead of three releases in a row.
+- **Branch protection on `main` is PENDING.** As of this writing, `main`
+  still accepts a direct push from anyone with write access — there is no
+  enforced requirement yet that a change go through a reviewed, green-CI PR.
+  Once enabled, `main` will require an open PR with the `ci.yml` check
+  passing before a merge is allowed, bypassed only for the release
+  workflow's own version-bump commit (which pushes directly to `main`,
+  after the promotion PR itself was already gated — see `RELEASING.md`).
+  Until then, treat "PR + green CI to touch `main`" as the convention it
+  always was, not yet a rule the repository enforces for you.
+
 ## Sending a PR
 
-1. **Fork and branch** as usual. There's no special branch naming
-   requirement for external contributions.
+1. **Fork and branch off `dev`** — that's where ongoing work lives; see
+   above. There's no special branch naming requirement for external
+   contributions.
 2. **Work test-first.** Tests live in `src/<module>/__tests__/<subject>.test.ts`,
    next to the module they cover. Preact views under `src/serve/app/` use
    `@testing-library/preact` + `happy-dom`, with the global test setup in
