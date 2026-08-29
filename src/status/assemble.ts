@@ -89,13 +89,26 @@ function journeyRow(l: JourneyLedger): JourneyRow {
 // The waiting-on-the-PE derivation (item 2). Every distinct way a unit is
 // blocking the PE gets one row; a single unit can raise more than one (a gated
 // envelope that is also missing evidence, say).
-function waitingItems(l: JourneyLedger, policy: ModelPolicy): WaitingItem[] {
+function waitingItems(l: JourneyLedger, policy: ModelPolicy, live: LiveSessions): WaitingItem[] {
   const out: WaitingItem[] = [];
   const granted = grantedTiers(l);
   const gatedTiers = new Set<string>(policy.authorizationTiers);
   for (const d of l.dispatches) {
     const fqid = packageFqid(d.repo, d.package);
     const base = { journey: l.id, fqid, specialist: d.specialist };
+    // "Finished but not processed": a session-mode unit still `dispatched` whose
+    // session has RELIABLY exited (dead-silent WITH a real sessionId — it
+    // launched and is gone; a never-launched unit has no sessionId and is a
+    // different problem). dispatchPhase already degrades to `unknown` when the
+    // live list is unreadable, so this can never guess "exited" from a blind spot.
+    if (
+      d.mode === "session" &&
+      d.status === "dispatched" &&
+      d.sessionId &&
+      dispatchPhase(d, live.ids, live.reliable) === "dead-silent"
+    ) {
+      out.push({ ...base, kind: "finished-unprocessed", detail: "session ended; delivery not yet recorded" });
+    }
     // A gated-tier envelope the PE has not authorized, on a unit that is still
     // open (a terminal unit no longer needs the grant).
     if (d.tier && gatedTiers.has(d.tier) && !granted.has(d.tier) && !DONE_STATUSES.has(d.status)) {
@@ -142,7 +155,7 @@ export function assemble(input: AssembleInput): StatusReport {
       if (d.mode === "session") anySession = true;
       units.push(unitRow(l.id, d, roster, live));
     }
-    waiting.push(...waitingItems(l, policy));
+    waiting.push(...waitingItems(l, policy, live));
   }
   return {
     workspace: input.workspace,

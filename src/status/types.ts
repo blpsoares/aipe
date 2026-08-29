@@ -49,7 +49,17 @@ export interface JourneyRow {
 }
 
 // Why a unit is waiting on the PE — the part the PE could not see today (item 2).
-export type WaitingKind = "gated" | "escalated" | "redirected" | "blocked" | "no-evidence";
+// `finished-unprocessed` (j-20260829-5q): a session-mode unit still `dispatched`
+// in the ledger whose session has RELIABLY exited — "it finished and nobody
+// recorded it". Derived from session-state × ledger-status, so a coordinator
+// picking up a workspace sees the queue a session switch would otherwise lose.
+export type WaitingKind =
+  | "gated"
+  | "escalated"
+  | "redirected"
+  | "blocked"
+  | "no-evidence"
+  | "finished-unprocessed";
 
 export interface WaitingItem {
   kind: WaitingKind;
