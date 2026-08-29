@@ -76,39 +76,51 @@ test("blocked→waiting e redirected→redirected vêm do ledger, não do live-s
 });
 
 // ── annotateIntegrated — a VERDADE do merge (defeito 2, j-20260829-dp): a tela lê
-// se o branch já está em main (merge-base --is-ancestor origin/main), independente
-// do status do ledger. Conservador: na dúvida, false, nunca um falso "integrado". ──
+// se o trabalho já está em main, independente do status do ledger, por DOIS sinais:
+// --is-ancestor (ff/merge-commit) E o estado MERGED do PR (squash). Conservador:
+// na dúvida, false, nunca um falso "integrado". ──
 const jv = (over: Record<string, unknown>) =>
   [{ id: "j", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "/ws/aipe/.worktrees/j-jesse", status: "verified", ...over }] }] as unknown as JourneyView[];
 
-const intOf = (over: Record<string, unknown>, isAncestor: (r: string, b: string) => boolean) =>
-  (annotateIntegrated(jv(over), isAncestor)[0]!.dispatches[0] as { integrated?: boolean }).integrated;
+const NEVER = async (): Promise<boolean> => false;
+const intOf = async (
+  over: Record<string, unknown>,
+  isAncestor: (r: string, b: string) => boolean,
+  prMerged: (u: string) => Promise<boolean> = NEVER,
+) => ((await annotateIntegrated(jv(over), isAncestor, prMerged))[0]!.dispatches[0] as { integrated?: boolean }).integrated;
 
-test("merged é integrado sem tocar em git (verdade declarada)", () => {
-  expect(intOf({ status: "merged" }, () => { throw new Error("git nao devia rodar"); })).toBe(true);
+test("merged é integrado sem tocar em git (verdade declarada)", async () => {
+  expect(await intOf({ status: "merged" }, () => { throw new Error("git nao devia rodar"); })).toBe(true);
 });
 
-test("verified cujo branch JÁ está em main → integrated=true (a coluna que mentia)", () => {
-  expect(intOf({ status: "verified" }, () => true)).toBe(true);
+test("verified cujo branch JÁ está em main (ancestral) → integrated=true", async () => {
+  expect(await intOf({ status: "verified" }, () => true)).toBe(true);
 });
 
-test("verified NÃO em main permanece integrated=false (fica em 'pronto p/ integrar')", () => {
-  expect(intOf({ status: "verified" }, () => false)).toBe(false);
+// re-gate B: o defeito sistemático. aipe mergeia por SQUASH, então --is-ancestor é
+// SEMPRE false; a verdade vem do PR MERGED. Um verified squash-mergeado NÃO pode
+// ficar em "pronto para integrar" — foi o caso que a suíte inteira não viu.
+test("SQUASH: branch NÃO-ancestral mas PR MERGED → integrado (o falso-negativo curado)", async () => {
+  expect(await intOf({ status: "verified", pr: "https://github.com/blpsoares/aipe/pull/22" }, () => false, async () => true)).toBe(true);
 });
 
-test("delivered já em main também é integrado", () => {
-  expect(intOf({ status: "delivered" }, () => true)).toBe(true);
+test("verified sem ancestral E PR não-merged → fica em 'pronto p/ integrar' (honesto)", async () => {
+  expect(await intOf({ status: "verified", pr: "https://github.com/x/y/pull/99" }, () => false, async () => false)).toBe(false);
 });
 
-test("dispatched/em progresso NUNCA é integrado, mesmo que o branch seja ancestral (branch vazio p.ex.)", () => {
-  expect(intOf({ status: "dispatched" }, () => true)).toBe(false);
-  expect(intOf({ status: "failed" }, () => true)).toBe(false);
+test("delivered squash-mergeado (PR MERGED) também é integrado", async () => {
+  expect(await intOf({ status: "delivered", pr: "https://github.com/x/y/pull/1" }, () => false, async () => true)).toBe(true);
 });
 
-test("sem worktree localizável → conservador false (não roda git)", () => {
-  expect(intOf({ status: "verified", worktree: "/no/worktrees/here" }, () => { throw new Error("nao localiza repo"); })).toBe(false);
+test("dispatched/em progresso NUNCA é integrado, nem por ancestral nem por PR", async () => {
+  expect(await intOf({ status: "dispatched", pr: "https://github.com/x/y/pull/1" }, () => true, async () => true)).toBe(false);
+  expect(await intOf({ status: "failed", pr: "https://github.com/x/y/pull/1" }, () => true, async () => true)).toBe(false);
 });
 
-test("removed sai como não-integrado (histórico puro, branch provavelmente já foi)", () => {
-  expect(intOf({ status: "removed" }, () => true)).toBe(false);
+test("sem worktree E sem PR → conservador false (não dá para saber)", async () => {
+  expect(await intOf({ status: "verified", worktree: "/no/worktrees/here" }, () => { throw new Error("nao localiza repo"); })).toBe(false);
+});
+
+test("removed sai como não-integrado (histórico puro)", async () => {
+  expect(await intOf({ status: "removed" }, () => true, async () => true)).toBe(false);
 });

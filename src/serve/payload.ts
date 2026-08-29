@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { buildSnapshot, type Snapshot } from "../dashboard/snapshot";
+import { ghPrState } from "../journey/reconcile";
 import { readLive, type SessionInfo } from "./sessions";
 import { dispatchPhase } from "../session/poll";
 import type { UnitPhase } from "../session/types";
@@ -77,41 +78,64 @@ function gitIsAncestor(repoDir: string, branch: string): boolean {
   }
 }
 
+// Whether a PR has MERGED, the way GitHub records it. This is the ONLY reliable
+// tell for a SQUASH merge — `--is-ancestor` is structurally ALWAYS false there,
+// because a squash lands a brand-new commit and the branch's own commits never
+// become ancestors of main (aipe merges by squash, so this was a systematic false
+// negative, not an edge case). Monotonic cache: once MERGED a PR stays merged, so
+// it is queried at most once; still-open PRs re-query (a bounded, small set), and
+// a gh failure returns false (conservative — never a false "integrated").
+const mergedPrCache = new Map<string, boolean>();
+async function ghPrMerged(prUrl: string): Promise<boolean> {
+  if (mergedPrCache.get(prUrl)) return true;
+  const merged = (await ghPrState(prUrl)) === "MERGED";
+  if (merged) mergedPrCache.set(prUrl, true);
+  return merged;
+}
+
 /**
  * The merge TRUTH per dispatch (defect 2, SDD §4): `integrated` is `true` when the
  * work is already in main, INDEPENDENT of the ledger status — so a `verified`
  * whose branch already merged stops sitting in "ready to merge" lying about work
- * that no longer needs the PE. The tell is checked ONLY for the states where an
- * un-reconciled merge is the real bug — `merged` (declared truth), and
- * `verified`/`delivered` (the "done, awaiting merge" states the board shows as
- * ready/in-review). An in-progress unit is NEVER integrated, even if its branch
- * happens to be an ancestor of main (a fresh branch with no commits yet would be)
- * — that would be a false positive of exactly the kind this defect is about.
- * Conservative throughout: any uncertainty ⇒ `false`, never a false "integrated".
+ * that no longer needs the PE. Two signals, both needed:
+ *   • `--is-ancestor` — catches a fast-forward / merge-commit landing (local, cheap).
+ *   • the PR's MERGED state — catches a SQUASH merge, which `--is-ancestor` can
+ *     NEVER see (re-gate B). aipe squash-merges, so without this every verified
+ *     squash-merged unit falsely stayed in "ready".
+ * Checked ONLY for `merged` (declared truth) and `verified`/`delivered` (the
+ * "done, awaiting merge" states); an in-progress unit is NEVER integrated, even if
+ * its branch happens to be an ancestor of main (a fresh branch with no commits
+ * yet). Conservative throughout: any uncertainty ⇒ `false`, never a false positive.
  */
-export function annotateIntegrated(
+export async function annotateIntegrated(
   journeys: JourneyView[],
   isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
-): JourneyView[] {
-  const memo = new Map<string, boolean>();
-  const check = (repoDir: string, branch: string): boolean => {
-    const key = `${repoDir}\0${branch}`;
-    const hit = memo.get(key);
+  prMerged: (prUrl: string) => Promise<boolean> = ghPrMerged,
+): Promise<JourneyView[]> {
+  const ancMemo = new Map<string, boolean>();
+  const ancestor = (repoDir: string, branch: string): boolean => {
+    const key = [repoDir, branch].join("|");
+    const hit = ancMemo.get(key);
     if (hit !== undefined) return hit;
     const val = isAncestor(repoDir, branch);
-    memo.set(key, val);
+    ancMemo.set(key, val);
     return val;
   };
-  return journeys.map((j) => ({
-    ...j,
-    dispatches: j.dispatches.map((d): IntegratedDispatch => {
-      if (d.status === "merged") return { ...d, integrated: true };
-      if (d.status !== "verified" && d.status !== "delivered") return { ...d, integrated: false };
-      const repoDir = repoDirOf(d);
-      const integrated = !!repoDir && !!d.branch && check(repoDir, d.branch);
-      return { ...d, integrated };
-    }),
-  }));
+  const integratedOf = async (d: JourneyDispatch): Promise<boolean> => {
+    if (d.status === "merged") return true;
+    if (d.status !== "verified" && d.status !== "delivered") return false;
+    const repoDir = repoDirOf(d);
+    if (repoDir && d.branch && ancestor(repoDir, d.branch)) return true; // ff / merge-commit
+    if (typeof d.pr === "string" && d.pr && (await prMerged(d.pr))) return true; // squash
+    return false;
+  };
+  const out: JourneyView[] = [];
+  for (const j of journeys) {
+    const dispatches: IntegratedDispatch[] = [];
+    for (const d of j.dispatches) dispatches.push({ ...d, integrated: await integratedOf(d) });
+    out.push({ ...j, dispatches });
+  }
+  return out;
 }
 
 /**
@@ -152,6 +176,7 @@ export async function buildServePayload(
   read: () => Promise<{ sessions: SessionInfo[]; liveIds: Set<string>; reliable: boolean }> = readLive,
   worktreeExists: (path: string) => boolean = existsSync,
   isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
+  prMerged: (prUrl: string) => Promise<boolean> = ghPrMerged,
 ): Promise<ServePayload> {
   const snapshot = await buildSnapshot(workspace);
   // One agentop read covers the per-dispatch activity, the coordinator's own
@@ -164,7 +189,7 @@ export async function buildServePayload(
     : { sessions: [] as SessionInfo[], liveIds: new Set<string>(), reliable: true };
   // Liveness first, then the merge truth (defect 2): both annotate dispatches and
   // compose cleanly (each spreads the whole dispatch, preserving the other's field).
-  const journeys = annotateIntegrated(annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists), isAncestor);
+  const journeys = await annotateIntegrated(annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists), isAncestor, prMerged);
   const sessions = relevantSessions(all, snapshot.journeys);
   const coordinatorSessions = coordinatorSessionsOf(all, workspace);
   return { ...snapshot, journeys, sessions, coordinatorSessions };
