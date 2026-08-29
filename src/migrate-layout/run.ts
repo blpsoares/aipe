@@ -29,7 +29,7 @@ import {
   type PersonaPathChange,
 } from "../hire-specialists/registry";
 import type { PersonaRegistryEntry } from "../hire-specialists/types";
-import { listJourneys } from "../journey/ledger";
+import { listJourneys, repairWorktreePaths } from "../journey/ledger";
 import type { DispatchStatus } from "../journey/types";
 import { readBrain } from "../make-workspace/read";
 import { listPorcelain, run as gitRun } from "../worktree/git";
@@ -45,13 +45,25 @@ export interface MigrateOpts {
 
 export interface MigrateDeps {
   brain: (workspaceDir: string) => Promise<{ ok: true; brain: BrainFile } | { ok: false; error: string }>;
-  journeys: (workspaceDir: string) => Promise<{ id: string; dispatches: { repo: string; status: DispatchStatus }[] }[]>;
+  journeys: (
+    workspaceDir: string,
+  ) => Promise<{ id: string; dispatches: { repo: string; status: DispatchStatus; worktree?: string }[] }[]>;
   /** Registered worktrees of a repo, main one included. */
   worktrees: (repoAbs: string) => Promise<{ path: string }[]>;
   /** `git status --porcelain` output; empty string = clean. */
   dirt: (repoAbs: string) => Promise<string>;
-  /** `git worktree repair` — fixes gitdir pointers after the move. */
-  repair: (repoAbs: string) => Promise<void>;
+  /**
+   * `git worktree repair <newPath>…` — reconnects worktree bookkeeping after the
+   * repo (and its nested worktrees) moved. The NEW absolute worktree paths must
+   * be passed explicitly: run with no args, git only re-checks the recorded (now
+   * stale) locations and fixes nothing.
+   */
+  repair: (repoAbs: string, worktreePaths: string[]) => Promise<void>;
+  /** Repairs absolute `worktree` paths in the ledger after repos move. */
+  repairLedger: (
+    workspaceDir: string,
+    moves: { from: string; to: string }[],
+  ) => Promise<{ journey: string; specialist: string; from: string; to: string }[]>;
   exists: (absPath: string) => Promise<boolean>;
   move: (fromAbs: string, toAbs: string) => Promise<void>;
   writeBrain: (workspaceDir: string, brain: BrainFile) => Promise<void>;
@@ -79,13 +91,14 @@ export const defaultDeps: MigrateDeps = {
   journeys: async (workspaceDir) =>
     (await listJourneys(workspaceDir)).map((l) => ({
       id: l.id,
-      dispatches: l.dispatches.map((d) => ({ repo: d.repo, status: d.status })),
+      dispatches: l.dispatches.map((d) => ({ repo: d.repo, status: d.status, worktree: d.worktree })),
     })),
   worktrees: listPorcelain,
   dirt: async (repoAbs) => (await gitRun(["git", "-C", repoAbs, "status", "--porcelain"])).stdout,
-  repair: async (repoAbs) => {
-    await gitRun(["git", "-C", repoAbs, "worktree", "repair"]);
+  repair: async (repoAbs, worktreePaths) => {
+    await gitRun(["git", "-C", repoAbs, "worktree", "repair", ...worktreePaths]);
   },
+  repairLedger: repairWorktreePaths,
   exists: realExists,
   move: async (fromAbs, toAbs) => {
     await mkdir(dirname(toAbs), { recursive: true });
@@ -118,34 +131,38 @@ async function collectBlockers(
     for (const dispatch of ledger.dispatches) {
       if (!moving.has(dispatch.repo)) continue;
       if (!IN_FLIGHT_STATUSES.includes(dispatch.status)) continue;
+      // D9 (stale reconciliation, cf. PR #27): a dispatch whose recorded
+      // worktree is gone from disk is dead bookkeeping, not work in flight — a
+      // legacy row from a journey closed days ago, unclosable because its unit
+      // is `merged` and immutable. Dead ⇒ never blocks; a worktree still on disk
+      // ⇒ live work, still blocks. A row that recorded no worktree at all can't
+      // be proven dead, so it blocks (the conservative default).
+      if (dispatch.worktree && !(await d.exists(dispatch.worktree))) continue;
       blockers.push(
-        `journey ${ledger.id}: ${dispatch.repo} is ${dispatch.status} — finish or close it before migrating`,
+        `journey ${ledger.id}: ${dispatch.repo} is ${dispatch.status} — finish it, or close its ledger row, before migrating`,
       );
     }
   }
 
   for (const move of plan.moves) {
-    const fromAbs = join(workspaceDir, normalizePath(move.from));
     const toAbs = join(workspaceDir, normalizePath(move.to));
 
     if (await d.exists(toAbs)) {
-      blockers.push(`${move.repo}: target ${normalizePath(move.to)} already exists`);
-    }
-    // A repo that was never cloned needs no move — only the brain path changes.
-    if (!(await d.exists(fromAbs))) continue;
-
-    const worktrees = await d.worktrees(fromAbs);
-    if (worktrees.length > 1) {
-      const extra = worktrees.slice(1).map((w) => w.path).join(", ");
       blockers.push(
-        `${move.repo}: ${worktrees.length - 1} registered worktree(s) — remove them first (${extra})`,
+        `${move.repo}: target ${normalizePath(move.to)} already exists — move or delete it, then re-run`,
       );
     }
+    // Registered worktrees no longer block: they live nested inside the repo and
+    // move with it, and `git worktree repair` reconnects them at the new path
+    // (see the apply path below). A dirty working tree still blocks — that is
+    // real uncommitted work the PE has not saved.
+    const fromAbs = join(workspaceDir, normalizePath(move.from));
+    if (!(await d.exists(fromAbs))) continue; // never cloned: path-only change
 
     if (!opts.allowDirty) {
       const dirt = await d.dirt(fromAbs);
       if (dirt.trim() !== "") {
-        blockers.push(`${move.repo}: working tree is dirty — commit/stash it, or pass --allow-dirty`);
+        blockers.push(`${move.repo}: working tree is dirty — commit or stash it, or pass --allow-dirty`);
       }
     }
   }
@@ -186,15 +203,20 @@ export async function migrateLayout(
   if (!opts.apply) return { ok: true, plan, applied: false, personaChanges };
 
   // Disk first, brain last. Every move that succeeded is remembered so a
-  // failure halfway can put the workspace back exactly as it was.
-  const done: { fromAbs: string; toAbs: string }[] = [];
+  // failure halfway can put the workspace back exactly as it was. The repo's
+  // registered worktrees are captured BEFORE the move (their old absolute
+  // paths), so repair can be handed their NEW absolute paths afterward.
+  const done: { fromAbs: string; toAbs: string; worktrees: string[] }[] = [];
   for (const move of plan.moves) {
     const fromAbs = join(workspaceDir, normalizePath(move.from));
     const toAbs = join(workspaceDir, normalizePath(move.to));
     if (!(await d.exists(fromAbs))) continue; // never cloned: path-only change
+    // The main working tree is listed first; only the extra (nested) worktrees
+    // need repair, and only the ones that actually moved with the repo.
+    const worktrees = (await d.worktrees(fromAbs)).map((w) => w.path).filter((p) => p.startsWith(`${fromAbs}/`));
     try {
       await d.move(fromAbs, toAbs);
-      done.push({ fromAbs, toAbs });
+      done.push({ fromAbs, toAbs, worktrees });
     } catch (err) {
       for (const undo of done.reverse()) {
         await d.move(undo.toAbs, undo.fromAbs).catch(() => {});
@@ -203,13 +225,24 @@ export async function migrateLayout(
     }
   }
 
-  // A moved repo's own gitdir is self-contained, but any worktree pointer that
-  // survived (or was created out from under us) records an absolute path.
+  // Reconnect the moved worktrees at their NEW absolute paths — this is what
+  // lets an in-flight dispatch survive the move instead of blocking it. Passing
+  // the paths is required: `git worktree repair` with no args re-checks the
+  // recorded (now stale) locations and fixes nothing.
   for (const moved of done) {
-    await d.repair(moved.toAbs).catch(() => {});
+    const newWorktrees = moved.worktrees.map((p) => `${moved.toAbs}${p.slice(moved.fromAbs.length)}`);
+    await d.repair(moved.toAbs, newWorktrees).catch(() => {});
   }
 
   await d.writeBrain(workspaceDir, migratedBrain);
+
+  // Repair the absolute `worktree` paths the ledger recorded for still-live
+  // dispatches, so `aipe worktree`/`prune`/`status` keep finding them. Merged
+  // units are immutable and skipped — their stale path is left as-is.
+  await d.repairLedger(
+    workspaceDir,
+    done.map((m) => ({ from: m.fromAbs, to: m.toAbs })),
+  ).catch(() => {});
 
   // Keep the persona registry truthful to disk, exactly as the brain is: the
   // SKILL.md files moved with their repos, so their recorded paths must move too

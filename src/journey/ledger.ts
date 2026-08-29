@@ -70,6 +70,45 @@ async function writeLedger(workspaceDir: string, ledger: JourneyLedger): Promise
   return path;
 }
 
+// Statuses whose recorded `worktree` path is never rewritten by a layout move:
+// a merged/removed unit is immutable and needs no live path.
+const TERMINAL_FOR_REPAIR = new Set<string>(["merged", "removed"]);
+
+/**
+ * Repairs the absolute `worktree` paths recorded in every journey ledger after
+ * repos were moved (e.g. root → `repos/`), so a still-live dispatch's row keeps
+ * pointing at where its worktree actually is.
+ *
+ * Purely mechanical: a prefix rewrite of the `worktree` field ONLY, and ONLY on
+ * NON-terminal dispatches. Status, evidence and every other field are left
+ * untouched, so this is bookkeeping — never a re-dispatch, and it never mutates
+ * a `merged` unit (the immutability invariant holds). Best-effort per journey.
+ *
+ * @param moves absolute repo roots, `from` (old) → `to` (new).
+ * @returns the rewrites made, for audit.
+ */
+export async function repairWorktreePaths(
+  workspaceDir: string,
+  moves: { from: string; to: string }[],
+): Promise<{ journey: string; specialist: string; from: string; to: string }[]> {
+  const rewrites: { journey: string; specialist: string; from: string; to: string }[] = [];
+  if (moves.length === 0) return rewrites;
+  for (const ledger of await listJourneys(workspaceDir)) {
+    let changed = false;
+    const dispatches = ledger.dispatches.map((d) => {
+      if (TERMINAL_FOR_REPAIR.has(d.status) || !d.worktree) return d;
+      const move = moves.find((m) => d.worktree === m.from || d.worktree!.startsWith(`${m.from}/`));
+      if (!move) return d;
+      const to = `${move.to}${d.worktree.slice(move.from.length)}`;
+      rewrites.push({ journey: ledger.id, specialist: d.specialist, from: d.worktree, to });
+      changed = true;
+      return { ...d, worktree: to };
+    });
+    if (changed) await writeLedger(workspaceDir, { ...ledger, dispatches });
+  }
+  return rewrites;
+}
+
 // Sets/updates the journey's Orientation Spec metadata, preserving dispatches.
 export async function setJourneySpec(workspaceDir: string, id: string, spec: JourneySpec): Promise<string> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };

@@ -55,6 +55,16 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
+// Mirror what the real createWorktree does: keep the nested `.worktrees/` out of
+// the parent repo's git status, so a registered worktree does not itself dirty
+// the repo. Without this the raw `git worktree add` used in tests would make the
+// dirt guard fire instead of exercising the worktree path.
+async function excludeWorktrees(repoAbs: string): Promise<void> {
+  const p = join(repoAbs, ".git", "info", "exclude");
+  const prev = (await readFile(p, "utf8").catch(() => "")) as string;
+  await writeFile(p, `${prev}${prev.endsWith("\n") || prev === "" ? "" : "\n"}.worktrees/\n`, "utf8");
+}
+
 /** A workspace with `names` cloned at the ROOT (the legacy layout), each a real git repo. */
 async function legacyWorkspace(names: string[]): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "aipe-mig-"));
@@ -128,22 +138,34 @@ test("the moved repo is still a working git repo", async () => {
   }
 });
 
-test("a registered worktree blocks the migration — its gitdir path is absolute", async () => {
+// The whole thesis of the journey (scope item 2): a registered worktree no
+// longer REFUSES the migration — the repo is moved and `git worktree repair`
+// reconnects the worktree at its new nested path, so an in-flight dispatch
+// survives the move instead of blocking it.
+test("a registered worktree is migrated and stays usable — moved and repaired", async () => {
   const dir = await legacyWorkspace(["embark"]);
   try {
     const repo = join(dir, "embark");
     const wt = join(repo, ".worktrees", "j-1-dev");
     const added = await gitRun(["git", "-C", repo, "worktree", "add", "-q", "-b", "j-1", wt]);
     expect(added.code).toBe(0);
+    await excludeWorktrees(repo);
 
     const result = await migrateLayout(dir, { apply: true, allowDirty: false });
-    expect(result.ok).toBe(false);
-    if (result.ok || !("blockers" in result)) throw new Error("expected blockers");
-    expect(result.blockers.join("\n")).toContain("registered worktree");
+    expect(result.ok).toBe(true);
 
-    // and nothing moved
-    expect(await exists(join(dir, "embark"))).toBe(true);
-    expect(await exists(join(dir, "repos"))).toBe(false);
+    // The repo moved …
+    expect(await exists(join(dir, "embark"))).toBe(false);
+    const newWt = join(dir, "repos", "embark", ".worktrees", "j-1-dev");
+    expect(await exists(newWt)).toBe(true);
+
+    // … and the worktree is usable at its new path: git operations succeed and
+    // git's own bookkeeping points at the NEW location, not the old one.
+    const status = await gitRun(["git", "-C", newWt, "status", "--porcelain"]);
+    expect(status.code).toBe(0);
+    const list = await gitRun(["git", "-C", join(dir, "repos", "embark"), "worktree", "list"]);
+    expect(list.stdout).toContain(newWt);
+    expect(list.stdout).not.toContain(join(dir, "embark", ".worktrees"));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -195,6 +217,89 @@ test("a finished journey does not block", async () => {
     });
     expect(result.ok).toBe(true);
     expect(await exists(join(dir, "repos", "embark"))).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// D9: a legacy dispatch from a journey finished days ago, whose worktree is
+// gone from disk, is dead bookkeeping — not work in flight. It must not pin the
+// migration forever (the merged-unit immutability makes it unclosable). Mirrors
+// PR #27's stale reconciliation: no live worktree ⇒ no live work.
+test("a dispatch whose recorded worktree no longer exists does not block (D9)", async () => {
+  const dir = await legacyWorkspace(["embark"]);
+  try {
+    const result = await migrateLayout(dir, { apply: true, allowDirty: false }, {
+      journeys: async () => [
+        {
+          id: "j-20260825-s2",
+          dispatches: [{ repo: "embark", status: "dispatched", worktree: join(dir, "embark", ".worktrees", "ghost-gone") }],
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    expect(await exists(join(dir, "repos", "embark"))).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// The other direction: a dispatch whose worktree is still on disk is live work
+// and MUST keep blocking. RED→GREEN both ways.
+test("a dispatch whose recorded worktree still exists keeps blocking (D9)", async () => {
+  const dir = await legacyWorkspace(["embark"]);
+  try {
+    const liveWt = join(dir, "embark", ".worktrees", "j-live");
+    await mkdir(liveWt, { recursive: true });
+    const result = await migrateLayout(dir, { apply: true, allowDirty: true }, {
+      journeys: async () => [
+        { id: "j-20260828-live", dispatches: [{ repo: "embark", status: "dispatched", worktree: liveWt }] },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok || !("blockers" in result)) throw new Error("expected blockers");
+    expect(result.blockers.join("\n")).toContain("j-20260828-live");
+    expect(await exists(join(dir, "embark"))).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// Scope item 2: the absolute `worktree` path recorded in the ledger is repaired
+// after the move, so an in-flight dispatch's row points at the live worktree.
+// A merged unit is immutable — its (now-stale) path is left exactly as it was.
+test("migrating repairs the ledger worktree path for live dispatches, never for merged (item 2)", async () => {
+  const dir = await legacyWorkspace(["embark"]);
+  try {
+    const repo = join(dir, "embark");
+    const wtAbs = join(repo, ".worktrees", "j-eh-dev");
+    await gitRun(["git", "-C", repo, "worktree", "add", "-q", "-b", "j-eh-dev", wtAbs]);
+    await excludeWorktrees(repo);
+    await mkdir(join(dir, ".aipe", "journeys"), { recursive: true });
+    await writeFile(
+      join(dir, ".aipe", "journeys", "j-eh.yaml"),
+      stringify({
+        id: "j-eh",
+        dispatches: [
+          { repo: "embark", specialist: "Jesse", branch: "j-eh-dev", worktree: wtAbs, status: "delivered", evidence: { by: "dev", commands: ["x"], summary: "y" } },
+          { repo: "embark", specialist: "Old", branch: "old", worktree: join(repo, ".worktrees", "old"), status: "merged" },
+        ],
+        authorizations: [],
+      }),
+      "utf8",
+    );
+
+    const result = await migrateLayout(dir, { apply: true, allowDirty: false });
+    expect(result.ok).toBe(true);
+
+    const ledger = parse(await readFile(join(dir, ".aipe", "journeys", "j-eh.yaml"), "utf8")) as {
+      dispatches: { specialist: string; worktree: string; status: string }[];
+    };
+    const dev = ledger.dispatches.find((d) => d.specialist === "Jesse");
+    const old = ledger.dispatches.find((d) => d.specialist === "Old");
+    expect(dev?.worktree).toBe(join(dir, "repos", "embark", ".worktrees", "j-eh-dev"));
+    expect(old?.worktree).toBe(join(dir, "embark", ".worktrees", "old"));
+    expect(old?.status).toBe("merged");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
