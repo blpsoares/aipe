@@ -28,6 +28,23 @@ function getFlag(args: string[], name: string): string | undefined {
   return value;
 }
 
+// A flag that may repeat: `--path a --path b`. Also accepts a single
+// comma-separated value (`--path a,b`) for ergonomics. Returns every value in
+// order; empty when the flag is absent.
+function getFlagAll(args: string[], name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== name) continue;
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith("--")) continue;
+    for (const part of value.split(",")) {
+      const t = part.trim();
+      if (t) out.push(t);
+    }
+  }
+  return out;
+}
+
 export function parseBatch(value: unknown): Batch | null {
   if (!Array.isArray(value)) return null;
   const batch: DispatchEntry[] = [];
@@ -157,7 +174,7 @@ async function claimCommand(args: string[]): Promise<number> {
   const journey = getFlag(args, "--journey");
   const specialist = getFlag(args, "--specialist");
   if (!repo || !journey || !specialist) {
-    console.log("ERROR args: usage: dispatch claim <repo> --journey <id> --specialist <name> [--branch b] [--package p] [--task t] [--force]");
+    console.log("ERROR args: usage: dispatch claim <repo> --journey <id> --specialist <name> [--branch b] [--package p] [--task t] [--path glob ...] [--force]");
     return 1;
   }
   const branch = getFlag(args, "--branch");
@@ -167,21 +184,24 @@ async function claimCommand(args: string[]): Promise<number> {
     console.log(`ERROR task: --task must be slug-safe (lowercase alnum + hyphen), got "${task}"`);
     return 1;
   }
+  const declaredPaths = getFlagAll(args, "--path");
   const force = args.includes("--force");
-  // The task splits the lock ONLY for a role that writes NOTHING to the repo. A
-  // writing role keeps the unit-level lock even if a --task is passed, so two
-  // devs still contend on the one lock — the serialization D3 made physical is
-  // never removed by handing out a task. Role is resolved from the roster (the
-  // single source of truth), never a name list; unknown role ⇒ treated as
-  // writing (safe default).
-  const role = task
-    ? (await readPersonas(workspace)).find(
-        (p) => p.repo === repo && p.name.toLowerCase() === specialist.toLowerCase(),
-      )?.role
-    : undefined;
-  const lockTask = task && !roleWritesToRepo(role) ? task : undefined;
-  if (task && lockTask === undefined) {
-    console.log(`NOTE --task ${task} does not split the lock for role "${role ?? "unknown"}" (a writing role serializes on its unit); claiming the unit lock.`);
+  // Role is resolved from the roster (the single source of truth), never a name
+  // list; unknown/absent role ⇒ treated as WRITING (safe default). Two regimes:
+  //   • WRITING role → PATH-AWARE claim: it declares the paths it will touch
+  //     (empty ⇒ the WHOLE unit), keeps its --task as identity so disjoint
+  //     sub-tasks get distinct lock files, and is adjudicated by unit-wide path
+  //     overlap. Two devs on the same unit still serialize when their paths
+  //     overlap (WHOLE overlaps everything) — the D3 serialization is preserved,
+  //     just made per-path.
+  //   • NON-WRITING role → LEGACY task-split lock, unchanged: --task splits the
+  //     lock (a QA writes nothing, so N tasks never collide) and no path scan runs.
+  const role = (await readPersonas(workspace)).find(
+    (p) => p.repo === repo && p.name.toLowerCase() === specialist.toLowerCase(),
+  )?.role;
+  const writes = roleWritesToRepo(role);
+  if (task && !writes && declaredPaths.length > 0) {
+    console.log(`NOTE --path is ignored for non-writing role "${role ?? "unknown"}" (a reviewer touches no files); claiming the task-split lock.`);
   }
   // The coordinator's long-lived session pid, for crash-based reconciliation.
   // Absent ⇒ 0 (the ephemeral CLI pid is meaningless): the lock's liveness is
@@ -191,14 +211,17 @@ async function claimCommand(args: string[]): Promise<number> {
   const result = await claimLock(workspace, {
     repo,
     ...(pkg ? { package: pkg } : {}),
-    ...(lockTask ? { task: lockTask } : {}),
+    ...(task ? { task } : {}),
     journey,
     specialist,
     ...(branch ? { branch } : {}),
+    // Path-aware regime only for writing roles; a non-writing claim omits `paths`
+    // (undefined) so it takes the legacy single-file branch.
+    ...(writes ? { paths: declaredPaths } : {}),
     force,
     pid,
   });
-  const taskSuffix = lockTask ? ` task=${lockTask}` : "";
+  const taskSuffix = task ? ` task=${task}` : "";
   if (result.ok) {
     const unit = claimUnit(repo, pkg);
     const prev = result.previous;
@@ -214,14 +237,20 @@ async function claimCommand(args: string[]): Promise<number> {
   }
   const h = result.holder;
   const unit = claimUnit(repo, pkg);
+  // Name WHICH paths collided so a coordinator understands the serialization — an
+  // overlap collision spells out the pairs; a whole-unit collision says so.
+  const overlaps = result.overlaps;
+  const pathStr = overlaps && overlaps.length
+    ? ` on paths ${overlaps.map(([a, b]) => (a === b ? a : `${a}⋂${b}`)).join(", ")}`
+    : "";
   if (result.reason === "unauthorized-force") {
-    console.log(`UNAUTHORIZED-FORCE ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
+    console.log(`UNAUTHORIZED-FORCE ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}${pathStr}`);
     console.log(`WARN --force over an active lock needs a recorded PE authorization for ${unit}.`);
     console.log(`     Record it (after the PE says yes): aipe dispatch authorize-force ${repo}${pkg ? ` --package ${pkg}` : ""} --journey ${journey} --by PE --workspace ${workspace}`);
     return 3;
   }
-  console.log(`COLLISION ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
-  console.log("WARN not blocking; with the PE's approval recorded, re-run with --force to override the active lock.");
+  console.log(`COLLISION ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}${pathStr}`);
+  console.log("WARN not blocking; the overlapping task must wait, rebase onto the holder, and resolve; or with the PE's approval recorded, re-run with --force. See `aipe dispatch resolve-overlap`.");
   return 2;
 }
 

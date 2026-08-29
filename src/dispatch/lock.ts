@@ -4,10 +4,11 @@
 // sessions from provisioning worktrees for one repo at once. This module adds
 // *physical* mutual exclusion: a lock file created atomically, plus stale
 // reconciliation so a dead process never wedges a repo forever.
-import { link, mkdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { link, mkdir, readFile, readdir, rename, rm, unlink, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { parse, stringify } from "yaml";
 import { listJourneys, readLedger } from "../journey/ledger";
+import { normalizePath, overlappingPairs, pathSetsOverlap, WHOLE } from "./paths";
 
 export interface Lock {
   repo: string;
@@ -18,6 +19,15 @@ export interface Lock {
   branch?: string;
   pid: number;
   timestamp: string;
+  // The paths (globs/prefixes) this claim will touch (j-20260826-xj). Absent ⇒
+  // the WHOLE unit — the pre-path repo/package lock, which overlaps everything.
+  // Only ever set on a path-aware (writing-role) claim; a legacy/non-writing lock
+  // omits it.
+  paths?: string[];
+  // True only for a path-aware (writing-role) claim. The unit-wide overlap scan
+  // considers ONLY writing locks: a non-writing lock (a QA reviewing a diff, or a
+  // legacy lock) can never collide over a file, so it is invisible to the scan.
+  writes?: boolean;
 }
 
 // The lock key is the unit of serialization: the repo, or `repo__package` when a
@@ -156,8 +166,8 @@ async function hasForceAuthorization(workspaceDir: string, journey: string, unit
 
 export type ClaimResult =
   | { ok: true; claimed: true; reconciled: boolean; forced?: boolean; previous?: Lock }
-  | { ok: false; reason: "collision"; holder: Lock }
-  | { ok: false; reason: "unauthorized-force"; holder: Lock; unit: string };
+  | { ok: false; reason: "collision"; holder: Lock; overlaps?: [string, string][] }
+  | { ok: false; reason: "unauthorized-force"; holder: Lock; unit: string; overlaps?: [string, string][] };
 
 interface ClaimInput {
   repo: string;
@@ -169,6 +179,23 @@ interface ClaimInput {
   force?: boolean;
   pid?: number;
   now?: () => string;
+  // When PRESENT (even as an empty array), the claim is path-aware: it declares
+  // the paths it will touch and is adjudicated by unit-wide path overlap instead
+  // of the single-file unit lock. Empty ⇒ the WHOLE unit (overlaps everything).
+  // Absent (undefined) ⇒ the legacy single-file behaviour, unchanged — this is
+  // what a non-writing task-split claim and every pre-path caller take.
+  paths?: string[];
+}
+
+// Claim a lock. Two regimes, chosen by whether the claim declares `paths`:
+//   • absent ⇒ the LEGACY single-file unit/task lock (claimLegacy) — byte-for-byte
+//     the pre-path behaviour, used by non-writing task-split claims and every
+//     pre-path caller.
+//   • present (incl. empty ⇒ WHOLE) ⇒ the PATH-AWARE claim (claimPathAware) — a
+//     unit-wide overlap scan under a per-unit guard, so path-disjoint writers
+//     coexist and overlapping ones serialize.
+export async function claimLock(workspaceDir: string, input: ClaimInput): Promise<ClaimResult> {
+  return input.paths === undefined ? claimLegacy(workspaceDir, input) : claimPathAware(workspaceDir, input);
 }
 
 // Atomically claim the repo's lock. Uses link(tmp, lock): link is atomic and
@@ -176,7 +203,7 @@ interface ClaimInput {
 // (no empty-file window). On EEXIST we evaluate the incumbent: an ACTIVE lock of
 // another owner is a collision (unless --force); a stale/orphan lock is taken
 // over atomically (unlink + link), re-checking if a rival recreated it.
-export async function claimLock(workspaceDir: string, input: ClaimInput): Promise<ClaimResult> {
+async function claimLegacy(workspaceDir: string, input: ClaimInput): Promise<ClaimResult> {
   const pid = input.pid ?? process.pid;
   const now = input.now ?? (() => new Date().toISOString());
   const path = lockPath(workspaceDir, input.repo, input.package, input.task);
@@ -242,6 +269,215 @@ export async function claimLock(workspaceDir: string, input: ClaimInput): Promis
   }
 }
 
+// ── Path-aware claim (j-20260826-xj) ─────────────────────────────────────────
+//
+// Two claims in one repo with DISJOINT paths coexist; OVERLAPPING paths collide
+// and serialize, reusing the same physical primitive (atomic link) — here to
+// build a short-lived per-unit GUARD mutex that serializes the read-scan-decide-
+// write critical section across processes. Without that serialization two
+// overlapping claims racing in separate processes could both scan an empty unit
+// and both write — the silent hole this journey closes. Identity stays per-task:
+// the lock FILE is still `lockKey(repo,pkg,task).lock`, so two disjoint sub-tasks
+// (distinct tasks) get distinct files, while overlap is judged unit-wide across
+// tasks. Only WRITING claims (writes:true) participate — a non-writing lock can
+// never collide over a file, so the scan ignores it.
+
+// How long a held guard is trusted before a rival may steal it. The critical
+// section is a directory scan + one write (milliseconds); a guard older than this
+// belonged to a crashed holder whose pid we could not observe (pid 0). Crash of a
+// real-pid holder is caught immediately via isPidAlive, so this TTL is only the
+// backstop for the pid-less case.
+const GUARD_TTL_MS = 30_000;
+const GUARD_ACQUIRE_DEADLINE_MS = 10_000;
+
+function guardPath(workspaceDir: string, repo: string, pkg?: string): string {
+  return join(locksDir(workspaceDir), `.${lockKey(repo, pkg)}.guard`);
+}
+
+interface Guard {
+  pid: number;
+  timestamp: string;
+}
+
+async function readGuard(path: string): Promise<Guard | null> {
+  try {
+    const parsed = parse(await readFile(path, "utf8"));
+    if (parsed && typeof parsed === "object" && typeof parsed.pid === "number") return parsed as Guard;
+  } catch {
+    // missing/malformed → absent
+  }
+  return null;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Acquire the per-unit guard via the atomic link primitive; spin with jittered
+// backoff while a LIVE guard is held, stealing a stale one (dead pid, or older
+// than the TTL). Returns a release fn. Never blocks forever: past the deadline it
+// steals whatever is there (last resort, matching claimLegacy's exhausted-retry).
+async function acquireGuard(
+  dir: string,
+  repo: string,
+  pkg: string | undefined,
+  pid: number,
+  now: () => string,
+): Promise<() => Promise<void>> {
+  const gp = guardPath(dir, repo, pkg);
+  const deadline = Date.now() + GUARD_ACQUIRE_DEADLINE_MS;
+  for (;;) {
+    const tmp = join(locksDir(dir), `.guard.${pid}.${Math.random().toString(36).slice(2)}.tmp`);
+    await writeFile(tmp, stringify({ pid, timestamp: now() } satisfies Guard), "utf8");
+    try {
+      await link(tmp, gp);
+      await unlink(tmp).catch(() => {});
+      return async () => {
+        await unlink(gp).catch(() => {});
+      };
+    } catch (err) {
+      await unlink(tmp).catch(() => {});
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
+    const held = await readGuard(gp);
+    const stale =
+      !held ||
+      (held.pid > 0 && !isPidAlive(held.pid)) ||
+      Date.now() - Date.parse(held.timestamp) > GUARD_TTL_MS ||
+      Date.now() > deadline;
+    if (stale) {
+      await unlink(gp).catch(() => {});
+      continue;
+    }
+    await sleep(5 + Math.floor(Math.random() * 15));
+  }
+}
+
+// The unit is repo (or repo/package). Path granularity lives WITHIN a unit, so
+// this is the scope the guard and the overlap scan span — task-independent.
+function sameUnit(lock: Lock, repo: string, pkg?: string): boolean {
+  return lock.repo === repo && (lock.package ?? null) === (pkg ?? null);
+}
+
+async function readAllLocks(dir: string): Promise<{ file: string; lock: Lock }[]> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: { file: string; lock: Lock }[] = [];
+  for (const file of names) {
+    if (!file.endsWith(".lock")) continue;
+    const lock = await readLock(join(dir, file));
+    if (lock) out.push({ file, lock });
+  }
+  return out;
+}
+
+// Normalize a declared path set: canonicalize each, dedupe, and collapse to the
+// WHOLE unit (represented as []) if any member is the whole unit. [] means "the
+// whole unit" everywhere downstream (pathSetsOverlap treats it as `**`).
+function normalizeDeclared(paths: string[]): string[] {
+  const norm = [...new Set(paths.map(normalizePath))];
+  return norm.includes(WHOLE) ? [] : norm;
+}
+
+function isSameIdentity(lock: Lock, input: ClaimInput): boolean {
+  return (
+    lock.journey === input.journey &&
+    lock.specialist.toLowerCase() === input.specialist.toLowerCase() &&
+    (lock.task ?? null) === (input.task ?? null)
+  );
+}
+
+async function claimPathAware(workspaceDir: string, input: ClaimInput): Promise<ClaimResult> {
+  const pid = input.pid ?? process.pid;
+  const now = input.now ?? (() => new Date().toISOString());
+  const dir = locksDir(workspaceDir);
+  await mkdir(dir, { recursive: true });
+
+  const declared = normalizeDeclared(input.paths ?? []);
+  const myPath = lockPath(workspaceDir, input.repo, input.package, input.task);
+  const myFile = basename(myPath);
+  const nowMs = Date.parse(now());
+
+  const lock: Lock = {
+    repo: input.repo,
+    ...(input.package ? { package: input.package } : {}),
+    ...(input.task ? { task: input.task } : {}),
+    journey: input.journey,
+    specialist: input.specialist,
+    ...(input.branch ? { branch: input.branch } : {}),
+    pid,
+    timestamp: now(),
+    writes: true,
+    ...(declared.length ? { paths: declared } : {}),
+  };
+  const content = stringify(lock);
+
+  const release = await acquireGuard(workspaceDir, input.repo, input.package, pid, now);
+  try {
+    const all = await readAllLocks(dir);
+    let reconciled = false;
+    let previous: Lock | undefined;
+    const overlapping: Lock[] = [];
+
+    for (const { file, lock: other } of all) {
+      if (file === myFile) continue; // my own identity slot handled below
+      if (!sameUnit(other, input.repo, input.package)) continue;
+      if (other.writes !== true) continue; // non-writing / legacy locks can't collide over a file
+      if (!(await isLockActive(workspaceDir, other, nowMs))) {
+        await unlink(join(dir, file)).catch(() => {}); // stale writer in the unit → reconcile away
+        reconciled = true;
+        previous = other;
+        continue;
+      }
+      if (pathSetsOverlap(declared, other.paths ?? [])) overlapping.push(other);
+    }
+
+    if (overlapping.length > 0) {
+      const holder = overlapping[0]!;
+      const overlaps = overlappingPairs(declared, holder.paths ?? []);
+      if (!input.force) {
+        return { ok: false, reason: "collision", holder, ...(overlaps.length ? { overlaps } : {}) };
+      }
+      const unit = claimUnit(input.repo, input.package);
+      if (!(await hasForceAuthorization(workspaceDir, input.journey, unit))) {
+        return { ok: false, reason: "unauthorized-force", holder, unit, ...(overlaps.length ? { overlaps } : {}) };
+      }
+      // authorized force: remove every overlapping active writer, then take over.
+      for (const o of overlapping) {
+        await unlink(lockPath(workspaceDir, o.repo, o.package, o.task)).catch(() => {});
+      }
+      previous = holder;
+      reconciled = true;
+    }
+
+    // My identity slot: a foreign ACTIVE lock sitting on my exact filename (task
+    // reuse across journeys) is a collision even when paths are disjoint — I
+    // cannot overwrite a live foreign claim. A stale or same-identity slot is
+    // overwritten.
+    const mineExisting = await readLock(myPath);
+    if (mineExisting && !isSameIdentity(mineExisting, input)) {
+      if ((await isLockActive(workspaceDir, mineExisting, nowMs)) && overlapping.length === 0) {
+        return { ok: false, reason: "collision", holder: mineExisting };
+      }
+      previous = previous ?? mineExisting;
+      reconciled = true;
+    }
+    await unlink(myPath).catch(() => {});
+    await writeFile(myPath, content, "utf8");
+    return {
+      ok: true,
+      claimed: true,
+      reconciled,
+      ...(overlapping.length > 0 && input.force ? { forced: true } : {}),
+      ...(previous ? { previous } : {}),
+    };
+  } finally {
+    await release();
+  }
+}
+
 export type ReleaseResult =
   | { ok: true; released: boolean }
   | { ok: false; reason: "foreign"; holder: Lock };
@@ -252,7 +488,11 @@ export type ReleaseResult =
 export async function releaseLock(
   workspaceDir: string,
   repo: string,
-  opts: { journey?: string; package?: string; task?: string; force?: boolean } = {},
+  // `paths` is accepted so a path-aware release reads symmetrically with its
+  // claim, but identity is the (repo, package, task) key — a path claim's file is
+  // `lockKey(repo,pkg,task).lock`, exactly what a disjoint sibling does NOT share
+  // — so the lookup does not depend on the declared paths.
+  opts: { journey?: string; package?: string; task?: string; paths?: string[]; force?: boolean } = {},
 ): Promise<ReleaseResult> {
   const path = lockPath(workspaceDir, repo, opts.package, opts.task);
   const existing = await readLock(path);

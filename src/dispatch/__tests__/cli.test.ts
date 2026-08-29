@@ -87,15 +87,35 @@ test("claim: a QA (non-writing) gets a per-task lock; two tasks both CLAIM", asy
   }
 });
 
-test("claim: a DEV (writing) keeps the unit lock even with --task; a second dev task COLLIDES", async () => {
+test("claim: two DEV (writing) tasks with NO declared paths still serialize (whole-unit overlap)", async () => {
   const dir = await wsWithQa();
   try {
+    // No --path ⇒ each declares the WHOLE unit, which overlaps everything, so the
+    // per-repo serialization (D3) is preserved even though each dev keeps its own
+    // --task identity.
     const a = await capture(() => run(["claim", "embark", "--journey", "j1", "--specialist", "Joaquim", "--task", "feat-a", "--pid", "0", "--workspace", dir]));
     const b = await capture(() => run(["claim", "embark", "--journey", "j2", "--specialist", "Joaquim", "--task", "feat-b", "--pid", "0", "--workspace", dir]));
     expect(a.code).toBe(0);
-    expect(a.out).toContain("NOTE"); // task did not split the lock for a writing role
-    expect(b.code).toBe(2); // collision — the unit lock is held, task ignored
+    expect(a.out).toContain("CLAIMED");
+    expect(b.code).toBe(2); // collision — the whole unit is held
     expect(b.out).toContain("COLLISION");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("claim: two DEV tasks on DISJOINT --path both CLAIM; overlapping --path COLLIDES with the paths named", async () => {
+  const dir = await wsWithQa();
+  try {
+    const a = await capture(() => run(["claim", "embark", "--journey", "j1", "--specialist", "Joaquim", "--task", "feat-a", "--path", "src/a", "--pid", "0", "--workspace", dir]));
+    const b = await capture(() => run(["claim", "embark", "--journey", "j2", "--specialist", "Joaquim", "--task", "feat-b", "--path", "src/b", "--pid", "0", "--workspace", dir]));
+    expect(a.code).toBe(0);
+    expect(b.code).toBe(0); // disjoint paths coexist
+    // now a third task overlaps feat-a's src/a
+    const c = await capture(() => run(["claim", "embark", "--journey", "j3", "--specialist", "Joaquim", "--task", "feat-c", "--path", "src/a/deep.ts", "--pid", "0", "--workspace", dir]));
+    expect(c.code).toBe(2);
+    expect(c.out).toContain("COLLISION");
+    expect(c.out).toContain("src/a"); // the message names WHICH paths collided
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
