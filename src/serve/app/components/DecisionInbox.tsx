@@ -67,7 +67,7 @@ function CopyCmd({ command }: { command: string }) {
   );
 }
 
-function ActionRow({ item }: { item: DecisionItem }) {
+export function ActionRow({ item }: { item: DecisionItem }) {
   const d = findDispatch(item.unit, item.journey, item.specialist);
   const card = decisionAction(item, d, snapshot.value.workspaceDir);
   const on = !!d && pinnedDispatch.value === d;

@@ -7,9 +7,9 @@ import { toggleCollapsed } from "../runtime/ui";
 import { Icon } from "./Icon";
 
 const appRoutes = routes as Route[];
-const settingsRoute = appRoutes.find((r) => r.path === "/settings");
-// Settings lives in the footer (app.html:469), not the main nav list.
-const mainRoutes = appRoutes.filter((r) => r.path !== "/settings");
+// Primary nav = the 3 top-level screens; footer = utility (Glossary, Settings).
+const mainRoutes = appRoutes.filter((r) => r.nav.group !== "footer");
+const footerRoutes = appRoutes.filter((r) => r.nav.group === "footer");
 
 export function Sidebar() {
   const path = currentPath.value;
@@ -36,16 +36,17 @@ export function Sidebar() {
         </button>
       ))}
       <div class="sb-foot">
-        {settingsRoute && (
+        {footerRoutes.map((r) => (
           <button
             type="button"
-            class={`nav-i${path === settingsRoute.path ? " on" : ""}`}
-            onClick={() => navigate(settingsRoute.path)}
+            key={r.path}
+            class={`nav-i${path === r.path ? " on" : ""}`}
+            onClick={() => navigate(r.path)}
           >
-            <Icon name={settingsRoute.nav.icon} title={t(settingsRoute.nav.label)} />
-            <span>{t(settingsRoute.nav.label)}</span>
+            <Icon name={r.nav.icon} title={t(r.nav.label)} />
+            <span>{t(r.nav.label)}</span>
           </button>
-        )}
+        ))}
         <button type="button" class="nav-i" id="collapseBtn" onClick={toggleCollapsed}>
           <Icon name="collapse" title={t("collapse")} />
           <span class="lbl">{t("collapse")}</span>

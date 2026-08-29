@@ -22,7 +22,7 @@ afterEach(() => {
 
 test("route contract: path/order/icon preserved", () => {
   expect(route.path).toBe("/settings");
-  expect(route.nav).toEqual({ label: "nav_settings", icon: "settings", order: 7 });
+  expect(route.nav).toEqual({ label: "nav_settings", icon: "settings", order: 11, group: "footer" });
 });
 
 test("header + two .card.pad sections rendered", () => {

@@ -5,11 +5,9 @@ import { attentionCount, attentionHasCritical } from "../runtime/store";
 import { currentPath, navigate } from "../runtime/router";
 import { Icon } from "./Icon";
 
-// Mobile tabbar (app.html:492-499) — only these 5, in this order (terminal
-// removed). Deriving from `routes` (already order-sorted) rather than
-// hardcoding icons/labels keeps this in sync with the view stubs.
-const BOTTOM_PATHS = ["/overview", "/pipeline", "/team", "/activity", "/monitor"];
-const items = (routes as Route[]).filter((r) => BOTTOM_PATHS.includes(r.path));
+// Mobile tabbar — the 3 primary screens (Agora / Equipe / Histórico). Derived
+// from `routes` (already order-sorted) so it stays in sync with the view set.
+const items = (routes as Route[]).filter((r) => r.nav.group !== "footer");
 
 export function BottomNav() {
   const path = currentPath.value;

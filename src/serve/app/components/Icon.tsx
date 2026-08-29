@@ -73,6 +73,15 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M8 8h7M8 12h5" />
     </>
   ),
+  history: (
+    <>
+      <path d="M3 12a9 9 0 1 1 3 6.7" />
+      <path d="M3 20v-5h5" />
+      <path d="M12 7v5l3.5 2" />
+    </>
+  ),
+  "chevron-right": <path d="M9 6l6 6-6 6" />,
+  "chevron-down": <path d="M6 9l6 6 6-6" />,
   // ── ui ──
   collapse: (
     <>
