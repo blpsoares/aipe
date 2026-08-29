@@ -8,6 +8,9 @@ import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
 import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from "./ledger";
 import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
+import { normalizeRepo, normalizeSpecialist } from "./normalize";
+import { dedupeAll } from "./dedupe-run";
+import { readPersonas } from "../hire-specialists/read-personas";
 import { closeSessions, sessionsToClose } from "./session-close";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
@@ -80,13 +83,23 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   const workspace = target.workspace;
   if (target.note) console.log(`NOTE ${target.note}`);
   const id = getFlag(args, "--journey");
-  const repo = getFlag(args, "--repo");
-  const specialist = getFlag(args, "--specialist");
+  const repoFlag = getFlag(args, "--repo");
+  const specialistFlag = getFlag(args, "--specialist");
   const branch = getFlag(args, "--branch");
   const worktree = getFlag(args, "--worktree");
-  if (!id || !repo || !specialist || !branch || !worktree) {
+  if (!id || !repoFlag || !specialistFlag || !branch || !worktree) {
     console.log("ERROR args: --journey, --repo, --specialist, --branch and --worktree are required");
     return 1;
+  }
+  // Write-time identity normalization (j-20260829-dp, item 5): resolve the repo
+  // to its bare name and the specialist to the roster's canonical casing, so the
+  // coordinator's `Jane`/bare-repo and the specialist's self-registered
+  // `jane`/`blpsoares/…` land on ONE ledger key instead of two. Fixed in the DATA
+  // at write, never painted over in the view.
+  const repo = normalizeRepo(repoFlag);
+  const specialist = normalizeSpecialist(specialistFlag, await readPersonas(workspace));
+  if (repo !== repoFlag || specialist !== specialistFlag) {
+    console.log(`NOTE record: normalized identity ${repoFlag}/${specialistFlag} → ${repo}/${specialist} (jane/Jane dedupe).`);
   }
   const pr = getFlag(args, "--pr");
   const pkg = getFlag(args, "--package");
@@ -374,6 +387,27 @@ async function verifyCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   return critical > 0 ? 1 : 0;
 }
 
+// `aipe journey dedupe [--dry-run]` — migrate the jane/Jane duplicates already on
+// disk: canonicalize repo + specialist, collapse rows that share a branch into
+// one, keep merged units immutable (j-20260829-dp §10). --dry-run reports without
+// writing.
+async function dedupeCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const dryRun = args.includes("--dry-run");
+  const results = await dedupeAll(workspace, { dryRun });
+  let collapsed = 0;
+  let normalized = 0;
+  for (const r of results) {
+    for (const m of r.merges) {
+      collapsed += m.dropped;
+      console.log(`${dryRun ? "WOULD-MERGE" : "MERGED"} journey=${r.journey} ${m.unit} kept=${m.kept} dropped=${m.dropped}`);
+    }
+    normalized += r.normalized;
+  }
+  console.log(`STATE dedupe journeys-changed=${results.length} duplicates-collapsed=${collapsed} normalized=${normalized}${dryRun ? " (dry-run)" : ""}`);
+  return 0;
+}
+
 export async function run(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -387,11 +421,13 @@ export async function run(args: string[], deps: JourneyDeps = {}): Promise<numbe
       return specCommand(rest);
     case "reconcile":
       return reconcileCommand(rest);
+    case "dedupe":
+      return dedupeCommand(rest);
     case "verify":
       return verifyCommand(rest, deps);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
-      console.log("Usage: aipe journey <start|record|show|spec|reconcile|verify> [options]");
+      console.log("Usage: aipe journey <start|record|show|spec|reconcile|dedupe|verify> [options]");
       return 1;
   }
 }

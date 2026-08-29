@@ -215,8 +215,18 @@ duas vezes.
 2. **Os ledgers existentes carregam intactos** — 112 dispatches, ~30 jornadas,
    vários legados/incompletos. Provado com carga antes/depois.
 
-**Migração/reconciliação** que alcança as duplicatas já gravadas neste workspace,
-inclusive as travadas atrás de `merged`, sem reescrever unidades imutáveis.
+**Migração/reconciliação** (`aipe journey dedupe [--dry-run]`) que alcança as
+duplicatas já gravadas neste workspace, inclusive as travadas atrás de `merged`,
+sem reescrever unidades imutáveis. Achado ao implementar: a chave só de
+`(repo, specialist)` **não colapsa** os casos reais, porque o registro
+auto-feito frequentemente **omite `--package`** (e às vezes `--task`) — a chave de
+upsert então diverge no `package`. O **branch é o eixo confiável**: idêntico nas
+duas grafias (o print do PE frisou "a mesma branch"). Então a migração colapsa por
+`(repo-normalizado, specialist-normalizado, branch)` e recupera o `package`/`task`
+mais completo para a unidade sobrevivente; a normalização ao gravar (repo +
+specialist) cobre o caso catalogado do dia-a-dia. Neste workspace: **50 duplicatas
+colapsadas em 28 jornadas, 14 normalizadas, 0 residuais, 46 ledgers carregando
+intactos, unidades `merged` preservadas byte-a-byte**.
 
 ## 11. Item (6): `aipe status --json` expõe o envelope
 
