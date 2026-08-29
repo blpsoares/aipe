@@ -3,9 +3,13 @@
 // (which the TUI shares and whose tests must not change) so the agentop read
 // lives only on the serve path. Both the initial GET /api/snapshot and the SSE
 // /api/stream go through here, so first paint and live updates agree.
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSnapshot, type Snapshot } from "../dashboard/snapshot";
-import { readSessions, type SessionInfo } from "./sessions";
+import { readLive, type SessionInfo } from "./sessions";
+import { dispatchPhase } from "../session/poll";
+import type { UnitPhase } from "../session/types";
+import type { JourneyDispatch } from "../journey/types";
 import type { JourneyView } from "../dashboard/snapshot";
 
 export type ServePayload = Snapshot & {
@@ -46,15 +50,58 @@ export function coordinatorSessionsOf(sessions: SessionInfo[], workspace: string
   return sessions.filter((s) => s.status === "running" && !!s.cwd && resolve(s.cwd) === root);
 }
 
+/** A session-mode dispatch carrying its canonical liveness phase. */
+export type LiveDispatch = JourneyDispatch & { liveness?: UnitPhase };
+
+/**
+ * Annotate every SESSION-mode dispatch with its canonical liveness `UnitPhase` —
+ * the SAME `dispatchPhase` derivation `aipe status` runs, so the web console
+ * never invents an optimistic reading of its own (the whole point of "consume the
+ * calculation, don't re-derive"). Subagent dispatches are left untouched (no
+ * session to describe).
+ *
+ * `liveIds` is the live-session id set; `reliable` says whether it can be trusted
+ * (a failed/unreadable `session list` is "we cannot tell", NOT "everyone is
+ * dead"). `worktreeExists` is positive death evidence INDEPENDENT of agentop: a
+ * still-`dispatched` record whose worktree is gone from disk is dead-silent even
+ * when the live list is unreadable — the "`dispatched` no ledger ≠ vivo"
+ * cross-check (trap 2). It never overrides a phase we could positively establish
+ * (`running`) or a terminal ledger state (`landed`/`redirected`/`waiting`).
+ */
+export function annotateLiveness(
+  journeys: JourneyView[],
+  liveIds: Set<string>,
+  reliable: boolean,
+  worktreeExists: (path: string) => boolean,
+): JourneyView[] {
+  const settled = new Set<UnitPhase>(["running", "landed", "redirected", "waiting"]);
+  return journeys.map((j) => ({
+    ...j,
+    dispatches: j.dispatches.map((d): LiveDispatch => {
+      if (d.mode !== "session") return d;
+      let phase = dispatchPhase(d, liveIds, reliable);
+      if (!settled.has(phase) && d.worktree && !worktreeExists(d.worktree)) phase = "dead-silent";
+      return { ...d, liveness: phase };
+    }),
+  }));
+}
+
 export async function buildServePayload(
   workspace: string,
-  read: () => Promise<SessionInfo[]> = readSessions,
+  read: () => Promise<{ sessions: SessionInfo[]; liveIds: Set<string>; reliable: boolean }> = readLive,
+  worktreeExists: (path: string) => boolean = existsSync,
 ): Promise<ServePayload> {
   const snapshot = await buildSnapshot(workspace);
-  // One agentop read covers both the per-dispatch activity and the coordinator's
-  // own sessions. Skip it only when neither could exist.
-  const all = hasSessionDispatch(snapshot.journeys) ? await read() : [];
+  // One agentop read covers the per-dispatch activity, the coordinator's own
+  // sessions AND the canonical liveness. Skip it only when no session could exist
+  // (a pure-subagent workspace) — then the live set is empty but RELIABLE (there
+  // is genuinely nothing to be alive), so no session-mode unit exists to mislabel.
+  const hasSession = hasSessionDispatch(snapshot.journeys);
+  const { sessions: all, liveIds, reliable } = hasSession
+    ? await read()
+    : { sessions: [] as SessionInfo[], liveIds: new Set<string>(), reliable: true };
+  const journeys = annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists);
   const sessions = relevantSessions(all, snapshot.journeys);
   const coordinatorSessions = coordinatorSessionsOf(all, workspace);
-  return { ...snapshot, sessions, coordinatorSessions };
+  return { ...snapshot, journeys, sessions, coordinatorSessions };
 }

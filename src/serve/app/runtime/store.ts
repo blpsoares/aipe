@@ -2,6 +2,7 @@ import { signal, computed, type Signal, type ReadonlySignal } from "@preact/sign
 import { dkey, fqidOf } from "./dom";
 import { openJourneyOf, buildDecisionInbox, type JourneyLike, type DecisionItem } from "./floor";
 import type { SessionInfo } from "../../sessions";
+import type { UnitPhase } from "../../../session/types";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 // These mirror the shapes produced/consumed by src/serve/app.html's setSnap
@@ -24,6 +25,13 @@ export interface Dispatch {
   // dispatch) but were previously untyped and unused by the client.
   branch?: string;
   worktree?: string;
+  mode?: "subagent" | "session";
+  sessionId?: string;
+  // The canonical liveness phase for a session-mode dispatch, computed
+  // server-side by the SAME dispatchPhase `aipe status` runs (serve/payload.ts
+  // annotateLiveness). Absent on subagent dispatches. The board consumes THIS
+  // rather than re-deriving an optimistic reading of its own.
+  liveness?: UnitPhase;
   [key: string]: unknown;
 }
 
