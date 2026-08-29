@@ -418,3 +418,63 @@ canônico, não no status cru:
 - O card carrega task, persona, branch, PR e estado juntos — teste de view.
 - Teste de compreensão: um leitor sem vocabulário AIPe entende o que cada coluna
   quer dele (aplicado pelo Mike na Wave 2).
+
+---
+
+## 13. Fase 2 do build — absorver a #39 + os requisitos novos do PE (pós-aprovação)
+
+> **Sequenciamento (imposto pelo coordenador).** A PR #39 (tela **Atividade**,
+> jornada `dp`) está **em gate agora** e este redesign **funde `activity` em Agora e
+> deleta `activity.view`** — colisão direta. **Nenhum novo build de UI começa até a
+> #39 mesclar**; o coordenador libera.
+>
+> **Descompasso registrado (ledger `redirected`):** a PR **#34 já foi entregue**
+> (CI verde, `delivered`) ANTES desta condição chegar. Como #34 remove `activity.view`
+> e #39 o altera, **as duas se chocam**. Reconciliação proposta, à decisão do
+> coordenador: **manter #34 sem merge; quando a #39 cair, rebasear #34 sobre `main` e
+> absorver os deliverables da #39** (não reescrever por cima de código em revisão).
+> Alternativa: #39 mescla, #34 vira a Fase-2 que a incorpora. O coordenador decide a
+> ordem de merge.
+
+Cinco pedidos do PE desta semana que o mapa passa a refletir (implementados na
+Fase 2, após a #39):
+
+### 13.1 — Coluna **Integrados**, por VERDADE DE MERGE (não status do ledger)
+O quadro ganha uma **5ª coluna, Integrados**. Ela **não** se alimenta do status
+`merged` do ledger (que pode estar velho): usa a **verdade de merge do PR** — o
+mesmo sinal que a #39/`journey reconcile` computa contra o provedor. Isto corrige a
+§11.2, que hoje descarta `merged`/`removed` do quadro. Regra: um card só entra em
+Integrados quando o **PR está de fato mesclado**, não quando alguém escreveu
+`merged` à mão. Consome esse cálculo; não re-deriva.
+
+### 13.2 — Card de **7 campos**, tudo junto
+O card carrega, sem trocar de tela, **sete campos**: (1) tarefa, (2) agente/persona,
+(3) repo·unidade, (4) branch, (5) **atividade** (a fase honesta / última atividade
+viva — o que a #39 entrega no feed), (6) PR, (7) **estado**. Hoje o card tem ~5; a
+Fase 2 acrescenta a **atividade viva** (da #39) e separa repo·unidade de tarefa.
+
+### 13.3 — Rolagem **própria do quadro**
+O quadro rola **dentro do próprio bloco** (`overflow-x:auto` no strip; cada coluna
+com seu `overflow-y`), nunca a página. Com 5 colunas, em tela estreita o strip rola
+horizontalmente **dentro de si** em vez de colapsar — a página continua sem scroll
+horizontal (invariante do §7 preservada: conteúdo largo rola no próprio contêiner).
+
+### 13.4 — **Paleta do site**
+O sistema visual migra da paleta "ops" esmeralda atual para a **paleta do site de
+marketing** (fonte da verdade: o repo do site — matéria **cross-repo**, os valores
+vêm do coordenador). Só `tokens.css` muda; todo o resto já usa tokens, então a troca
+é de valores, não de estrutura. Ambos os temas continuam de primeira classe.
+
+### 13.5 — **Precisa de você** dividido por PÚBLICO; colunas vazias somem
+A atenção deixa de ser um balde só e passa a **separar por quem age**:
+**escalado-para-o-PE** (o que só você destrava) vs **escalado-para-o-coordenador**
+(o que o coordenador resolve). Isto formaliza o split que o motor já tem
+(`floor.ts`: `decision` = PE, `observation` = coordenador/dev). E **colunas/seções
+vazias não renderizam** — nada de "Nada aqui" ocupando espaço e diluindo o sinal;
+uma coluna sem card simplesmente não aparece. (A §11.2 hoje renderiza a coluna
+vazia; a Fase 2 a suprime.)
+
+**Aceite adicional (Fase 2):** Integrados só com PR realmente mesclado; card com os 7
+campos; quadro com rolagem própria e página sem scroll-H; tokens na paleta do site,
+dois temas; needs-attention separado por público, colunas vazias ausentes; teste de
+compreensão tela a tela mantido.
