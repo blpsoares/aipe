@@ -79,8 +79,14 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 /* org chart (SVG tree) */
 /* user-select:none so dragging over the SVG <text> labels pans instead of
    selecting text; the click that opens a specialist's CV still fires. */
-.orgwrap { overflow-x: auto; overflow-y: hidden; padding: 10px 6px; user-select: none; -webkit-user-select: none; -moz-user-select: none; }
+/* The org viewport is BOUNDED (width from its constrained parent, height a
+   viewport fraction) and CLIPS — this is what lets the fit (runtime/org.ts) scale
+   the SVG down to fit on load instead of letting the 2700px-wide graph overflow
+   and scroll. The chain above must not grow to the SVG's intrinsic width, so the
+   grid item (.org-desktop) is min-width:0. */
+.orgwrap { position: relative; width: 100%; max-width: 100%; height: min(66vh, 600px); overflow: hidden; padding: 10px 6px; user-select: none; -webkit-user-select: none; -moz-user-select: none; }
 .orgwrap svg { display: block; }
+.org-desktop { min-width: 0; overflow: hidden; }
 /* org toolbar: search + zoom/reset/fullscreen controls */
 .org-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .org-search { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); color: var(--ink-3); transition: border-color .15s; }
