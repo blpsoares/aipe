@@ -181,13 +181,13 @@ index is worth more than silence. A future session should fill these:
 - **The `agentop events` channel end-to-end** — [20](20-repos-layout-events.md)
   covers the states/producers/consumer, but the producer lifecycle (`agentop server`
   vs `agentop events run`) is an `agentop` (cross-repo) concern with no chapter here;
-  see also `docs/pr-c-monitor.md`.
+  see also `docs/superpowers/specs/2026-07-08-pr-c-monitor-design.md`.
 - **The SessionStart hook's full field set** — [03](03-session-hook.md) predates the
   status state-block and awareness clauses that [19](19-status.md) added to it; the
   hook's current rendered output is split across the two.
 - **`aipe serve` transport internals** — the SSE snapshot/stream and terminal
   WebSocket are named in [08](08-web-console.md) and [22](22-console-redesign.md) but
-  the server (`src/serve/server.ts`, `docs/serve-background.md`) has no chapter.
+  the server (`src/serve/server.ts`, `docs/superpowers/specs/2026-07-08-serve-background-design.md`) has no chapter.
 
 ## Appendix — divergences (escalated, not cosmetic)
 
