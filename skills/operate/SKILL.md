@@ -327,8 +327,14 @@ digraph operate {
    ```
    `OK batch=<n>` → proceed. Any `REJECT …` → fix and re-validate:
    - `same-package <fqid>` / `same-repo <repo>` — two tasks hit one unit in one
-     wave; split them across waves (the law serializes the same package; distinct
-     packages of one monorepo are fine in the same wave).
+     wave with **no declared paths** (each ⇒ the whole unit); split them across
+     waves, or give each a disjoint `paths` set to run them together (see below).
+   - `path-collision <unit>: <A> ⋂ <B> on <paths>` — two **writing** tasks in one
+     unit declared **overlapping** paths; the message names which. Either make the
+     `paths` disjoint, split them across waves, or run the managed exception (the
+     box after step d) so the second rebases onto the first. Two writers that coexist also need a
+     **distinct `task` each** (`same-task <unit>…`) — identity, and the lock file,
+     are per task.
    - `cap-exceeded <n>` — more than 16 at once; split the wave.
    - `unknown-repo` / `unknown-specialist` — you named something not in
      `brain.yaml` / `personas.yaml`.
@@ -344,14 +350,25 @@ digraph operate {
    physical, per-machine lock **before** the worktree (`--package` for a monorepo
    unit):
    ```bash
-   aipe dispatch claim <repo> [--package <package>] --journey <id> --specialist <persona> --workspace <workspace>
+   aipe dispatch claim <repo> [--package <package>] [--task <t>] [--path <glob> ...] --journey <id> --specialist <persona> --workspace <workspace>
    ```
-   - `CLAIMED …` (exit 0) → the repo is yours; proceed to the worktree.
+   **Granularity is per PATH, not per repo.** A writing claim with **no** `--path`
+   locks the WHOLE unit (the pre-path behaviour — it collides with everything, so
+   two path-less devs still serialize). To run **N tasks in one repo at once**,
+   give each a **distinct `--task`** (identity) and a **disjoint `--path` set**
+   (what it will touch): disjoint claims coexist, overlapping claims collide. You
+   **MUST** declare paths honestly and narrowly — a claim that under-declares and
+   then writes outside its set defeats the lock; the `reconcile` step (the box
+   after step d) catches that drift, but a truthful declaration up front is what
+   keeps two agents off one file in the first place. A QA (`--task`, no `--path`)
+   never collides with a writer.
+   - `CLAIMED …` (exit 0) → the unit/paths are yours; proceed to the worktree.
    - `RECONCILED …` (exit 0) → a stale lock (a released, orphaned, or crashed
      holder) was cleaned up and re-taken; proceed.
-   - `COLLISION … held by journey=<other>` (exit 2) → another live session owns
-     this repo. **Do not dispatch into it.** Wait for it to release, pick a
-     different repo for this wave, or take it to the PE — never race it by hand.
+   - `COLLISION … on paths <…>` (exit 2) → another live claim holds an
+     **overlapping path** (the message names it). **Do not dispatch into it.**
+     Either pick disjoint paths, wait for it to release, or run the managed
+     exception (the box after step d) — never race it by hand.
    - `UNAUTHORIZED-FORCE …` (exit 3) → you passed `--force` without the PE's
      approval on the record. Overriding a live lock is the PE's call, not yours:
      get the yes in-session, record it, then re-run with `--force`:
@@ -556,9 +573,11 @@ digraph operate {
      If a subagent returns `delivered` with **no** evidence, it is **not** delivered —
      send it back to run `/verify-before-done` and return proof.
      Then **release the claim** — the active dispatch into this repo is done, so a
-     later wave (the QA gate, another journey) can claim it:
+     later wave (the QA gate, another journey) can claim it. Pass the **same
+     `--task`** you claimed with (a path claim's lock is keyed by task), so you
+     release exactly that sub-task's lock and not a disjoint sibling's:
      ```bash
-     aipe dispatch release <repo> [--package <package>] --journey <id> --workspace <workspace>
+     aipe dispatch release <repo> [--package <package>] [--task <t>] --journey <id> --specialist <persona> --workspace <workspace>
      ```
    - `{ "status": "needs-clarification", "need": "…" }` — the brief was insufficient.
      Answer it (or get the PE's answer), amend the brief, and re-dispatch. A specialist
@@ -568,6 +587,31 @@ digraph operate {
      — a cross-repo need it must not touch. Record `--status escalated`, **release
      the claim** on that repo (`aipe dispatch release <repo> --journey <id>
      --workspace <workspace>`), and hold it for step 5.
+
+   **Honest paths + the managed exception (path-parallel work only).** A path set
+   declared at claim time **ages** — a dev's scope legitimately grows mid-task, and
+   `bun install` can nudge submodule pointers no one meant to touch. So when you ran
+   sub-tasks on declared paths, **reconcile the lock against what the branch really
+   moved before you clear the delivery** — the lock **MUST** reflect reality, not
+   the promise, or it protected less than it looked:
+   ```bash
+   aipe dispatch reconcile <repo> [--package <p>] --task <t> --journey <id> --worktree <path> [--base origin/main] --workspace <workspace>
+   ```
+   - `RECONCILED … drift=<paths>` (exit 0) → the lock now names the real files; any
+     `drift` is what the declaration missed. Proceed.
+   - `DRIFT-COLLISION … overlaps journey=<other> on <paths>` (exit 2) → the branch
+     grew into a path another live claim holds. This is the **managed exception**,
+     **not** a fatal error — run it, do not just re-order and hope:
+     ```bash
+     aipe dispatch resolve-overlap <repo> --branch <this-branch> --onto <holder-branch> --path <overlapping> ...
+     ```
+     The printed plan is the required recovery, in order: **wait** for the holder to
+     land → **rebase** this branch onto it → the agent (which holds both tasks'
+     orientation) **resolves** the conflict → the **QA gate (step e) runs over the
+     REBASED result**, not either branch alone. That review is the net that catches
+     both a bad textual merge and a semantic break; skipping it lets dirt
+     accumulate. You **MUST** run step e on the merged tree, not wave it through
+     because each branch passed on its own.
 
    e. **QA gate (MUST) — an independent skeptic against the diff.** For every dev
    delivery you **MUST** dispatch that same repo/package's **QA** persona

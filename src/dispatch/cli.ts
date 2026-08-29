@@ -9,7 +9,9 @@ import { readGraph } from "../relationship/read-graph";
 import { readLedger } from "../journey/ledger";
 import { packageFqid } from "../context-brain/packages";
 import { checkDependenciesLanded, validateBatch } from "./law";
-import { claimLock, claimUnit, releaseLock } from "./lock";
+import { claimLock, claimUnit, reconcileLockPaths, releaseLock } from "./lock";
+import { detectTouchedPaths } from "./detect";
+import { planOverlapResolution } from "./resolution";
 import { roleWritesToRepo } from "./roles";
 import { recordAuthorization } from "../journey/ledger";
 import { readPersonas } from "./personas";
@@ -28,6 +30,23 @@ function getFlag(args: string[], name: string): string | undefined {
   return value;
 }
 
+// A flag that may repeat: `--path a --path b`. Also accepts a single
+// comma-separated value (`--path a,b`) for ergonomics. Returns every value in
+// order; empty when the flag is absent.
+function getFlagAll(args: string[], name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== name) continue;
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith("--")) continue;
+    for (const part of value.split(",")) {
+      const t = part.trim();
+      if (t) out.push(t);
+    }
+  }
+  return out;
+}
+
 export function parseBatch(value: unknown): Batch | null {
   if (!Array.isArray(value)) return null;
   const batch: DispatchEntry[] = [];
@@ -39,11 +58,16 @@ export function parseBatch(value: unknown): Batch | null {
     // the default: a typo'd "session" must not quietly run as a subagent.
     if (r.mode !== undefined && r.mode !== "subagent" && r.mode !== "session") return null;
     if (r.intensity !== undefined && r.intensity !== "normal" && r.intensity !== "ultracode") return null;
+    // `paths` (optional): a JSON array of strings. A wrong-typed field is a
+    // REJECT, never a silent drop — a coordinator's mistyped paths must not fall
+    // back to a WHOLE-unit claim it did not intend.
+    if (r.paths !== undefined && (!Array.isArray(r.paths) || r.paths.some((p) => typeof p !== "string"))) return null;
     batch.push({
       repo: r.repo,
       specialist: r.specialist,
       ...(typeof r.package === "string" ? { package: r.package } : {}),
       ...(typeof r.task === "string" ? { task: r.task } : {}),
+      ...(Array.isArray(r.paths) ? { paths: r.paths as string[] } : {}),
       ...(typeof r.tier === "string" ? { tier: r.tier } : {}),
       ...(r.mode !== undefined ? { mode: r.mode as "subagent" | "session" } : {}),
       ...(r.intensity !== undefined ? { intensity: r.intensity as "normal" | "ultracode" } : {}),
@@ -157,7 +181,7 @@ async function claimCommand(args: string[]): Promise<number> {
   const journey = getFlag(args, "--journey");
   const specialist = getFlag(args, "--specialist");
   if (!repo || !journey || !specialist) {
-    console.log("ERROR args: usage: dispatch claim <repo> --journey <id> --specialist <name> [--branch b] [--package p] [--task t] [--force]");
+    console.log("ERROR args: usage: dispatch claim <repo> --journey <id> --specialist <name> [--branch b] [--package p] [--task t] [--path glob ...] [--force]");
     return 1;
   }
   const branch = getFlag(args, "--branch");
@@ -167,21 +191,24 @@ async function claimCommand(args: string[]): Promise<number> {
     console.log(`ERROR task: --task must be slug-safe (lowercase alnum + hyphen), got "${task}"`);
     return 1;
   }
+  const declaredPaths = getFlagAll(args, "--path");
   const force = args.includes("--force");
-  // The task splits the lock ONLY for a role that writes NOTHING to the repo. A
-  // writing role keeps the unit-level lock even if a --task is passed, so two
-  // devs still contend on the one lock — the serialization D3 made physical is
-  // never removed by handing out a task. Role is resolved from the roster (the
-  // single source of truth), never a name list; unknown role ⇒ treated as
-  // writing (safe default).
-  const role = task
-    ? (await readPersonas(workspace)).find(
-        (p) => p.repo === repo && p.name.toLowerCase() === specialist.toLowerCase(),
-      )?.role
-    : undefined;
-  const lockTask = task && !roleWritesToRepo(role) ? task : undefined;
-  if (task && lockTask === undefined) {
-    console.log(`NOTE --task ${task} does not split the lock for role "${role ?? "unknown"}" (a writing role serializes on its unit); claiming the unit lock.`);
+  // Role is resolved from the roster (the single source of truth), never a name
+  // list; unknown/absent role ⇒ treated as WRITING (safe default). Two regimes:
+  //   • WRITING role → PATH-AWARE claim: it declares the paths it will touch
+  //     (empty ⇒ the WHOLE unit), keeps its --task as identity so disjoint
+  //     sub-tasks get distinct lock files, and is adjudicated by unit-wide path
+  //     overlap. Two devs on the same unit still serialize when their paths
+  //     overlap (WHOLE overlaps everything) — the D3 serialization is preserved,
+  //     just made per-path.
+  //   • NON-WRITING role → LEGACY task-split lock, unchanged: --task splits the
+  //     lock (a QA writes nothing, so N tasks never collide) and no path scan runs.
+  const role = (await readPersonas(workspace)).find(
+    (p) => p.repo === repo && p.name.toLowerCase() === specialist.toLowerCase(),
+  )?.role;
+  const writes = roleWritesToRepo(role);
+  if (task && !writes && declaredPaths.length > 0) {
+    console.log(`NOTE --path is ignored for non-writing role "${role ?? "unknown"}" (a reviewer touches no files); claiming the task-split lock.`);
   }
   // The coordinator's long-lived session pid, for crash-based reconciliation.
   // Absent ⇒ 0 (the ephemeral CLI pid is meaningless): the lock's liveness is
@@ -191,14 +218,17 @@ async function claimCommand(args: string[]): Promise<number> {
   const result = await claimLock(workspace, {
     repo,
     ...(pkg ? { package: pkg } : {}),
-    ...(lockTask ? { task: lockTask } : {}),
+    ...(task ? { task } : {}),
     journey,
     specialist,
     ...(branch ? { branch } : {}),
+    // Path-aware regime only for writing roles; a non-writing claim omits `paths`
+    // (undefined) so it takes the legacy single-file branch.
+    ...(writes ? { paths: declaredPaths } : {}),
     force,
     pid,
   });
-  const taskSuffix = lockTask ? ` task=${lockTask}` : "";
+  const taskSuffix = task ? ` task=${task}` : "";
   if (result.ok) {
     const unit = claimUnit(repo, pkg);
     const prev = result.previous;
@@ -214,14 +244,20 @@ async function claimCommand(args: string[]): Promise<number> {
   }
   const h = result.holder;
   const unit = claimUnit(repo, pkg);
+  // Name WHICH paths collided so a coordinator understands the serialization — an
+  // overlap collision spells out the pairs; a whole-unit collision says so.
+  const overlaps = result.overlaps;
+  const pathStr = overlaps && overlaps.length
+    ? ` on paths ${overlaps.map(([a, b]) => (a === b ? a : `${a}⋂${b}`)).join(", ")}`
+    : "";
   if (result.reason === "unauthorized-force") {
-    console.log(`UNAUTHORIZED-FORCE ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
+    console.log(`UNAUTHORIZED-FORCE ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}${pathStr}`);
     console.log(`WARN --force over an active lock needs a recorded PE authorization for ${unit}.`);
     console.log(`     Record it (after the PE says yes): aipe dispatch authorize-force ${repo}${pkg ? ` --package ${pkg}` : ""} --journey ${journey} --by PE --workspace ${workspace}`);
     return 3;
   }
-  console.log(`COLLISION ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}`);
-  console.log("WARN not blocking; with the PE's approval recorded, re-run with --force to override the active lock.");
+  console.log(`COLLISION ${unit}${taskSuffix} held by journey=${h.journey} specialist=${h.specialist} pid=${h.pid} since=${h.timestamp}${pathStr}`);
+  console.log("WARN not blocking; the overlapping task must wait, rebase onto the holder, and resolve; or with the PE's approval recorded, re-run with --force. See `aipe dispatch resolve-overlap`.");
   return 2;
 }
 
@@ -281,14 +317,84 @@ async function releaseCommand(args: string[]): Promise<number> {
   return 2;
 }
 
+// `aipe dispatch reconcile <repo> --journey <id> --worktree <dir> [--package p]
+// [--task t] [--base ref]` — rewrite the live lock's paths to what the branch
+// ACTUALLY touched (read from git) and re-check the unit for overlap on the REAL
+// set. This is the honest-declaration guard: a declaration made at dispatch time
+// ages, so the lock is reconciled against verifiable git state, not trusted.
+async function reconcileCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const repo = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+  const journey = getFlag(args, "--journey");
+  const worktree = getFlag(args, "--worktree");
+  if (!repo || !journey || !worktree) {
+    console.log("ERROR args: usage: dispatch reconcile <repo> --journey <id> --worktree <dir> [--package p] [--task t] [--base ref]");
+    return 1;
+  }
+  const pkg = getFlag(args, "--package");
+  const task = getFlag(args, "--task");
+  const base = getFlag(args, "--base");
+  const actual = await detectTouchedPaths(worktree, { ...(base ? { base } : {}) });
+  const result = await reconcileLockPaths(workspace, {
+    repo,
+    ...(pkg ? { package: pkg } : {}),
+    ...(task ? { task } : {}),
+    journey,
+    actual,
+  });
+  const unit = claimUnit(repo, pkg);
+  const taskSuffix = task ? ` task=${task}` : "";
+  if (!result.ok) {
+    if (result.reason === "no-lock") {
+      console.log(`NOTE no lock for ${unit}${taskSuffix} to reconcile (claim it first)`);
+      return 0;
+    }
+    console.log(`SKIP foreign ${unit}${taskSuffix} held by journey=${result.holder.journey} (reconcile is owner-only)`);
+    return 2;
+  }
+  const pathsStr = result.paths.length ? result.paths.join(", ") : "(whole unit)";
+  const driftStr = result.drift.length ? result.drift.join(", ") : "none";
+  console.log(`RECONCILED ${unit}${taskSuffix} paths=${pathsStr} drift=${driftStr}`);
+  if (result.overlaps.length > 0) {
+    for (const o of result.overlaps) {
+      const on = o.pairs.map(([a, b]) => (a === b ? a : `${a}⋂${b}`)).join(", ");
+      console.log(`DRIFT-COLLISION ${unit}${taskSuffix} now overlaps journey=${o.holder.journey} specialist=${o.holder.specialist} on ${on}`);
+    }
+    console.log("WARN detection found the branch touching a path another live claim holds. Run the managed exception: aipe dispatch resolve-overlap.");
+    return 2;
+  }
+  return 0;
+}
+
+// `aipe dispatch resolve-overlap <repo> --branch <mine> --onto <holder> [--path
+// glob ...]` — print the deterministic managed-exception plan (wait → rebase →
+// resolve → review-over-merge). Prose lives in the skills; this is the exact,
+// ordered recovery a coordinator can follow step by step.
+function resolveOverlapCommand(args: string[]): number {
+  const repo = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+  const waiterBranch = getFlag(args, "--branch");
+  const holderBranch = getFlag(args, "--onto");
+  if (!repo || !waiterBranch || !holderBranch) {
+    console.log("ERROR args: usage: dispatch resolve-overlap <repo> --branch <waiter> --onto <holder> [--path glob ...]");
+    return 1;
+  }
+  const paths = getFlagAll(args, "--path");
+  const plan = planOverlapResolution({ waiterBranch, holderBranch, paths });
+  console.log(`PLAN overlap ${repo}: ${plan.waiter} waits and rebases onto ${plan.onto}`);
+  plan.steps.forEach((s, i) => console.log(`  ${i + 1}. ${s.action}: ${s.detail}`));
+  return 0;
+}
+
 export async function run(args: string[]): Promise<number> {
   const [sub, ...rest] = args;
   if (sub === "validate") return validateCommand(rest);
   if (sub === "claim") return claimCommand(rest);
   if (sub === "release") return releaseCommand(rest);
+  if (sub === "reconcile") return reconcileCommand(rest);
+  if (sub === "resolve-overlap") return resolveOverlapCommand(rest);
   if (sub === "authorize-force") return authorizeForceCommand(rest);
   console.log(`ERROR command: unknown dispatch command "${sub ?? ""}"`);
-  console.log("Usage: aipe dispatch <validate|claim|release|authorize-force> [options]");
+  console.log("Usage: aipe dispatch <validate|claim|release|reconcile|resolve-overlap|authorize-force> [options]");
   return 1;
 }
 

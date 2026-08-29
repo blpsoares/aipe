@@ -87,19 +87,81 @@ test("claim: a QA (non-writing) gets a per-task lock; two tasks both CLAIM", asy
   }
 });
 
-test("claim: a DEV (writing) keeps the unit lock even with --task; a second dev task COLLIDES", async () => {
+test("claim: two DEV (writing) tasks with NO declared paths still serialize (whole-unit overlap)", async () => {
   const dir = await wsWithQa();
   try {
+    // No --path ⇒ each declares the WHOLE unit, which overlaps everything, so the
+    // per-repo serialization (D3) is preserved even though each dev keeps its own
+    // --task identity.
     const a = await capture(() => run(["claim", "embark", "--journey", "j1", "--specialist", "Joaquim", "--task", "feat-a", "--pid", "0", "--workspace", dir]));
     const b = await capture(() => run(["claim", "embark", "--journey", "j2", "--specialist", "Joaquim", "--task", "feat-b", "--pid", "0", "--workspace", dir]));
     expect(a.code).toBe(0);
-    expect(a.out).toContain("NOTE"); // task did not split the lock for a writing role
-    expect(b.code).toBe(2); // collision — the unit lock is held, task ignored
+    expect(a.out).toContain("CLAIMED");
+    expect(b.code).toBe(2); // collision — the whole unit is held
     expect(b.out).toContain("COLLISION");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("claim: two DEV tasks on DISJOINT --path both CLAIM; overlapping --path COLLIDES with the paths named", async () => {
+  const dir = await wsWithQa();
+  try {
+    const a = await capture(() => run(["claim", "embark", "--journey", "j1", "--specialist", "Joaquim", "--task", "feat-a", "--path", "src/a", "--pid", "0", "--workspace", dir]));
+    const b = await capture(() => run(["claim", "embark", "--journey", "j2", "--specialist", "Joaquim", "--task", "feat-b", "--path", "src/b", "--pid", "0", "--workspace", dir]));
+    expect(a.code).toBe(0);
+    expect(b.code).toBe(0); // disjoint paths coexist
+    // now a third task overlaps feat-a's src/a
+    const c = await capture(() => run(["claim", "embark", "--journey", "j3", "--specialist", "Joaquim", "--task", "feat-c", "--path", "src/a/deep.ts", "--pid", "0", "--workspace", dir]));
+    expect(c.code).toBe(2);
+    expect(c.out).toContain("COLLISION");
+    expect(c.out).toContain("src/a"); // the message names WHICH paths collided
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolve-overlap prints the ordered managed-exception plan", async () => {
+  const r = await capture(() =>
+    Promise.resolve(run(["resolve-overlap", "embark", "--branch", "aipe/j2/bob", "--onto", "aipe/j1/ann", "--path", "src/serve"])),
+  );
+  expect(r.code).toBe(0);
+  expect(r.out).toContain("PLAN overlap embark");
+  expect(r.out).toContain("1. wait");
+  expect(r.out).toContain("2. rebase");
+  expect(r.out).toContain("3. resolve");
+  expect(r.out).toContain("4. review-over-merge");
+});
+
+test("reconcile updates the lock to the branch's real files (end-to-end over a git repo)", async () => {
+  const dir = await wsWithQa();
+  try {
+    // a real git worktree whose branch touched a file the claim did not declare
+    const wt = join(dir, "wt");
+    await mkdir(wt, { recursive: true });
+    const g = (args: string[]) => Bun.spawn(["git", ...args], { cwd: wt, stdout: "pipe", stderr: "pipe" }).exited;
+    await g(["init", "-q", "-b", "main"]);
+    await g(["config", "user.email", "t@t"]);
+    await g(["config", "user.name", "t"]);
+    await writeFile(join(wt, "seed.txt"), "seed", "utf8");
+    await g(["add", "-A"]);
+    await g(["commit", "-qm", "seed"]);
+    await writeFile(join(wt, "grew.ts"), "// grew mid-task", "utf8");
+
+    // claim declares nothing about grew.ts (empty ⇒ whole unit here won't drift;
+    // declare a narrow path so grew.ts is genuinely outside it)
+    await run(["claim", "embark", "--journey", "j1", "--specialist", "Joaquim", "--task", "feat", "--path", "seed.txt", "--pid", "0", "--workspace", dir]);
+    const r = await capture(() =>
+      run(["reconcile", "embark", "--journey", "j1", "--task", "feat", "--worktree", wt, "--base", "main", "--workspace", dir]),
+    );
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("RECONCILED");
+    expect(r.out).toContain("grew.ts"); // detection caught the undeclared file
+    expect(r.out).toContain("drift=grew.ts");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 30000);
 
 test("validate returns 0 for a lawful batch", async () => {
   const dir = await ws();

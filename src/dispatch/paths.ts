@@ -1,0 +1,156 @@
+// Path-set overlap — the core of path-granularity claims (j-20260826-xj). A
+// claim declares the paths (globs/prefixes) a task will touch; two claims in one
+// repo collide iff their path sets can match a COMMON file. The answer is
+// conservative-but-precise: realistic declarations (exact files, directory
+// prefixes, `*`/`**` globs) get an exact non-emptiness-of-intersection answer, so
+// disjoint work runs in parallel while any shared file serializes. Erring toward
+// overlap is the safe direction — a missed overlap is the silent concurrency hole
+// this journey exists to close — but we do not over-serialize the common cases.
+//
+// Pure and dependency-free: the lock (physical exclusion) and the law (batch
+// adjudication) both reason through these functions, so the definition of
+// "overlap" lives in exactly one place.
+
+// The whole-unit path: a claim that declares NO paths locks the entire unit,
+// exactly as the pre-path repo/package lock did. It overlaps every concrete path,
+// so an undeclared claim still serializes with everything — the backward-compatible
+// default. `**` at the root matches any file at any depth.
+export const WHOLE = "**";
+
+// Normalize a declared spec to its canonical string form:
+//   - trim, strip a leading "./", collapse runs of "/", strip a trailing "/"
+//   - "", ".", "/" (or whitespace) ⇒ WHOLE (the whole unit)
+// The subtree-vs-exact decision is made in `toSegments`, not here — this only
+// canonicalizes the text so equal specs compare equal and messages read cleanly.
+export function normalizePath(spec: string): string {
+  const t = (spec ?? "").trim();
+  if (t === "" || t === "." || t === "/" || t === "./") return WHOLE;
+  const cleaned = t.replace(/^\.\//, "").replace(/\/+/g, "/").replace(/\/+$/, "");
+  return cleaned === "" ? WHOLE : cleaned;
+}
+
+// Split a normalized spec into glob segments. A spec whose LAST segment carries no
+// wildcard is a PREFIX and covers its whole subtree, so a trailing `**` is
+// appended: `src/foo` matches `src/foo` and everything under it (a `**` segment
+// matches zero-or-more path segments, so the prefix itself is included). A
+// wildcard-ending spec (`src/*`, `src/**`, `*.ts`) is taken exactly, as written.
+function toSegments(spec: string): string[] {
+  const norm = normalizePath(spec);
+  const segs = norm.split("/").filter((s) => s.length > 0);
+  if (segs.length === 0) return [WHOLE];
+  const last = segs[segs.length - 1]!;
+  if (!hasWildcard(last)) segs.push(WHOLE);
+  return segs;
+}
+
+function hasWildcard(seg: string): boolean {
+  return seg.includes("*") || seg.includes("?");
+}
+
+// Non-emptiness of the intersection of two single-segment wildcard patterns:
+// does some string match BOTH `a` and `b`? `*` matches any run (incl. empty),
+// `?` matches exactly one char, everything else is literal. Classic wildcard
+// intersection by memoized DP over the two cursor positions.
+function wildcardIntersect(a: string, b: string): boolean {
+  const na = a.length;
+  const nb = b.length;
+  const memo = new Map<number, boolean>();
+  const go = (i: number, j: number): boolean => {
+    const key = i * (nb + 1) + j;
+    const cached = memo.get(key);
+    if (cached !== undefined) return cached;
+    let res: boolean;
+    if (i === na && j === nb) {
+      res = true;
+    } else if (i < na && a[i] === "*") {
+      // `*` in a matches empty (advance i) or one char (advance j — that char is
+      // free, so it satisfies whatever b has at j).
+      res = go(i + 1, j) || (j < nb && go(i, j + 1));
+    } else if (j < nb && b[j] === "*") {
+      res = go(i, j + 1) || (i < na && go(i + 1, j));
+    } else if (i < na && j < nb) {
+      // both cursors on a concrete char: `?` matches any single char, so it
+      // aligns with whatever the other side has; two literals must be equal.
+      const ca = a[i]!;
+      const cb = b[j]!;
+      res = ca === "?" || cb === "?" || ca === cb ? go(i + 1, j + 1) : false;
+    } else {
+      res = false;
+    }
+    memo.set(key, res);
+    return res;
+  };
+  return go(0, 0);
+}
+
+// Non-emptiness of the intersection of two segment lists, where `**` matches
+// zero-or-more segments and each ordinary segment is a single-segment wildcard
+// pattern. Memoized on the (i, j) cursor pair so the two `**` branches terminate
+// and stay linear.
+function segmentsIntersect(a: string[], b: string[]): boolean {
+  const na = a.length;
+  const nb = b.length;
+  const memo = new Map<number, boolean>();
+  const go = (i: number, j: number): boolean => {
+    const key = i * (nb + 1) + j;
+    const cached = memo.get(key);
+    if (cached !== undefined) return cached;
+    let res: boolean;
+    if (i === na && j === nb) {
+      res = true;
+    } else if (i === na) {
+      // a exhausted: b matches the empty tail only if every remaining b segment
+      // is `**` (each matching zero segments).
+      res = b.slice(j).every((s) => s === WHOLE);
+    } else if (j === nb) {
+      res = a.slice(i).every((s) => s === WHOLE);
+    } else if (a[i] === WHOLE) {
+      // `**` matches zero segments (advance i) or absorbs one b segment (advance j).
+      res = go(i + 1, j) || go(i, j + 1);
+    } else if (b[j] === WHOLE) {
+      res = go(i, j + 1) || go(i + 1, j);
+    } else {
+      res = wildcardIntersect(a[i]!, b[j]!) && go(i + 1, j + 1);
+    }
+    memo.set(key, res);
+    return res;
+  };
+  return go(0, 0);
+}
+
+// Do two path specs share at least one file? The public overlap predicate.
+export function pathsOverlap(a: string, b: string): boolean {
+  return segmentsIntersect(toSegments(a), toSegments(b));
+}
+
+// A path SET normalizes an empty set to [WHOLE] — no declared paths means the
+// whole unit, which overlaps any other set. Two non-empty sets overlap iff any
+// member of one overlaps any member of the other.
+function asSet(paths: string[]): string[] {
+  return paths.length > 0 ? paths : [WHOLE];
+}
+
+export function pathSetsOverlap(a: string[], b: string[]): boolean {
+  const aa = asSet(a);
+  const bb = asSet(b);
+  return aa.some((x) => bb.some((y) => pathsOverlap(x, y)));
+}
+
+// The exact declared (a, b) pairs that overlap — for REJECT/collision messages a
+// coordinator can read to see WHICH paths collided. Deduped, order-stable.
+export function overlappingPairs(a: string[], b: string[]): [string, string][] {
+  const aa = asSet(a);
+  const bb = asSet(b);
+  const out: [string, string][] = [];
+  const seen = new Set<string>();
+  for (const x of aa) {
+    for (const y of bb) {
+      if (!pathsOverlap(x, y)) continue;
+      const key = `${x}\u0000${y}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push([x, y]);
+    }
+  }
+  return out;
+}
