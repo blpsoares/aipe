@@ -25,9 +25,11 @@ const w = (name: string, role: string, repo = "app", extra: Partial<Worker> = {}
 // at all, so it fell through to the default `slate` — the same color as an
 // idle/available worker, the exact opposite of a specialist whose work just
 // diverged mid-flight.
-test("orgColor(\"redirected\") is amber, not the slate default", () => {
-  expect(orgColor("redirected")).toBe("var(--amber)");
-  expect(orgColor("redirected")).not.toBe("var(--slate)");
+test("orgColor(\"redirected\") gets its own state hue, not the idle default", () => {
+  // Since the palette adopted the site's per-state tokens (SDD §9), state color
+  // goes through --st-*; redirected must never read as idle/removed.
+  expect(orgColor("redirected")).toBe("rgb(var(--st-redirected))");
+  expect(orgColor("redirected")).not.toBe(orgColor("available"));
 });
 
 // #5 — intentional org ordering: dev-fullstack before QA, stable name tiebreaker.

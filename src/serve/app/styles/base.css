@@ -176,7 +176,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 /* Buttons */
 .btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 10px; font-weight: 650; font-size: 13px; border: 1px solid transparent; transition: filter .15s, background .15s, border-color .15s, transform .1s; }
 .btn:active { transform: translateY(1px); }
-.btn-primary { background: linear-gradient(140deg, var(--accent-2), var(--accent)); color: #04120c; box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent); }
+.btn-primary { background: linear-gradient(140deg, var(--accent-2), var(--accent)); color: var(--on-brand); box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent); }
 .btn-primary:hover { filter: brightness(1.05); }
 .btn-ghost { background: var(--panel-2); border-color: var(--line); color: var(--ink); }
 .btn-ghost:hover { border-color: var(--line-2); }
@@ -185,11 +185,19 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 650; }
 .chip .d { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .chip .sic { width: 13px; height: 13px; flex: 0 0 auto; }
-.chip.active, .chip.dispatched { color: var(--sky); background: var(--sky-w); } .chip.active .sic, .chip.dispatched .sic { animation: pulse 2.4s infinite; }
-.chip.delivered, .chip.merged, .chip.verified { color: var(--accent-ink); background: var(--accent-wash); }
-.chip.escalated, .chip.escalate { color: var(--amber); background: var(--amber-w); }
-.chip.failed { color: var(--rose); background: color-mix(in srgb, var(--rose) 13%, transparent); }
-.chip.available, .chip.idle, .chip.removed { color: var(--slate); background: var(--slate-w); }
+/* State chips paint through the per-state --st-* tokens (SDD §9): one token per
+   ledger state, so delivered / verified / merged read as DISTINCT hues (the old
+   mapping collapsed all three to the accent). */
+.chip.dispatched { color: rgb(var(--st-dispatched)); background: rgb(var(--st-dispatched) / .13); }
+.chip.active     { color: rgb(var(--st-running));    background: rgb(var(--st-running) / .13); }
+.chip.delivered  { color: rgb(var(--st-delivered));  background: rgb(var(--st-delivered) / .13); }
+.chip.verified   { color: rgb(var(--st-verified));   background: rgb(var(--st-verified) / .14); }
+.chip.merged     { color: rgb(var(--st-merged));     background: rgb(var(--st-merged) / .13); }
+.chip.escalated, .chip.escalate, .chip.blocked { color: rgb(var(--st-escalated)); background: rgb(var(--st-escalated) / .13); }
+.chip.redirected { color: rgb(var(--st-redirected)); background: rgb(var(--st-redirected) / .13); }
+.chip.failed     { color: rgb(var(--st-failed));     background: rgb(var(--st-failed) / .13); }
+.chip.available, .chip.idle, .chip.removed { color: rgb(var(--st-removed)); background: rgb(var(--st-removed) / .13); }
+.chip.active .sic, .chip.dispatched .sic { animation: pulse 2.4s infinite; }
 
 /* Stage guide (legend) — the plain-language glossary of pipeline stages */
 .legend { padding: 4px 6px 6px; }
