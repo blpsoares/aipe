@@ -11,7 +11,7 @@
 // command, it just means the upgrade won't know about that workspace.
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, parse as parsePath, resolve } from "node:path";
 import { aipeStateDir, statePath } from "./state";
 
 /** Most recent N workspaces are kept; older entries fall off. */
@@ -98,6 +98,26 @@ export function looksLikeWorkspace(
   const aipe = resolve(dir, ".aipe");
   if (aipe === resolve(stateDir)) return false;
   return WORKSPACE_MARKERS.some((marker) => exists(join(aipe, marker)));
+}
+
+/**
+ * The AIPe workspace that ENCLOSES `dir` — `dir` itself or its nearest
+ * ancestor that is a workspace — or undefined if none. This is the safe default
+ * scope for the migration half of `aipe upgrade`: the workspace the PE is
+ * actually in, never "every workspace the machine has ever seen".
+ */
+export function enclosingWorkspace(
+  dir: string,
+  isWorkspace: (p: string) => boolean = (p) => looksLikeWorkspace(p),
+): string | undefined {
+  let cur = resolve(dir);
+  // Walk up to the filesystem root; parsePath(cur).root === cur at the top.
+  for (;;) {
+    if (isWorkspace(cur)) return cur;
+    const parent = dirname(cur);
+    if (parent === cur || cur === parsePath(cur).root) return undefined;
+    cur = parent;
+  }
 }
 
 async function readRegistry(): Promise<WorkspaceEntry[]> {

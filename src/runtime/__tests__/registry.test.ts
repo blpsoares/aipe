@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   MAX_WORKSPACES,
   RECORD_THROTTLE_MS,
+  enclosingWorkspace,
   looksLikeWorkspace,
   mergeWorkspace,
   needsRecord,
@@ -48,6 +49,19 @@ test("parseWorkspaceRegistry drops junk entries instead of throwing", () => {
   expect(parseWorkspaceRegistry('{"workspaces":[{"path":"/a","lastSeen":1},{"path":""},{"lastSeen":2}]}')).toEqual([
     { path: "/a", lastSeen: 1 },
   ]);
+});
+
+test("enclosingWorkspace returns the nearest workspace ancestor, else undefined", () => {
+  const workspaces = new Set(["/home/u/ws"]);
+  const isWs = (p: string) => workspaces.has(p);
+  // dir itself is a workspace
+  expect(enclosingWorkspace("/home/u/ws", isWs)).toBe("/home/u/ws");
+  // a subdir resolves up to it
+  expect(enclosingWorkspace("/home/u/ws/repos/embark/.worktrees/x", isWs)).toBe("/home/u/ws");
+  // a sibling that is not under any workspace → undefined (never invents $HOME)
+  expect(enclosingWorkspace("/home/u/elsewhere", isWs)).toBeUndefined();
+  // walking up terminates at the filesystem root without throwing
+  expect(enclosingWorkspace("/", isWs)).toBeUndefined();
 });
 
 test("looksLikeWorkspace asks for a workspace MARKER, not a bare .aipe/", () => {
