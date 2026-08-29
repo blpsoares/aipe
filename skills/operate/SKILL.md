@@ -415,10 +415,30 @@ digraph operate {
    **Then, immediately, arm the push watch for this wave (standard flow, not
    optional).** `aipe session collect` is a point-in-time poll with a timeout —
    between polls you are blind, and it cannot tell you the *moment* a specialist
-   pauses for you. `agentop events watch` is the push channel that can:
+   pauses for you. `agentop events watch` is the push channel that narrows that
+   gap — **once its producer is up (see the prerequisite below)**:
 
    ```bash
    agentop events watch --task aipe/<id> --on waiting,waiting-approval,exited --notify <your-session>
+   ```
+
+   **This channel has a producer, and it is a prerequisite — name it, do not
+   assume it.** The three states above (`waiting`, `waiting-approval`, `exited`)
+   are read off the screen by agentop's **five-second monitor**; that monitor is
+   the *producer*, and if nothing is running it the watch is armed but **no such
+   event ever fires** — you sit in silence believing you are covered. Nothing in
+   `aipe` starts the producer for you. Bring it up and keep it up, one of:
+
+   ```bash
+   agentop server        # the producer as a background service (preferred)
+   agentop events run    # or the producer in the foreground, in its own terminal
+   ```
+
+   and confirm it before you trust the watch — if no one is producing, you are
+   blind:
+
+   ```bash
+   agentop events status
    ```
 
    - `--task aipe/<id>` scopes the watch to exactly this wave's sessions (the
@@ -432,9 +452,17 @@ digraph operate {
        is a real delivery; an exit with no record is `DEAD-SILENT` (handle it
        exactly as under `session collect` below — read the branch read-only, do
        not re-dispatch blind).
-   - `--notify <your-session>` delivers the event to your coordinator session by
-     socket, so you are told the instant a unit changes state instead of
-     discovering it a poll later.
+   - `--notify <your-session>` delivers each event to your coordinator session
+     by socket, so you learn of a transition as the channel sees it instead of a
+     `collect` poll later. Know **which channel saw it**, because they do not
+     cover the same thing: `waiting` / `waiting-approval` / `exited` ride the
+     five-second producer, so they arrive within ~5s of the screen changing **and
+     only while the producer is up**; the separate `turn-end` state comes from
+     the Claude `Stop` hook (`agentop hooks install`), is exact and instant and
+     needs no producer — but a turn *ending* is **not** the same as a session
+     *pausing for you*, so `turn-end` is no substitute for `waiting`. There is no
+     state that hands you `waiting` both instantly and producer-free; the price of
+     the `waiting` signal is a running producer and up to five seconds.
    - The watch is a **file, not a process**: it survives a reboot or your session
      ending. When you come back, recover what fired while you were gone:
      ```bash
@@ -442,6 +470,14 @@ digraph operate {
      ```
      Read `--since <last time you looked>` (an ISO time or a relative `30m`) so
      nothing that happened off-screen is silently lost.
+
+   **Do not trade redundancy for elegance.** `agentop events` is the *fast*
+   channel, not the *only* one. The moment you switch your polling off and lean
+   on the watch alone, a producer that is not up — or was never started — leaves
+   you blind, and nothing warns you that you stopped being warned: the failure is
+   silent by construction. Keep the `session collect` sweep below running as the
+   safety net *underneath* the watch. Let the events wake you **sooner**; never
+   let their silence stand in for **all is well**.
 
    **What the watch does NOT do (boundary — MUST NOT cross).** A session in
    `waiting-approval` is waiting on **a person**: the PE, in a live decision
