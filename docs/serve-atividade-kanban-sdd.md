@@ -91,11 +91,21 @@ de ser computada **server-side** e viajar no payload, do mesmo jeito que
      commits originais da branch jamais viram ancestrais de `main`. Como o aipe
      mergeia por squash, sem este sinal *todo* verified squash-mergeado ficava
      preso em "pronto para integrar" (falso-negativo sistemático — re-gate B).
-     Cache monotônico (uma consulta por PR mergeada); falha do `gh` → `false`
-     (conservador). **Lição do teste:** medir _queda de contagem_ (34→7) não é
-     medir _verdade de merge_ — o teste que fecha o buraco afirma que um
-     `verified` com PR `MERGED` mas branch não-ancestral **não** aparece em
-     "pronto para integrar" (prova real: 9→0).
+     **Lição do teste:** medir _queda de contagem_ (34→7) não é medir _verdade de
+     merge_ — o teste que fecha o buraco afirma que um `verified` com PR `MERGED`
+     mas branch não-ancestral **não** aparece em "pronto para integrar" (9→0).
+
+  **A rede fica FORA do render (re-gate B2).** `buildServePayload` roda por
+  cliente SSE a cada 3s + cada evento de fs; um `gh pr view` ali dispararia
+  ~1 chamada/s/aba (~3600/h), estouraria a cota do GitHub, e sob rate-limit
+  `gh → null → integrated=false` faria o mergeado **voltar** para "pronto" — a
+  mentira do item 2, agora pior sob carga. Então: `annotateIntegrated` é
+  **síncrono** e lê um **cache em memória**; um único **refresher server-owned**
+  (`startPrMergeRefresher`, em `server.ts`) é o ÚNICO que toca `gh`, num timer
+  lento (`unref`), com timeout, concorrência limitada, TTL, e `MERGED` **sticky**
+  (nunca rebaixa sob falha). O build nunca faz rede; a console segue **read-only**
+  (o refresher não escreve o ledger). Guarda: o build é síncrono (não aguarda
+  rede) e o refresher prova sticky/TTL/no-downgrade.
 - `integrated` é **aditivo e conservador**: na dúvida (repo ausente, branch
   desconhecida, git indisponível) → `false`, nunca um falso "integrado". A tela
   consome `integrated`; **não** roda git.
