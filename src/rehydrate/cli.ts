@@ -5,6 +5,7 @@
 // versions. So a workspace opened on a new machine (or one whose binary was just
 // upgraded) has its specialists back and its coordinator skills up to date,
 // without re-running onboarding.
+import { ensureReposExcludeClaude } from "./exclude";
 import { rehydrateFlowSkills } from "./flow-skills";
 import { rehydratePersonas } from "./personas";
 import { rebuildRegistryFromSources } from "./registry";
@@ -35,6 +36,12 @@ export async function run(args: string[]): Promise<number> {
     console.log("Run this inside a workspace, or pass --workspace <dir>.");
     return 1;
   }
+
+  // Keep what we are about to write out of the PE's git status: `.claude/` goes
+  // into each repo's local exclude BEFORE anything is written there, so no repo
+  // — and no live session's worktree — is ever dirtied by this command.
+  const excluded = await ensureReposExcludeClaude(workspace);
+  for (const repoAbs of excluded) console.log(`EXCLUDED .claude/ ${repoAbs}`);
 
   const personas = await rehydratePersonas(workspace);
   for (const r of personas) console.log(`${r.status.toUpperCase()} persona ${r.repo} ${r.slug}`);
