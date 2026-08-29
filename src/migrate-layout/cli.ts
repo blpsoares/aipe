@@ -2,6 +2,7 @@
 // `aipe workspace migrate-layout [--apply] [--allow-dirty] [--workspace <dir>]`
 import { migrateLayout } from "./run";
 import { renderPlan } from "./plan";
+import { looksLikeWorkspace } from "../runtime/workspaces";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -18,9 +19,10 @@ const USAGE = [
   "  --allow-dirty    migrate repos with uncommitted changes",
   "  --workspace DIR  the workspace (default: cwd)",
   "",
-  "Refuses while any repo has a registered git worktree or a journey has work",
-  "in flight: a worktree records an absolute path, so moving the repo would",
-  "break every dispatch running out of it.",
+  "Registered worktrees move with the repo and are reconnected with",
+  "`git worktree repair`, so an in-flight dispatch survives the move. Still",
+  "refuses on a dirty working tree (unsaved work) or a journey whose worktree is",
+  "still on disk; a dispatch whose worktree is gone is dead and does not block.",
 ];
 
 export async function run(args: string[]): Promise<number> {
@@ -36,6 +38,18 @@ export async function run(args: string[]): Promise<number> {
   }
 
   const workspace = getFlag(rest, "--workspace") ?? process.cwd();
+
+  // Don't send someone who ran this in the wrong directory off to create a
+  // brand-new context. `brain.yaml not found → run /context-brain` (from
+  // readBrain) is right during onboarding, but here it would seed an AIPe
+  // workspace inside wherever they happen to be (e.g. $HOME). Name what actually
+  // happened and end on the action that fixes it.
+  if (!looksLikeWorkspace(workspace)) {
+    console.log(`ERROR workspace: no AIPe workspace at ${workspace} (no .aipe/harness or .aipe/brain.yaml)`);
+    console.log("cd into your workspace, or pass --workspace <dir>.");
+    return 1;
+  }
+
   const result = await migrateLayout(workspace, {
     apply: rest.includes("--apply"),
     allowDirty: rest.includes("--allow-dirty"),
