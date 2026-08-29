@@ -290,7 +290,53 @@ Só começa após o aval do PE via coordenador. Sequência proposta:
 
 ---
 
-**Estado:** mapa APROVADO. Fase de construção em andamento (TDD, ordem do §9).
+**Estado:** mapa APROVADO. Construção CONCLUÍDA — evidência no §12.
+
+---
+
+## 12. Evidência colhida (construção)
+
+Provas coladas (comandos executados + o que a saída mostrou), no binário compilado
+servindo o workspace real `/home/mithrandir/aipe-blpsoares` (65 especialistas, 11
+repos, 93 dispatches).
+
+**Portões de CI (verde):**
+- `bun run version:check` → `STATE version=1.7.0 (in sync)`.
+- `bun run typecheck` → sem saída (tsc silencioso, exit 0).
+- `bun test` → `1465 pass, 0 fail` em 193 arquivos.
+- `bun run build:host` → `OK aipe-linux-x64`; `./dist/aipe-linux-x64 --version` → `1.7.0`.
+
+**Liveness canônica ponta-a-ponta (consome `dispatchPhase`, não re-deriva):**
+- `curl /api/snapshot` no binário → cada dispatch de sessão carrega `liveness`; os
+  valores observados foram `running`, `dead-silent`, `landed` — computados
+  server-side por `annotateLiveness` chamando o MESMO `dispatchPhase` do `aipe status`.
+- O quadro de 4 colunas, alimentado por isso: **Trabalhando 2 · Precisa de você 7 ·
+  Em revisão 18 · Pronto p/ integrar 24**.
+- **Armadilha 2 provada com dado real:** registros mortos (`dispatched` cuja sessão
+  saiu) aparecem em *Precisa de você* com "a sessão encerrou sem registrar —
+  inspecione a branch", **nunca** em *Trabalhando*.
+
+**Org chart cabe na viewport (jornada j-20260827-jo):**
+- A 1920: `svg` com `transform: scale(0.337)`, `svgFitsW=true`, `svgFitsH=true`,
+  `.view` sem scroll horizontal, sem overflow de página.
+- Resize recalcula: ao estreitar, o fit refez para `scale(0.30)` (ResizeObserver).
+- `reset` re-enquadra (via `fitToView`, não volta a s:1 cego).
+
+**Nenhuma tela rola horizontalmente:**
+- A ~500px (mais estreito que o Chrome permite via resize de janela), TODAS as telas
+  (Agora, Equipe, Histórico, Glossário) reportaram `docScrollW == docClientW` — zero
+  scroll horizontal de página. O quadro colapsa para 1 coluna; a barra inferior
+  (3 abas) aparece. Conteúdo largo (comando copiável, organograma) rola/clipa DENTRO
+  do próprio bloco. `body { overflow-x: hidden }` garante o mesmo a 320px.
+
+**Ambos os temas + acessibilidade:**
+- Screenshots capturados em escuro e claro; `body` pinta `var(--bg)` explícito em
+  cada tema. `@media (prefers-reduced-motion: reduce)` desliga animação/transição
+  globalmente. Nenhum erro de console de origem do site (só ruído benigno da
+  extensão do navegador, em `:0:0`).
+
+**Glossário alinhado (§3):** os chips de estado renderizam **designado · entregue ·
+aprovado · integrado** e o cabeçalho "Os oito estados de uma tarefa" — sem jargão.
 
 ---
 
