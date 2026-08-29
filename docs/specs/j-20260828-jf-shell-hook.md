@@ -87,18 +87,31 @@ Agregado sobre os rc que **existem**: `installed` (em todos), `absent` (em nenhu
 `partial` (em alguns, não todos). Também rotula `stale` (linha antiga) e `malformed`
 (bloco corrompido) por arquivo.
 
-## Descoberta (requisito 6) — decisão + nota de escopo
+## Descoberta (requisito 6) — onde a linha aparece e quando ela para
 
-De nada adianta o comando existir e ninguém saber. **Decisão**: o ponto de oferta é
-o fim do `aipe start` (baixo ruído, roda uma vez por workspace). O mecanismo está
-pronto e testado — `suggestInstallLine(home)` devolve a linha de oferta, ou `null`
-quando já está instalado em todos os rc (nada de nag) ou quando há bloco malformado.
+De nada adianta o comando existir e ninguém saber — o problema que motivou a jornada
+foi um coordenador operar um dia inteiro numa versão velha sem nada avisar, e um
+comando que só existe no `--help` **não resolve isso**.
 
-**Escopo**: fiar essa linha dentro de `src/start/cli.ts` está **fora do meu claim de
-path** (`src/shell-hook/**` + `src/cli.ts`) — e o claim é a estreia do path-lock do
-PR #32, que eu não vou furar. O comando já é descobrível pelo `aipe --help`. A
-colocação da oferta em `aipe start`/`upgrade` fica sinalizada ao coordenador como
-crescimento legítimo de escopo (dispatch reconcile), com o gancho já construído.
+**Onde**: no **fim do `aipe start`**, depois dos próximos passos. É o momento em que
+a pessoa acabou de materializar um workspace e vai começar a operar — o ponto exato
+em que passar a ser avisado de updates importa. Roda raramente (uma vez por
+workspace), então não é caminho quente.
+
+**Quando para de aparecer**: assim que o hook está instalado. `startCommand` chama
+`suggestInstallLine(home)`, que devolve `null` quando o bloco já está em todos os rc
+existentes (verdict `installed`) ou quando há bloco malformado (não empurra alguém
+para um comando que vai recusar). O estado é do rc do usuário (global), não do
+workspace — então instalar uma vez silencia a oferta em todo `aipe start` futuro.
+
+**Só sugere, nunca instala** (limite duro da spec: instalar é ato do usuário). A
+oferta é uma linha de texto; nada é escrito no rc. Provado em teste: depois de um
+`start` que ofereceu, o `.bashrc` continua byte-a-byte o que era.
+
+**Injeção**: `StartCommandOptions.home` torna a oferta testável com um HOME
+descartável; `run()` passa o `homedir()` real. Sem `home`, nenhuma oferta é avaliada
+— o que mantém os testes determinísticos de `startCommand` independentes do rc real
+da máquina de CI.
 
 ## Medição do custo de abertura (WSL2, binário standalone)
 
