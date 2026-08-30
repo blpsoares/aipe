@@ -91,3 +91,61 @@ test("start still completes when the probe throws", async () => {
     ...renderNextSteps(folder),
   ]);
 });
+
+// --- the shell-hook install OFFER at the end of `aipe start` (discoverability) ---
+// The offer SUGGESTS, never installs (installing is the user's act), and it stops
+// appearing once the hook is installed, so it never becomes per-run noise.
+import { writeFile } from "node:fs/promises";
+import { installShellHook } from "../../shell-hook/cli";
+
+test("start offers the shell-hook when it is not installed in the user's rc", async () => {
+  const parentDir = await mkdtemp(join(tmpdir(), "aipe-startcli-"));
+  const home = await mkdtemp(join(tmpdir(), "aipe-starthome-"));
+  await writeFile(join(home, ".bashrc"), "export PATH=x\n");
+
+  const r = await startCommand({
+    parentDir,
+    home,
+    harness: CLAUDE_CODE_HARNESS,
+    name: "Acme Co",
+    runner: only(["claude"]),
+    now: NOW,
+  });
+
+  expect(r.code).toBe(0);
+  expect(r.lines.some((l) => l.includes("aipe shell-hook install"))).toBe(true);
+  // Nothing was written — the offer only suggests.
+  expect(await Bun.file(join(home, ".bashrc")).text()).toBe("export PATH=x\n");
+});
+
+test("start stays silent about the shell-hook once it is installed (no nagging)", async () => {
+  const parentDir = await mkdtemp(join(tmpdir(), "aipe-startcli-"));
+  const home = await mkdtemp(join(tmpdir(), "aipe-starthome-"));
+  await writeFile(join(home, ".bashrc"), "export PATH=x\n");
+  await installShellHook(home); // user opted in
+
+  const r = await startCommand({
+    parentDir,
+    home,
+    harness: CLAUDE_CODE_HARNESS,
+    name: "Acme Co",
+    runner: only(["claude"]),
+    now: NOW,
+  });
+
+  expect(r.lines.some((l) => l.includes("aipe shell-hook"))).toBe(false);
+});
+
+test("start without a home context appends nothing beyond the next steps", async () => {
+  const parentDir = await mkdtemp(join(tmpdir(), "aipe-startcli-"));
+  const folder = "aipe-acme-co";
+  const r = await startCommand({
+    parentDir,
+    harness: CLAUDE_CODE_HARNESS,
+    name: "Acme Co",
+    runner: only(["claude"]),
+    now: NOW,
+  });
+  // Last line is the final next-steps line — no offer leaked in without a home.
+  expect(r.lines[r.lines.length - 1]).toBe(renderNextSteps(folder)[renderNextSteps(folder).length - 1]);
+});

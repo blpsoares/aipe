@@ -31,6 +31,12 @@ const unit = (over: Partial<UnitRow>): UnitRow => ({
   role: "dev-fullstack",
   liveness: null,
   hasEvidence: false,
+  harness: null,
+  model: null,
+  tier: null,
+  intensity: null,
+  worktree: "w",
+  ciBypass: null,
   ...over,
 });
 

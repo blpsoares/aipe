@@ -12,7 +12,7 @@ export function Chip({ status }: { status: string }) {
   const go = (e: Event) => {
     e.stopPropagation();
     focusAnchor.value = `s-${status}`;
-    navigate("/status");
+    navigate("/guide");
   };
   return (
     <span

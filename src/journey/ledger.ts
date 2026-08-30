@@ -54,7 +54,7 @@ export async function readLedger(workspaceDir: string, id: string): Promise<Jour
   return null;
 }
 
-async function writeLedger(workspaceDir: string, ledger: JourneyLedger): Promise<string> {
+export async function writeLedger(workspaceDir: string, ledger: JourneyLedger): Promise<string> {
   const path = ledgerPath(workspaceDir, ledger.id);
   await mkdir(join(workspaceDir, ".aipe", "journeys"), { recursive: true });
   await writeFile(

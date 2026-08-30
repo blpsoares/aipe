@@ -73,6 +73,15 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M8 8h7M8 12h5" />
     </>
   ),
+  history: (
+    <>
+      <path d="M3 12a9 9 0 1 1 3 6.7" />
+      <path d="M3 20v-5h5" />
+      <path d="M12 7v5l3.5 2" />
+    </>
+  ),
+  "chevron-right": <path d="M9 6l6 6-6 6" />,
+  "chevron-down": <path d="M6 9l6 6 6-6" />,
   // ── ui ──
   collapse: (
     <>
@@ -101,6 +110,7 @@ const PATHS: Record<string, JSX.Element> = {
   ),
   fullscreen: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
   flag: <path d="M6 21V4M6 4h11l-2 4 2 4H6" />,
+  bolt: <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />,
   law: <path d="M6 4h12M6 20h12M8 4v3l4 5 4-5V4M8 20v-3l4-5 4 5v3" />,
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   check: <path d="M5 12.5 9 16.5 19 6" />,

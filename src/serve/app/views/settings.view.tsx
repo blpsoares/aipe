@@ -151,6 +151,6 @@ function SettingsView() {
 
 export const route: Route = {
   path: "/settings",
-  nav: { label: "nav_settings", icon: "settings", order: 7 },
+  nav: { label: "nav_settings", icon: "settings", order: 11, group: "footer" },
   component: SettingsView,
 };

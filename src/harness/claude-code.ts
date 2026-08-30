@@ -22,6 +22,13 @@ const SESSION_START_HOOK = {
   hooks: [{ type: "command", command: 'aipe session-context --workspace "$CLAUDE_PROJECT_DIR"' }],
 };
 
+// The SessionEnd counterpart: a clean close releases the coordinator's registered
+// identity so it leaves no ghost behind (j-20260829-5q). Reuses the same binary
+// subcommand with --release. SessionEnd has no matcher (it is not tool-scoped).
+const SESSION_END_HOOK = {
+  hooks: [{ type: "command", command: 'aipe session-context --release --workspace "$CLAUDE_PROJECT_DIR"' }],
+};
+
 // Builds the PreToolUse hook entry. `command` already carries `--role <role>`
 // baked in when one applies — see the `role` note on `containmentHook()` in
 // ./types.ts.
@@ -30,7 +37,7 @@ function preToolUseHook(command: string) {
 }
 
 interface Settings {
-  hooks?: { SessionStart?: unknown[]; PreToolUse?: unknown[]; [k: string]: unknown };
+  hooks?: { SessionStart?: unknown[]; SessionEnd?: unknown[]; PreToolUse?: unknown[]; [k: string]: unknown };
   [k: string]: unknown;
 }
 
@@ -47,6 +54,10 @@ async function readSettings(path: string): Promise<Settings> {
 
 function hasAipeHook(list: unknown[]): boolean {
   return list.some((entry) => JSON.stringify(entry).includes("aipe session-context"));
+}
+
+function hasAipeReleaseHook(list: unknown[]): boolean {
+  return list.some((entry) => JSON.stringify(entry).includes("aipe session-context --release"));
 }
 
 // Writes ONLY the SessionStart hook (→ `aipe session-context`) — never the
@@ -77,6 +88,12 @@ export async function ensureSessionStartHook(targetDir: string): Promise<void> {
   const sessionStart = Array.isArray(settings.hooks.SessionStart) ? settings.hooks.SessionStart : [];
   if (!hasAipeHook(sessionStart)) sessionStart.push(SESSION_START_HOOK);
   settings.hooks.SessionStart = sessionStart;
+
+  // The SessionEnd release hook is written alongside the start hook — the pair is
+  // one unit: register on open, release on clean close.
+  const sessionEnd = Array.isArray(settings.hooks.SessionEnd) ? settings.hooks.SessionEnd : [];
+  if (!hasAipeReleaseHook(sessionEnd)) sessionEnd.push(SESSION_END_HOOK);
+  settings.hooks.SessionEnd = sessionEnd;
 
   await writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
 }

@@ -32,10 +32,11 @@ import { run as model } from "./model/cli";
 import { run as capabilities } from "./capabilities/cli";
 import { run as execution } from "./execution/cli";
 import { checkUpdate, upgrade } from "./update/cli";
+import { run as shellHook } from "./shell-hook/cli";
 import { maybeOfferUpdate } from "./update/notify";
 import { recordWorkspace } from "./runtime/workspaces";
 
-export const VERSION = "1.7.0";
+export const VERSION = "1.11.1";
 
 type Subcommand = (args: string[]) => Promise<number>;
 
@@ -68,6 +69,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   "check-update": checkUpdate,
   upgrade: upgrade,
   update: upgrade,
+  "shell-hook": shellHook,
 };
 
 const HELP = [
@@ -102,6 +104,7 @@ const HELP = [
   "  read-state         Print the coordinator awareness fields (used by hooks)",
   "  session-context    Emit the SessionStart hook JSON (coordinator awareness)",
   "  check-update       Notify if a newer aipe release is available (else silent)",
+  "  shell-hook         Install a guarded update-check into ~/.bashrc + ~/.zshrc",
   "  upgrade            Self-update, then rehydrate workspaces + restart the console",
   "",
   "Common options:",

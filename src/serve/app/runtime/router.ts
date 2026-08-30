@@ -27,7 +27,9 @@ const STORAGE_KEY = "aipe-view";
 // modules are still resolving. Since the 8 views are fixed (routes.generated.ts
 // only ever globs views/*.view.tsx, and no new view files are added mid-task),
 // this list is stable; update it if a views/*.view.tsx path ever changes.
-const KNOWN_PATHS = ["/", "/overview", "/status", "/org", "/pipeline", "/team", "/toolbox", "/activity", "/monitor", "/settings"];
+// Redesign (j-20260827-s9): the primary screens + 2 footer utilities.
+// j-20260829-dp added "/activity" (Atividade) as the fourth primary screen.
+const KNOWN_PATHS = ["/", "/team", "/history", "/guide", "/settings"];
 
 function isValidPath(p: string | null | undefined): p is string {
   return !!p && KNOWN_PATHS.includes(p);
@@ -76,7 +78,7 @@ export const currentPath: Signal<string> = signal(resolveInitialPath());
 export const focusAnchor: Signal<string | null> = signal(null);
 
 export function navigate(path: string): void {
-  const p = isValidPath(path) ? path : "/overview";
+  const p = isValidPath(path) ? path : "/"; // Agora is the landing route
   currentPath.value = p;
   const bare = p.replace(/^\//, "");
   try {

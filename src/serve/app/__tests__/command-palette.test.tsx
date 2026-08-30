@@ -9,27 +9,25 @@ import { t } from "../runtime/i18n";
 afterEach(() => {
   cleanup();
   closePalette();
-  navigate("/overview");
+  navigate("/");
   openWorkerName.value = null;
   snapshot.value = { ...snapshot.value, workers: [] };
   document.documentElement.removeAttribute("data-theme");
   location.hash = "";
 });
 
-test("commands() palette lists EXACTLY the 6 monolith nav views, in order (no toolbox/settings/terminal)", () => {
+test("commands() palette lists the 5 redesign screens (3 primary + 2 footer), order-sorted", () => {
   const list = commands();
   const goto = t("c_goto");
-  // The 6 goto views the monolith palette shows, in app.html:1236-1241 order.
-  // Note nav_workers is our /team view's label key.
-  const expectedGoto = ["nav_overview", "nav_org", "nav_pipeline", "nav_workers", "nav_activity", "nav_monitor"].map(
+  // The new IA: Agora / Atividade / Equipe / Histórico (primary) + Glossário / Ajustes (footer).
+  const expectedGoto = ["nav_now", "nav_team", "nav_history", "nav_guide", "nav_settings"].map(
     (k) => `${goto} ${t(k)}`,
   );
   const gotoLabels = list.filter((c) => c.g === t("g_views")).map((c) => c.label);
   expect(gotoLabels).toEqual(expectedGoto);
 
-  // Absent from the palette even though they exist as routes/sidebar items.
+  // The old dead views are gone from the palette (folded into the 5 screens).
   expect(list.some((c) => c.label === `${goto} ${t("nav_toolbox")}`)).toBe(false);
-  expect(list.some((c) => c.label === `${goto} ${t("nav_settings")}`)).toBe(false);
   expect(list.some((c) => c.label.toLowerCase().includes("terminal"))).toBe(false);
 
   // Action commands still present.
@@ -110,14 +108,14 @@ test("ArrowDown moves selection and Enter runs the selected command (navigates)"
 
   const input = container.querySelector("input")!;
   act(() => {
-    fireEvent.input(input, { target: { value: t("nav_org") } });
+    fireEvent.input(input, { target: { value: t("nav_team") } });
   });
 
-  // Only one goto match for "org" — Enter should navigate to /org.
+  // Only one goto match for "team" — Enter should navigate to /team.
   act(() => {
     fireEvent.keyDown(document, { key: "Enter" });
   });
-  expect(currentPath.value).toBe("/org");
+  expect(currentPath.value).toBe("/team");
   // interface-sweep finding: the palette must dismiss after a goto/action, not linger.
   expect(paletteOpen.value).toBe(false);
 });
@@ -129,13 +127,13 @@ test("clicking a goto command navigates AND closes the palette (interface-sweep 
   });
   const input = container.querySelector("input")!;
   act(() => {
-    fireEvent.input(input, { target: { value: t("nav_pipeline") } });
+    fireEvent.input(input, { target: { value: t("nav_history") } });
   });
-  const opt = [...container.querySelectorAll(".opt")].find((el) => el.textContent?.includes(t("nav_pipeline")))!;
+  const opt = [...container.querySelectorAll(".opt")].find((el) => el.textContent?.includes(t("nav_history")))!;
   act(() => {
     fireEvent.click(opt);
   });
-  expect(currentPath.value).toBe("/pipeline");
+  expect(currentPath.value).toBe("/history");
   expect(paletteOpen.value).toBe(false);
 });
 
@@ -162,7 +160,7 @@ test("ArrowDown/ArrowUp clamp selection within list bounds", () => {
   });
   const input = container.querySelector("input")!;
   act(() => {
-    fireEvent.input(input, { target: { value: t("nav_org") } });
+    fireEvent.input(input, { target: { value: t("nav_team") } });
   });
 
   // A single match: pressing ArrowDown repeatedly must not move past it.
@@ -174,7 +172,7 @@ test("ArrowDown/ArrowUp clamp selection within list bounds", () => {
   });
   const sel = container.querySelectorAll(".opt.sel");
   expect(sel.length).toBe(1);
-  expect(sel[0]!.textContent).toContain(t("nav_org"));
+  expect(sel[0]!.textContent).toContain(t("nav_team"));
 
   act(() => {
     fireEvent.keyDown(document, { key: "ArrowUp" });
