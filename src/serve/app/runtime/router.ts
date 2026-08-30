@@ -29,7 +29,7 @@ const STORAGE_KEY = "aipe-view";
 // this list is stable; update it if a views/*.view.tsx path ever changes.
 // Redesign (j-20260827-s9): the primary screens + 2 footer utilities.
 // j-20260829-dp added "/activity" (Atividade) as the fourth primary screen.
-const KNOWN_PATHS = ["/", "/activity", "/team", "/history", "/guide", "/settings"];
+const KNOWN_PATHS = ["/", "/team", "/history", "/guide", "/settings"];
 
 function isValidPath(p: string | null | undefined): p is string {
   return !!p && KNOWN_PATHS.includes(p);

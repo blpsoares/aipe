@@ -59,23 +59,23 @@ test("'Happening now' lists the working specialist (Ana, dispatched)", () => {
   expect(happening.textContent).toContain("Ana");
 });
 
-test("the full board no longer lives in Agora — it moved to Atividade (no overlap)", () => {
+test("the whole board is a collapsible section INSIDE Agora, collapsed by default (approved map)", () => {
   loadFixture();
   const { container } = render(<AgoraView />);
-  // Agora is the inbox now: no board grid, no board toggle. The overlap the
-  // redesign warned about is gone — Agora shows the actionable subset only.
-  expect(container.querySelector(".board4")).toBeNull();
+  // The board lives here again (decision A) — a toggle, collapsed, no grid yet.
+  const toggle = container.querySelector(".zone-board .board-toggle")! as HTMLButtonElement;
+  expect(toggle).toBeTruthy();
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
   expect(container.querySelector(".aboard")).toBeNull();
-  expect(container.querySelector(".board-toggle")).toBeNull();
 });
 
-test("Happening-now offers a link to the full board (Atividade)", () => {
+test("expanding the section reveals the full Atividade board (its machinery reused verbatim)", () => {
   loadFixture();
   const { container } = render(<AgoraView />);
-  const link = container.querySelector(".zone-happening .zone-link")! as HTMLButtonElement;
-  expect(link.textContent).toContain(t("now_see_all"));
-  fireEvent.click(link);
-  expect(location.hash).toBe("#/activity");
+  fireEvent.click(container.querySelector(".zone-board .board-toggle")! as HTMLButtonElement);
+  // #39's board renders: the .aboard strip with its state columns.
+  expect(container.querySelector(".aboard")).toBeTruthy();
+  expect(container.querySelector(".acol")).toBeTruthy();
 });
 
 test("clicking a working specialist opens their drawer (openWorkerName)", () => {
