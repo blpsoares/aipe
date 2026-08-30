@@ -13,7 +13,7 @@ import type { HarnessAdapter } from "../harness/types";
 import { personaSlug } from "../hire-specialists/render";
 import { buildRenameArgs, startBatch, type BatchUnit } from "./batch";
 import { composePrompt } from "./prompt";
-import { classify, pollOnce } from "./poll";
+import { classify, pollOnce, type Liveness } from "./poll";
 import { probe, realRunner } from "./runner";
 import type { AgentopRunner, UnitPhase, UnitState } from "./types";
 import { decide } from "./guard";
@@ -717,11 +717,14 @@ export async function collectCommand(
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const deadline = now() + opts.timeoutMs;
 
-  const outstanding = new Set<string>();
-  for (const d of sessionUnits) if (d.sessionId) outstanding.add(d.sessionId);
   // A thrown pollOnce means we could not even ask agentop — liveness is NOT
   // reliable, so classify with `reliable: false`: in-flight units degrade to
-  // `unknown`, never a guessed `running` and never a false `dead-silent`.
+  // `unknown`, never a guessed `running` and never a false `dead-silent`. Under
+  // `reliable: false`, dispatchPhase ignores this map entirely, so the `alive`
+  // placeholder it carries is never asserted as a liveness — it only needs the
+  // outstanding ids present so a legacy reader degrades no worse than before.
+  const outstanding = new Map<string, Liveness>();
+  for (const d of sessionUnits) if (d.sessionId) outstanding.set(d.sessionId, "alive");
   const fallback = () => classify(ledger, outstanding, false);
 
   let states: UnitState[] = fallback();
@@ -789,6 +792,16 @@ export async function collectCommand(
           `UNKNOWN ${s.fqid} session ${s.sessionId ?? "-"} branch ${s.branch} — liveness could not be established (agentop session list was unreadable past the timeout). NOT running, NOT dead: look before you re-dispatch`,
         );
         break;
+      case "lost":
+        // agentop LISTS this session but marks it `lost` — it did not exit
+        // cleanly. Distinct from DEAD-SILENT (a clean end / absence): the
+        // session may be an orphaned process still holding work, so the branch
+        // is not necessarily quiescent. Never assert it alive (it is not
+        // `running`), never call it a clean end (it is not `exited`/`closed`).
+        lines.push(
+          `LOST ${s.fqid} session ${s.sessionId} branch ${s.branch} worktree ${s.worktree} — agentop lost this session (status "lost"): it did NOT exit cleanly and may be an orphaned process still holding the worktree. NOT alive, NOT a clean end. Inspect the branch read-only (git log), confirm no process is still writing, then re-dispatch to CONTINUE or escalate: never re-dispatch blind`,
+        );
+        break;
       case "dead-silent":
         lines.push(
           `DEAD-SILENT ${s.fqid} branch ${s.branch} worktree ${s.worktree} — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind`,
@@ -810,7 +823,9 @@ export async function collectCommand(
 //       unit redirected (reconcile the spec — the divergence is visible, the
 //       work is not lost).
 //   4 — can't tell: liveness is unknown.
-//   5 — work may be lost: a session ended without recording (dead-silent).
+//   5 — work may be lost: a session ended without recording (dead-silent), or
+//       agentop lost the session (lost). Both need the branch inspected before
+//       anything is re-dispatched; ranked together as work-may-be-lost.
 //   6 — a live human is blocked on the coordinator right now (waiting).
 // The command exits the max over all units, so the worst finding wins.
 const PHASE_EXIT: Record<UnitPhase, number> = {
@@ -818,6 +833,7 @@ const PHASE_EXIT: Record<UnitPhase, number> = {
   running: 2,
   redirected: 2,
   unknown: 4,
+  lost: 5,
   "dead-silent": 5,
   waiting: 6,
 };

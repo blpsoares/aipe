@@ -18,7 +18,7 @@ import { resolveStatusPref } from "./pref";
 import { selectJourneys } from "./scope";
 import type { StatusReport, StatusScope } from "./types";
 
-const NO_LIVE: LiveSessions = { source: "none", reliable: false, ids: new Set() };
+const NO_LIVE: LiveSessions = { source: "none", reliable: false, sessions: new Map() };
 const NO_RELEASES = new Map<string, RepoReleaseState>();
 
 export interface LoadOptions {

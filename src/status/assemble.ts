@@ -75,7 +75,7 @@ function unitRow(
     status: d.status,
     mode: d.mode ?? null,
     sessionId: d.sessionId ?? null,
-    liveness: d.mode === "session" ? dispatchPhase(d, live.ids, live.reliable) : null,
+    liveness: d.mode === "session" ? dispatchPhase(d, live.sessions, live.reliable) : null,
     hasEvidence: hasEvidence(d),
     // Only a merged unit has a publication question; and only when we actually
     // resolved its repo's state (release resolution on ⇒ a map entry). No entry ⇒

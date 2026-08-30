@@ -31,7 +31,7 @@ test("a redirected unit is its own phase, never mistaken for progress", () => {
       { repo: "embark", specialist: "J", branch: "b", worktree: "w", status: "redirected", mode: "session", sessionId: "s-1" },
     ],
   };
-  expect(classify(ledger, new Set(["s-1"]))[0]!.phase).toBe("redirected");
+  expect(classify(ledger, new Map([["s-1", "alive"]]))[0]!.phase).toBe("redirected");
 });
 
 test("a redirected unit stays redirected even after its session ends", () => {
@@ -41,7 +41,7 @@ test("a redirected unit stays redirected even after its session ends", () => {
       { repo: "embark", specialist: "J", branch: "b", worktree: "w", status: "redirected", mode: "session", sessionId: "s-1" },
     ],
   };
-  expect(classify(ledger, new Set())[0]!.phase).toBe("redirected");
+  expect(classify(ledger, new Map())[0]!.phase).toBe("redirected");
 });
 
 test("the prompt carries the redirect MUST, with the exact command", () => {

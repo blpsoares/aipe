@@ -14,7 +14,7 @@ const roster: PersonaRegistryEntry[] = [
 ];
 
 function reliableLive(ids: string[]): LiveSessions {
-  return { source: "agentop", reliable: true, ids: new Set(ids) };
+  return { source: "agentop", reliable: true, sessions: new Map(ids.map((id) => [id, "alive"])) };
 }
 
 const base = {
@@ -129,7 +129,7 @@ test("session liveness: alive vs silent vs unknown, never guessed (item 5)", () 
   expect(alive.units[0]!.liveness).toBe("running");
   const silent = assemble({ ...base, ledgers: [mk("j2", "s-2")], live: reliableLive(["other"]) });
   expect(silent.units[0]!.liveness).toBe("dead-silent");
-  const unknown = assemble({ ...base, ledgers: [mk("j3", "s-3")], live: { source: "agentop", reliable: false, ids: new Set() } });
+  const unknown = assemble({ ...base, ledgers: [mk("j3", "s-3")], live: { source: "agentop", reliable: false, sessions: new Map() } });
   expect(unknown.units[0]!.liveness).toBe("unknown");
 });
 
@@ -193,7 +193,7 @@ test("liveness note is honest when agentop is absent but sessions exist (item 6)
   const ledgers: JourneyLedger[] = [
     { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched", mode: "session", sessionId: "s" }] },
   ];
-  const report = assemble({ ...base, ledgers, live: { source: "none", reliable: false, ids: new Set() } });
+  const report = assemble({ ...base, ledgers, live: { source: "none", reliable: false, sessions: new Map() } });
   expect(report.units[0]!.liveness).toBe("unknown");
   expect(report.liveness.note).toContain("agentop not installed");
 });

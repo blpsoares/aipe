@@ -104,6 +104,7 @@ const LIVE_LABEL: Record<UnitPhase, string> = {
   running: "alive",
   waiting: "blocked",
   unknown: "unknown",
+  lost: "lost",
   "dead-silent": "silent",
   landed: "landed",
   redirected: "redirect",
@@ -112,8 +113,17 @@ const LIVE_LABEL: Record<UnitPhase, string> = {
 function liveCell(phase: UnitPhase | null, color: boolean): string {
   if (phase === null) return paint("-", C.dim, color);
   const text = LIVE_LABEL[phase];
+  // `lost` shares red with `dead-silent` — both are not-alive and need eyes —
+  // but keeps its own label so the reader sees agentop lost the session rather
+  // than it ending quietly.
   const code =
-    phase === "running" ? C.green : phase === "unknown" ? C.amber : phase === "dead-silent" ? C.red : C.dim;
+    phase === "running"
+      ? C.green
+      : phase === "unknown"
+        ? C.amber
+        : phase === "dead-silent" || phase === "lost"
+          ? C.red
+          : C.dim;
   return paint(text, code, color);
 }
 
