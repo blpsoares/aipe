@@ -9,7 +9,7 @@ import { watch } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Server } from "bun";
-import { buildServePayload, startPrMergeRefresher } from "./payload";
+import { buildServePayload, startPrMergeRefresher, startReleaseRefresher } from "./payload";
 import { buildClient } from "./app/build-client";
 import { authorize, requiresAuth, unauthorized } from "./auth";
 import { handleRequest } from "./handler";
@@ -185,6 +185,11 @@ export function startServer(opts: ServeOpts): Server<undefined> {
   // cache off the render path so buildServePayload never touches the network. Its
   // timer is unref'd, so it never keeps the process alive on its own.
   startPrMergeRefresher(workspace);
+
+  // The ONE release-state poller for this server: it refreshes the publication
+  // cache (merged ≠ published, src/release) off the render path via LOCAL git, so
+  // buildServePayload never shells out per SSE frame. Unref'd, same as above.
+  startReleaseRefresher(workspace);
 
   // Off loopback the console is reachable by anyone on the network, and it
   // serves the whole workspace (/api/snapshot) plus the code specialists are

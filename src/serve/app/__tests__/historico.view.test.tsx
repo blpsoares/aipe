@@ -4,7 +4,8 @@ import { render, cleanup } from "@testing-library/preact";
 import { route } from "../views/historico.view";
 import { snapshot, activity } from "../runtime/store";
 import { setLang, t } from "../runtime/i18n";
-import { navigate } from "../runtime/router";
+import { navigate, currentPath } from "../runtime/router";
+import { fireEvent } from "@testing-library/preact";
 import { loadFixture } from "./fixtures";
 
 const HistoricoView = route.component;
@@ -24,13 +25,18 @@ test("route contract: Histórico at /history, order 2, no attention badge (retro
   expect(route.nav.badge).toBeUndefined();
 });
 
-test("metrics block reserves the place with an HONEST placeholder, never an invented number", () => {
+test("metrics block no longer claims 'not measured' — the mechanism exists, so it links to the full report", () => {
   loadFixture();
   const { container } = render(<HistoricoView />);
   expect(container.textContent).toContain(t("hist_metrics"));
-  // The pending pill states the metric isn't measured yet — no fabricated figure.
-  expect(container.querySelector(".pill-pending")!.textContent).toBe(t("hist_metrics_pending"));
-  expect(container.querySelector(".metric-tile.is-pending .mt-n")!.textContent).toBe("—");
+  // The dishonest placeholder is gone: no "not measured" pill, no fake "—" tile.
+  expect(container.querySelector(".pill-pending")).toBeNull();
+  expect(container.querySelector(".metric-tile.is-pending")).toBeNull();
+  // Instead, a link to the real Relatório screen.
+  const link = container.querySelector(".hist-metrics-link")!;
+  expect(link.textContent).toBe(t("hist_metrics_link"));
+  fireEvent.click(link);
+  expect(currentPath.value).toBe("/report");
 });
 
 test("timeline renders the activity feed; empty state is explicit", () => {
