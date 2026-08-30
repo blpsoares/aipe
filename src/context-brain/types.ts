@@ -9,6 +9,30 @@ export interface PackageEntry {
   kind?: string; // functional category of the unit: api | web | lib | service | …
 }
 
+// How a repo's merged work reaches a published release — the axis that makes
+// "merged" distinguishable from "published" (j-20260830-zd). Two real flows in
+// this context:
+//   • "dev-then-main": a PR lands in an integration branch (dev); publication
+//     needs a further promotion to the release branch (main) AND a release.
+//     Merged-into-dev is NOT yet published.
+//   • "main-direct": a PR lands straight in the release branch (main); the unit
+//     IS published once there (the openvibes-embark flow — the PE dispensed CI
+//     on its PRs, and a merge into main is the release). Not marked "unpublished"
+//     for lacking a dev step.
+// Absent from a RepoEntry ⇒ auto-detected from git (presence of an integration
+// branch), so a brain written before this feature needs no rewrite.
+export type PublishFlow = "dev-then-main" | "main-direct";
+
+// Optional, PE-declared override of the publish flow for a repo. It only PINS
+// what git otherwise auto-detects (never invents a fact) — a repo whose `dev`
+// branch exists for an unrelated reason, or one the PE wants explicit. The
+// branch names default to main/dev when omitted.
+export interface RepoPublish {
+  flow?: PublishFlow;
+  releaseBranch?: string; // default "main"
+  integrationBranch?: string; // default "dev"
+}
+
 export interface RepoEntry {
   name: string;
   url: string;
@@ -16,6 +40,7 @@ export interface RepoEntry {
   stack?: string[];
   packages?: PackageEntry[];
   kind?: string; // functional category of the repo: api | web | lib | service | …
+  publish?: RepoPublish; // optional override of the auto-detected publish flow
 }
 
 /**

@@ -261,7 +261,9 @@ async function safeStateBlock(fields: Fields): Promise<string | undefined> {
     fields.phaseWorkspace === "done" && fields.phaseRelationship === "done" && fields.phaseSpecialists === "done";
   if (!onboarded) return undefined;
   try {
-    const report = await loadReport(fields.root, { scope: "all", liveness: false });
+    // liveness AND release off: the hook must stay fast and never shell out
+    // (agentop probe or per-repo git) on the SessionStart hot path.
+    const report = await loadReport(fields.root, { scope: "all", liveness: false, release: false });
     return renderStateBlock(report);
   } catch {
     return undefined;

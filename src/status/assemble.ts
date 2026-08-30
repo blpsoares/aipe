@@ -8,6 +8,7 @@ import { grantedTiers } from "../journey/ledger";
 import type { JourneyDispatch, JourneyLedger } from "../journey/types";
 import type { PersonaRegistryEntry } from "../hire-specialists/types";
 import type { ModelPolicy } from "../model/types";
+import type { RepoReleaseState } from "../release/types";
 import { dispatchPhase } from "../session/poll";
 import { DONE_STATUSES, OPEN_STATUSES } from "./constants";
 import type { LiveSessions } from "./liveness";
@@ -32,6 +33,10 @@ export interface AssembleInput {
   live: LiveSessions;
   pref: StatusUpdatesPref;
   elision: Elision | null;
+  // Per-repo release state keyed by repo name (item 2). Empty when release
+  // resolution was skipped (the SessionStart hot path) — merged units then carry
+  // publishState null and the represado section is empty, never a false verdict.
+  releaseStates: Map<string, RepoReleaseState>;
 }
 
 // The role a persona plays in a repo, from the durable roster. Matched
@@ -50,7 +55,13 @@ function hasEvidence(d: JourneyDispatch): boolean {
   return !!d.evidence && (d.evidence.commands.length > 0 || (d.evidence.summary ?? "").trim().length > 0);
 }
 
-function unitRow(journey: string, d: JourneyDispatch, roster: PersonaRegistryEntry[], live: LiveSessions): UnitRow {
+function unitRow(
+  journey: string,
+  d: JourneyDispatch,
+  roster: PersonaRegistryEntry[],
+  live: LiveSessions,
+  releaseStates: Map<string, RepoReleaseState>,
+): UnitRow {
   return {
     journey,
     fqid: packageFqid(d.repo, d.package),
@@ -66,6 +77,10 @@ function unitRow(journey: string, d: JourneyDispatch, roster: PersonaRegistryEnt
     sessionId: d.sessionId ?? null,
     liveness: d.mode === "session" ? dispatchPhase(d, live.ids, live.reliable) : null,
     hasEvidence: hasEvidence(d),
+    // Only a merged unit has a publication question; and only when we actually
+    // resolved its repo's state (release resolution on ⇒ a map entry). No entry ⇒
+    // resolution was skipped/unavailable → null, not a guessed verdict.
+    publishState: d.status === "merged" ? releaseStates.get(d.repo)?.state ?? null : null,
     // The envelope + swept fields (v4). `?? null` so a legacy record surfaces
     // absence honestly instead of an invented value.
     harness: d.harness ?? null,
@@ -154,17 +169,27 @@ function livenessInfo(live: LiveSessions, anySession: boolean): LivenessInfo {
 }
 
 export function assemble(input: AssembleInput): StatusReport {
-  const { ledgers, roster, policy, live, pref } = input;
+  const { ledgers, roster, policy, live, pref, releaseStates } = input;
   const units: UnitRow[] = [];
   const waiting: WaitingItem[] = [];
+  const reposInScope = new Set<string>();
   let anySession = false;
   for (const l of ledgers) {
     for (const d of l.dispatches) {
       if (d.mode === "session") anySession = true;
-      units.push(unitRow(l.id, d, roster, live));
+      reposInScope.add(d.repo);
+      units.push(unitRow(l.id, d, roster, live, releaseStates));
     }
     waiting.push(...waitingItems(l, policy, live));
   }
+  // The release position of every repo touched by the units in scope, in a stable
+  // order — the represado section (item 2) reads this, filtering to what is not
+  // published. A repo with no resolved state (resolution skipped) simply has no
+  // row, never a fabricated one.
+  const releases = [...reposInScope]
+    .map((r) => releaseStates.get(r))
+    .filter((s): s is RepoReleaseState => s !== undefined)
+    .sort((a, b) => a.repo.localeCompare(b.repo));
   return {
     workspace: input.workspace,
     contextName: input.contextName,
@@ -172,6 +197,7 @@ export function assemble(input: AssembleInput): StatusReport {
     journeys: ledgers.map(journeyRow),
     units,
     waiting,
+    releases,
     liveness: livenessInfo(live, anySession),
     pref,
     elision: input.elision,

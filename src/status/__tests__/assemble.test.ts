@@ -5,6 +5,7 @@ import { DEFAULT_STATUS_PREF } from "../types";
 import type { JourneyLedger } from "../../journey/types";
 import type { PersonaRegistryEntry } from "../../hire-specialists/types";
 import type { ModelPolicy } from "../../model/types";
+import type { RepoReleaseState } from "../../release/types";
 
 const policy: ModelPolicy = { default: "standard", authorizationTiers: ["frontier"], reasoningNotifyMaxDispatches: 8 };
 const roster: PersonaRegistryEntry[] = [
@@ -24,6 +25,7 @@ const base = {
   policy,
   pref: DEFAULT_STATUS_PREF,
   elision: null,
+  releaseStates: new Map<string, RepoReleaseState>(),
 };
 
 test("a unit carries persona role, fqid, branch, pr and ledger status (item 2)", () => {
