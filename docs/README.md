@@ -6,6 +6,7 @@ Start at the [root README](../README.md) for what AIPe is and how to install it.
 
 | Document | Covers |
 |---|---|
+| [`architecture/`](architecture/) | Why the system is the way it is — the model, the limits, and what breaks if you touch it. Start here to adopt or change AIPe. Includes six diagram specs under [`architecture/diagrams/`](architecture/diagrams/) |
 | [`harnesses.md`](harnesses.md) | The harness adapter seam, every supported harness and how they differ, adding a new one |
 | [`upgrades.md`](upgrades.md) | `aipe upgrade` / `aipe check-update`, machine state under `~/.aipe/`, critical releases |
 | [`../RELEASING.md`](../RELEASING.md) | How a release is cut (automatic, from `main`) and the download-domain wiring |
