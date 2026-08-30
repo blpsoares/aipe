@@ -1,8 +1,9 @@
 // Resolving the workspace for a ledger command — and refusing to guess.
 //
 // The journey ledger lives under `<workspace>/.aipe/journeys/`. Commands that
-// enumerate it (`dedupe`, and any future maintenance command with the same
-// shape) resolve their workspace from `--workspace` or the current directory.
+// enumerate it (`dedupe` and `reconcile`, and any future maintenance command
+// with the same shape) resolve their workspace from `--workspace` or the
+// current directory.
 // The trap: `listJourneys` treats a missing `.aipe/journeys/` as an empty
 // ledger, so a command run from a directory that is NOT a workspace reported a
 // clean zero — indistinguishable from "a real workspace with nothing to do".

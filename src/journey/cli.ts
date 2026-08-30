@@ -336,7 +336,19 @@ async function specCommand(args: string[]): Promise<number> {
 // delivered dispatch's PR via `gh pr view --json state` and mark the MERGED ones
 // merged on the ledger. With no --journey, reconciles every journey.
 async function reconcileCommand(args: string[]): Promise<number> {
-  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  // Same defect as dedupe, worse blast radius: reconcile MUTATES state (it marks
+  // units merged). A non-workspace directory made `listJourneys` see an empty
+  // ledger, so `STATE reconcile checked=0 merged=0` + exit 0 read as "polled every
+  // PR, nothing to merge" — "nothing searched" indistinguishable from "nothing
+  // found". Refuse loudly if the resolved directory is not a workspace.
+  const resolved = resolveLedgerWorkspace(getFlag(args, "--workspace") ?? process.cwd());
+  if (!resolved.ok) {
+    console.log(
+      `ERROR workspace: ${resolved.reason} — nothing was searched (this is NOT "nothing to reconcile"). Run from an AIPe workspace or pass --workspace <dir>.`,
+    );
+    return 1;
+  }
+  const workspace = resolved.workspace;
   const id = getFlag(args, "--journey");
   const results = id ? [await reconcileJourney(workspace, id, ghPrState)] : await reconcileAll(workspace, ghPrState);
   let totalChecked = 0;
@@ -346,7 +358,8 @@ async function reconcileCommand(args: string[]): Promise<number> {
     totalMerged += r.merged.length;
     for (const pr of r.merged) console.log(`MERGED journey=${r.journey} ${pr}`);
   }
-  console.log(`STATE reconcile checked=${totalChecked} merged=${totalMerged}`);
+  // Point 3 — reconcile marks units merged, so it names the workspace it acted on.
+  console.log(`STATE reconcile workspace=${workspace} checked=${totalChecked} merged=${totalMerged}`);
   return 0;
 }
 

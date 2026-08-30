@@ -172,6 +172,35 @@ test("journey dedupe in a workspace with no journeys is a legitimate zero (exit 
   expect(output).toContain(`workspace=${dir}`);
 });
 
+// Same defect, worse blast radius: reconcile MUTATES state (marks units merged),
+// so a false zero from a non-workspace directory reads as "checked every PR,
+// nothing to merge". Run from a bare dir (no .aipe/) it must refuse loudly, not
+// print `STATE reconcile checked=0 merged=0` and exit 0. Reverting the guard
+// makes this exit 0 with a checked= count.
+test("journey reconcile outside a workspace refuses loudly instead of a false zero", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-not-a-workspace-")); // bare dir, no .aipe/
+  const { code, output } = await capture(() => run(["reconcile", "--workspace", dir]));
+  expect(code).toBe(1);
+  // Must never be mistakable for "nothing to reconcile":
+  expect(output).not.toContain("checked=");
+  expect(output).not.toContain("STATE reconcile");
+  // Must name what it could not resolve:
+  expect(output).toContain("ERROR workspace");
+  expect(output).toContain(dir);
+});
+
+// The guard must not over-trip: a real workspace (.aipe/ present) with no
+// journeys is a legitimate zero — exit 0 — and, because reconcile changes state,
+// it names the workspace it acted on so a wrong target is caught by eye.
+test("journey reconcile in a workspace with no journeys is a legitimate zero that names the workspace", async () => {
+  const dir = await ws();
+  await mkdir(join(dir, ".aipe"), { recursive: true });
+  const { code, output } = await capture(() => run(["reconcile", "--workspace", dir]));
+  expect(code).toBe(0);
+  expect(output).toContain("checked=0");
+  expect(output).toContain(`workspace=${dir}`);
+});
+
 // Point 3 — a state-changing operation says which workspace it acted on, so a
 // wrong target is caught by eye at the moment of the write.
 test("journey record names the workspace it wrote to", async () => {
