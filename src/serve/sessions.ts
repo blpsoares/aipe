@@ -6,7 +6,7 @@
 //
 // The exec is injected so the parse/match logic stays pure and testable; only
 // the CLI wires the real subprocess.
-import { parseSessionList } from "../session/poll";
+import { parseSessionLiveness, type Liveness } from "../session/poll";
 
 export interface SessionInfo {
   id: string;
@@ -100,28 +100,31 @@ async function defaultExec(): Promise<string> {
 
 /**
  * One agentop read, three views of it: the lenient `SessionInfo[]` (cwd/activity,
- * for matching a dispatch to its session), the strict live-session id set, and a
- * `reliable` flag. `reliable` is the honesty pivot the console's liveness depends
- * on: it is TRUE only when agentop resolved AND its JSON parsed as the expected
- * shape (via the same strict `parseSessionList` the poll loop uses). A throw
- * (agentop absent/non-zero) or unparseable/wrong-shape JSON → `reliable:false`
- * with an empty id set, so a session-mode unit degrades to `unknown` rather than
+ * for matching a dispatch to its session), the strict id → liveness map, and a
+ * `reliable` flag. The map is id → the liveness derived from each entry's
+ * `status` (via the same strict `parseSessionLiveness` the poll loop uses), NOT a
+ * bare set of "present" ids: the console draws the SAME running/lost/dead
+ * distinctions `aipe status` does, from the same source — presence is not proof
+ * of life. `reliable` is the honesty pivot the console's liveness depends on: it
+ * is TRUE only when agentop resolved AND its JSON parsed as the expected shape. A
+ * throw (agentop absent/non-zero) or unparseable/wrong-shape JSON → `reliable:false`
+ * with an empty map, so a session-mode unit degrades to `unknown` rather than
  * being flipped to dead-silent (the dangerous direction) — see poll.ts. The
  * lenient `parseSessions` still runs so any usable rows are surfaced for display.
  */
 export async function readLive(
   exec: () => Promise<string> = defaultExec,
-): Promise<{ sessions: SessionInfo[]; liveIds: Set<string>; reliable: boolean }> {
+): Promise<{ sessions: SessionInfo[]; live: Map<string, Liveness>; reliable: boolean }> {
   let raw: string;
   try {
     raw = await exec();
   } catch {
-    return { sessions: [], liveIds: new Set(), reliable: false };
+    return { sessions: [], live: new Map(), reliable: false };
   }
   const sessions = parseSessions(raw);
   try {
-    return { sessions, liveIds: parseSessionList(raw), reliable: true };
+    return { sessions, live: parseSessionLiveness(raw), reliable: true };
   } catch {
-    return { sessions, liveIds: new Set(), reliable: false };
+    return { sessions, live: new Map(), reliable: false };
   }
 }

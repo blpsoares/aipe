@@ -17,20 +17,26 @@ function runnerOf(opts: { version?: string; listCode?: number; listOut?: string;
 
 test("agentop absent → source none, not reliable, empty (item 6)", async () => {
   const live = await resolveLiveSessions(runnerOf({}));
-  expect(live).toEqual({ source: "none", reliable: false, ids: new Set() });
+  expect(live).toEqual({ source: "none", reliable: false, sessions: new Map() });
 });
 
-test("agentop present + parseable list → reliable set of ids", async () => {
-  const live = await resolveLiveSessions(runnerOf({ version: "1.10.0", listOut: JSON.stringify({ sessions: [{ id: "s-1" }, { id: "s-2" }] }) }));
+test("agentop present + parseable list → reliable map of id→liveness", async () => {
+  const live = await resolveLiveSessions(runnerOf({ version: "1.10.0", listOut: JSON.stringify({ sessions: [{ id: "s-1", status: "running" }, { id: "s-2", status: "running" }] }) }));
   expect(live.source).toBe("agentop");
   expect(live.reliable).toBe(true);
-  expect(live.ids).toEqual(new Set(["s-1", "s-2"]));
+  expect(live.sessions).toEqual(new Map([["s-1", "alive"], ["s-2", "alive"]]));
+});
+
+test("a listed-but-lost session is carried as lost, so aipe status draws the same distinction collect does", async () => {
+  const live = await resolveLiveSessions(runnerOf({ version: "1.10.0", listOut: JSON.stringify({ sessions: [{ id: "s-1", status: "lost", activity: null }] }) }));
+  expect(live.reliable).toBe(true);
+  expect(live.sessions).toEqual(new Map([["s-1", "lost"]]));
 });
 
 test("exit 0 with UNPARSEABLE json is 'cannot tell', not an empty live list (item 5)", async () => {
   const live = await resolveLiveSessions(runnerOf({ version: "1.10.0", listCode: 0, listOut: "not json" }));
   expect(live.reliable).toBe(false);
-  expect(live.ids.size).toBe(0);
+  expect(live.sessions.size).toBe(0);
 });
 
 test("a non-zero list exit degrades to not-reliable", async () => {
@@ -40,5 +46,5 @@ test("a non-zero list exit degrades to not-reliable", async () => {
 
 test("a thrown spawn on list degrades to not-reliable (never throws out)", async () => {
   const live = await resolveLiveSessions(runnerOf({ version: "1.10.0", throwOnList: true }));
-  expect(live).toEqual({ source: "agentop", reliable: false, ids: new Set() });
+  expect(live).toEqual({ source: "agentop", reliable: false, sessions: new Map() });
 });

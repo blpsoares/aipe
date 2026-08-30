@@ -73,7 +73,10 @@ export function columnOf(d: Dispatch, session?: SessionInfo): BoardColumn | null
       return "needs-you";
   }
   // status === "dispatched" (or any live status): the canonical liveness decides.
-  if (d.liveness === "dead-silent" || d.liveness === "waiting" || d.liveness === "redirected") return "needs-you";
+  // `lost` — agentop lost the session (the third state): not alive, not a clean
+  // end. It surfaces to a person here, never falls through to "working" (the
+  // "presence == life" lie this journey kills); acting on it is the PE's call.
+  if (d.liveness === "dead-silent" || d.liveness === "lost" || d.liveness === "waiting" || d.liveness === "redirected") return "needs-you";
   if (isWaitingApproval(d, session)) return "needs-you";
   // running (working), unknown (cannot verify — never claimed dead), or a
   // subagent with no liveness: all "working". `unknown` is flagged in the card.
@@ -88,6 +91,7 @@ export function boardActor(d: Dispatch, session?: SessionInfo): BoardActor | nul
   if (d.status === "blocked") return "coord";
   if (d.status === "redirected") return "coord";
   if (d.liveness === "dead-silent") return "you"; // inspect; kill/re-dispatch is the PE's call
+  if (d.liveness === "lost") return "you"; // agentop lost it — inspect; re-dispatch/kill is the PE's call
   if (isWaitingApproval(d, session)) return "you"; // waiting on a person
   return "you";
 }

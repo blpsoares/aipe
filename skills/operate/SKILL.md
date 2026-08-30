@@ -155,7 +155,9 @@ digraph operate {
   qa -> dev [label="failed → fix task, re-gate"];
   dev -> escalate [label="cross-repo need"];
   escalate -> pe [label="PE decides scope"];
-  pe -> close [label="PRs merged"];
+  pe -> close [label="PRs merged into dev"];
+  close -> promote [label="verified work on dev"];
+  promote -> pe [label="offer: promote now, or exercise on dev first?"];
 }
 ```
 
@@ -224,8 +226,15 @@ digraph operate {
 
    **Per-unit dispatch envelope (the PE approves this too).**
 
-   **Propose the envelope — do not hand the PE a blank one.** Before writing
-   this section, run:
+   **The envelope gate (MUST — run `propose`, never choose from memory).** You
+   **MUST** run `aipe execution propose` for this journey and pick each unit's
+   envelope from the list it prints — **NEVER** write an envelope from memory or
+   habit, because that is the exact failure this discipline exists to end: with
+   no priced list of alternatives in front of you, `reasoning` becomes the
+   comfortable default and the whole journey drifts to "always Opus" — every unit
+   defensible alone, the sum indefensible. **Proof the gate held:** `propose` was
+   run for this journey and each unit's written envelope is a line **from its
+   output**. Before writing this section, run:
 
    ```bash
    aipe execution propose --journey <id> --workspace <workspace>
@@ -239,6 +248,16 @@ digraph operate {
    envelopes actually viable **on this machine**, each with a `cost-index` and
    marked `GATED` where policy requires the PE's signature. It **enumerates
    and prices; it does not choose.** Choosing is yours.
+
+   **Skipping `propose` is a violation, not a shortcut — the excuses, ruled out.
+   Every thought on the left means STOP: you are about to drift the tier.**
+
+   | The coordinator thinks… | Ruling |
+   | --- | --- |
+   | "I already know this unit needs `reasoning` — no need to run `propose`" | That certainty IS the drift. MUST run `propose` and choose from the priced list, not from habit |
+   | "the last journey used `reasoning` here, reuse it" | Each unit is priced fresh. A prior choice is not this unit's evidence |
+   | "the PE is waiting — skip the list, write the envelope" | A fast wrong envelope is exactly what produced "always Opus". MUST price before you choose |
+   | "every unit obviously wants the same tier" | Then reading the list costs nothing — and if it does not, you just caught a needless upgrade. Run it |
 
    For each unit, write the envelope you chose **and why**, plus the
    alternatives you discarded. The reasoning is not decoration — without it
@@ -266,7 +285,7 @@ digraph operate {
    policy ceiling. Say which to the PE, and fall back to subagent mode. Never
    dispatch on a guess about what this machine can run.
 
-   Each unit's scope section then carries three fields:
+   Each unit's scope section then carries four fields:
 
    - `mode: subagent | session` — `subagent` (default) is in-process and returns
      its evidence directly. `session` is a real detached session with its own
@@ -283,12 +302,67 @@ digraph operate {
    - `intensity: normal | ultracode` — `ultracode` makes the specialist
      orchestrate multi-agent workflows. It multiplies token spend, so it is the
      PE's call, never yours.
-   - `harness: claude-code` (default) or `gemini` — the only two containable
-     harnesses today. `codex` and `copilot` work as workspace hosts but both
-     require an interactive trust step AIPe's non-interactive dispatch can
-     never perform, so their containment hook is `null` and `aipe dispatch
-     validate` **REJECTs** them from session mode with
-     `harness-not-containable <id>`.
+   - `harness` — which harness hosts the session. **The dispatch decision is
+     binary, and it is NOT the ledger below:** `aipe dispatch validate` admits a
+     harness into session mode only when `isContainable(getAdapter(id))` is true
+     — the harness's adapter returns a non-null containment hook that hard-denies
+     tool calls under a fully headless, non-interactive run — and **REJECTs**
+     every other with `harness-not-containable <id>`, because a harness AIPe
+     cannot contain can take an unapproved action inside the worktree. Two ship
+     such an adapter today: `claude-code` (default) and `gemini`; `codex` and
+     `copilot` ship adapters whose hook is `null`, so they are refused.
+
+     **The world those adapters are drawn from has three states, not two** — a
+     compatibility ledger (`src/harness/compat.ts`, each line sourced from the
+     tool's own docs by the #57 investigation, queried with
+     `harnessesInState(state)`). Read it as **data that moves**, never a fixed
+     list — a state flips the day a new investigation or a new adapter lands:
+     - **`containable-proven`** — proven to hard-block a headless run.
+       `claude-code` and `gemini` carry AIPe adapters and are dispatchable today;
+       `factory-droid`, `kimi-code`, `opencode`, `pi` are proven but have **no
+       adapter yet**, so they are not dispatchable until one lands.
+     - **`non-containable-proven`** — proven to need an interactive trust step
+       AIPe's non-interactive dispatch can never perform: `codex`, `copilot`,
+       `cursor`. Usable as workspace hosts, never as session mode.
+     - **`unestablished`** — a genuine candidate whose headless containment the
+       docs do not resolve: `antigravity`. Treated as non-containable until
+       proven, so **not** admitted — but not lumped in with the proven-negative
+       set either; erasing that distinction was the defect #57 fixed.
+
+     **Do not conflate the two layers: the binary rule (`isContainable`) governs
+     what you MAY dispatch; the three-state ledger only describes the world and
+     what could change.** Querying the ledger never widens what dispatch admits —
+     only an adapter whose hook is non-null does.
+
+     **This context's decision (PE, 2026-08-30): this workspace runs
+     `claude-code` only.** Harness is therefore not a live choice here — record
+     `claude-code` and move on. The multi-harness machinery above stays because
+     it is a real framework capability other contexts use; do **not** delete it
+     to "simplify" this one.
+
+   - `tier: fast | standard | reasoning` — the model the specialist runs on
+     (`fast`→Haiku 4.5, `standard`→Sonnet 5, `reasoning`→Opus 4.8). Choose by
+     **what it costs to be wrong**, not by what it costs to run:
+     - **`reasoning`** where a wrong answer does **silent** damage — work whose
+       deliverable *is* judgement: weighing *why* and the discarded alternatives
+       (architecture docs); a "fix-too-much" hazard where disabling a check makes
+       the tests pass and breaks the thing in silence (the version scanner);
+       modelling state; deciding policy.
+     - **`standard`** for mechanical work against an **explicit** criterion the
+       judgement is already spent on: verifying a checklist the dev enumerated,
+       translation, moving a file.
+     - **`fast`** for the literally trivial: a one-line change, a single metadata
+       field.
+
+     **The guardrail — do NOT misread this as "spend less".** This discipline
+     exists because the coordinator drifted to `reasoning` as a comfortable
+     default, and the audited error was toward **MORE** tier than a minority of
+     units needed — **never** toward too little, and no quality was lost.
+     **`reasoning` stays the correct choice wherever judgement lives.**
+     Downgrading tier where judgement lives trades a **silent quality loss** for
+     a token saving, and that trade is worse than the spend. A reader who leaves
+     this with "use the cheaper tier" read it wrong; when two tiers are in play on
+     a unit that carries judgement, the tier is the higher one.
 
    Never raise `mode` or `intensity` on your own judgement after approval. If a
    unit turns out heavier than the spec assumed, go back to the PE.
@@ -624,16 +698,22 @@ digraph operate {
 
    **Cross-model QA (recommended for high-risk units, session mode only).** A QA
    persona dispatched in session mode may run on a *different harness* from the
-   dev: today that means `gemini` reviewing a `claude-code` delivery (or the
-   reverse) — those are the only two harnesses the law admits into session
-   mode. A reviewer on a different model does not inherit the dev's blind
-   spots, which is what "independent skeptic" was always supposed to mean.
-   `codex` and `copilot` are usable as workspace hosts but not as session-mode
-   QA: both require an interactive trust step AIPe's non-interactive dispatch
-   can never perform, so their containment hook is `null` and the law
-   **REJECTs** them with `harness-not-containable <id>`. Set the QA unit's
-   `harness` in the Orientation Spec; the PE approves it with the rest of the
-   envelope.
+   dev — `gemini` reviewing a `claude-code` delivery, or the reverse — so the
+   reviewer does not inherit the dev's blind spots, which is what "independent
+   skeptic" was always supposed to mean. Which harnesses are eligible is the same
+   binary rule as any session dispatch (the `harness` field above): a
+   `containable-proven` state **with an adapter**. The three-state ledger in
+   `src/harness/compat.ts` describes the wider world but does not widen what QA
+   can run on. `codex`, `copilot` and `cursor` are usable as workspace hosts but
+   not as session-mode QA: they need an interactive trust step AIPe's
+   non-interactive dispatch can never perform. Set the QA unit's `harness` in the
+   Orientation Spec; the PE approves it with the rest of the envelope.
+
+   **In THIS context (`claude-code` only), cross-model QA does not apply** — and
+   that removes nothing from the gate. The QA's independence here comes from a
+   **separate persona in a separate worktree** reviewing against the diff and the
+   acceptance criteria, not from a different model. That is a full QA gate; never
+   read "no cross-model here" as "no independent review".
 
    Provision + record the QA exactly like a dev dispatch:
    ```bash
@@ -704,6 +784,15 @@ digraph operate {
    aipe dispatch release <repo> [--package <package>] --journey <id> --workspace <workspace>
    ```
 
+   **`merged` is not "in production" — hold the distinction (MUST).** A unit
+   recorded `merged` is merged into the target branch — `dev`, not in production
+   and not yet released to users. The demand is *integrated*, not *published*:
+   `dev` accumulates verified work continuously, and a release only cuts when
+   `dev` is promoted to `main` (see `RELEASING.md`). So "the PRs merged" is **not**
+   the end of the loop — step 7 is. Never tell the PE a change is "shipped",
+   "released" or "in production" on the strength of a `merged` record; that word
+   means the target branch, nothing more.
+
    **Reliability lint before you report (MUST).** Before telling the PE the demand
    is done, run the deterministic ledger audit and only report once it is clean:
    ```bash
@@ -715,7 +804,62 @@ digraph operate {
    skipped QA, an open escalation) and `STATE … clean=true|false … critical=<n>`.
    **Do not report "done" while `critical>0`.** Fix each critical finding (re-gate,
    attach evidence, land the producer) and re-run until clean; surface any remaining
-   warnings to the PE explicitly. Then report the final set of PRs.
+   warnings to the PE explicitly. Then report the final set of PRs — as **merged
+   into `dev`**, not as released (see the distinction above).
+
+7. **Promotion offer — carry the loop to publication (the gate).** `merged` is
+   where integration ends, not where the demand reaches users. Verified work sits
+   on `dev` until `dev` is promoted to `main`, and **that promotion is the PE's
+   decision, never yours and never silent.** Two failures are symmetric, and you
+   MUST avoid both:
+   - **Promoting in silence** — cutting a release the PE never chose.
+   - **Damming in silence** — letting verified work pile up on `dev` with the PE
+     never told it is there to promote. This is the failure that actually
+     happened; it is not "safe by default", it is the same defect as the first.
+
+   So when verified work has landed on `dev`, you **present to the PE what is there
+   and ask**: promote it now, or exercise it on `dev` first? You do not promote on
+   your own judgement, and you do not stay quiet.
+
+   **Check for unpromoted work (the checkable condition).** After close-out,
+   determine whether verified work sits on `dev` unreleased. The ledger and
+   `aipe status` express this distinction between *merged* and *released*; consume
+   that signal where it is present. Where it is not, determine it directly from git
+   — commits on `dev` that `main` does not yet have are unreleased work:
+   ```bash
+   git -C <repo-path> log --oneline origin/main..origin/dev
+   ```
+   Any output means there is verified work to offer. (Assumption: a sibling effort
+   is teaching the ledger and `aipe status` to name the *released* vs *merged*
+   state directly; until it lands, the git check above is the source of truth.)
+
+   **Ask by BATCH, never per PR (MUST — with the why).** The question is *"here is
+   what has accumulated on `dev` — promote this batch now, or hold?"*, asked once
+   over the set of verified work, **not** once per merged PR. Promoting on every
+   merge is exactly what produced **five releases in a single day** for this
+   repository — several of them one feature sliced across patch bumps — and the
+   `CONTRIBUTING.md`/`RELEASING.md` record it as an anti-pattern. A promotion goes
+   out when either (a) at least one complete feature has landed on `dev`, or (b)
+   there is a fix the PE needs to consume with urgency; green CI on `dev` is a
+   **precondition** for promoting, not the trigger. The whole point is to bundle
+   related, verified work into one release with actual content.
+
+   **What you present, and what you do NOT do.** Present: which units are verified
+   and merged on `dev`, whether they add up to a complete feature or an urgent fix,
+   and the explicit choice — *promote now* or *exercise on `dev` first*. You do
+   **NOT** open the promotion PR, merge `dev → main`, or bump a version on your own
+   call — automating the promotion is out of scope; the decision is the PE's. Once
+   the PE says promote, you open the promotion PR (`dev → main`) — never a
+   specialist, and the release publishes from the merge (see `RELEASING.md`).
+
+   **Table of non-exceptions (forbidden rationalizations for skipping the offer):**
+
+   | Rationalization | Ruling |
+   | --- | --- |
+   | "it's just merged to `dev`, the PE will ask when they want a release" | Damming in silence is the failure this exists to end. MUST present it |
+   | "only one small PR landed — not worth mentioning" | Present it anyway; the PE decides whether one PR is a batch worth promoting |
+   | "I'll just promote it, it's obviously ready" | Promoting in silence forges a decision that is the PE's. MUST ask first |
+   | "I promoted the last batch, so I'll promote this one too" | Each batch is a fresh decision. MUST ask again |
 
 ## The hiring brief (assemble per dispatch, never write to disk)
 
@@ -778,6 +922,12 @@ severity), and `returns` is
 - Each specialist opens its **own** PR; commits carry the namespaced persona
   author (`aipe/<Persona>`) set by the worktree, with the PE's real account
   preserved via the inherited email.
+- **The promotion offer is a MUST**: `merged` means merged into `dev`, not
+  released — when verified work sits on `dev`, you present the batch to the PE
+  and ask (promote now, or exercise on `dev` first). Never promote in silence
+  and never leave it dammed in silence; the decision is the PE's, the offer is
+  yours, and it is asked by batch, not per PR (per-PR promotion is what produced
+  five releases in a day — see `RELEASING.md`).
 
 ## Common mistakes
 
@@ -791,6 +941,12 @@ severity), and `returns` is
   ledger first; delivered/merged units are intocáveis, never re-dispatched.
 - *Two tasks on the same package in one wave* → the dispatch law rejects it; split
   across waves. Adjudicate with `aipe dispatch validate`, never by hand.
+- *Calling `merged` "shipped"/"released" to the PE* → `merged` is merged into
+  `dev`, not published; hold the word until a promotion actually cuts a release.
+- *Letting verified work sit on `dev` without telling the PE* → damming in silence
+  is a failure, not a safe default; present the batch and ask (step 7).
+- *Promoting `dev → main` on your own judgement* → promotion is the PE's decision;
+  you offer, you never cut the release silently.
 
 ## Self-review gate (before reporting anything "done" to the PE)
 
@@ -809,3 +965,7 @@ severity), and `returns` is
 - [ ] `aipe journey verify` reports `clean=true` (zero critical findings) — or every
       remaining warning was surfaced to the PE explicitly.
 - [ ] The set of PRs reported matches the ledger; merged worktrees are torn down.
+- [ ] I reported `merged` as **merged into `dev`**, never as released/in production.
+- [ ] Is there verified work on `dev` with **no promotion offered**? If so, I
+      **presented the batch to the PE** and asked (promote now, or exercise on
+      `dev` first) — I neither promoted in silence nor left it dammed in silence.

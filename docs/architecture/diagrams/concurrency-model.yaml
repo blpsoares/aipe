@@ -1,0 +1,239 @@
+# Diagram spec — NOT rendered here. An external pipeline renders EN + PT from
+# this single source. Every node carries `evidence: file:line` that a reader can
+# open in the repo. See docs/architecture/README.md for the schema.
+id: concurrency-model
+type: state-machine
+argument:
+  en: >-
+    Concurrency in AIPe is a strict progression, not three loose features: an
+    atomic filesystem claim makes the dispatch law physics, identity-per-task
+    lets non-writing roles run in parallel, and the lock granularity descends
+    from repo to path — with a reconciler that survives declared paths aging.
+  pt: >-
+    Concorrência no AIPe é uma progressão estrita, não três features soltas: um
+    claim atômico de filesystem torna a lei de dispatch física, a identidade por
+    task deixa papéis que não escrevem rodarem em paralelo, e a granularidade da
+    trava desce de repo para path — com um reconciliador que sobrevive ao
+    envelhecimento dos paths declarados.
+nodes:
+  - id: atomic-claim
+    label: { en: "Atomic claim (link = O_CREAT|O_EXCL)", pt: "Claim atômico (link = O_CREAT|O_EXCL)" }
+    kind: deterministic
+    note:
+      en: >-
+        The claim is a hard link of a temp file onto the lock path: link() is
+        atomic and fails EEXIST if the lock exists, so the winner's lock is
+        always fully written — no empty-file window. The law stopped being a
+        suggestion and became a filesystem invariant.
+      pt: >-
+        O claim é um hard link de um arquivo temporário sobre o path da trava:
+        link() é atômico e falha EEXIST se a trava existe, então a trava do
+        vencedor está sempre totalmente escrita — sem janela de arquivo vazio. A
+        lei deixou de ser sugestão e virou invariante de filesystem.
+    evidence: "src/dispatch/lock.ts:248"
+  - id: eexist-loser
+    label: { en: "EEXIST → someone else holds it", pt: "EEXIST → outro já tem" }
+    kind: denied
+    note:
+      en: >-
+        A losing claimant sees EEXIST and does not retry blindly — it inspects
+        the incumbent for liveness before deciding collision vs takeover.
+      pt: >-
+        Um claimant perdedor vê EEXIST e não retenta às cegas — inspeciona o
+        dono atual quanto a vida antes de decidir colisão vs takeover.
+    evidence: "src/dispatch/lock.ts:256"
+  - id: liveness
+    label: { en: "isLockActive — four signals", pt: "isLockActive — quatro sinais" }
+    kind: deterministic
+    note:
+      en: >-
+        Death is decided, never assumed. (1) a provably-dead pid (kill(pid,0) →
+        ESRCH) is the only positive proof of death; (2) a dispatched/redirected
+        ledger entry is durable proof of life; (3) a freshly-created lock is
+        granted a grace window to close the claim→record gap; (4) an
+        unverifiable owner (pid ≤ 0) is treated ALIVE — never a silent orphan.
+      pt: >-
+        A morte é decidida, nunca presumida. (1) um pid provadamente morto
+        (kill(pid,0) → ESRCH) é a única prova positiva de morte; (2) uma entrada
+        dispatched/redirected no ledger é prova durável de vida; (3) uma trava
+        recém-criada ganha janela de graça para fechar o gap claim→record; (4)
+        um dono não-verificável (pid ≤ 0) é tratado como VIVO — nunca órfão
+        silencioso.
+    evidence: "src/dispatch/lock.ts:148"
+  - id: reconcile-orphan
+    label: { en: "Reconcile orphan → retry claim", pt: "Reconcilia órfão → retenta claim" }
+    kind: deterministic
+    note:
+      en: >-
+        A stale lock (dead pid, no live ledger entry, past grace) is unlinked and
+        the atomic create retried. Ordinary recovery needs no PE grant.
+      pt: >-
+        Uma trava obsoleta (pid morto, sem entrada viva no ledger, fora da graça)
+        é removida e o create atômico é retentado. Recuperação comum não exige
+        outorga do PE.
+    evidence: "src/dispatch/lock.ts:283"
+  - id: force-gate
+    label: { en: "--force over a LIVE lock", pt: "--force sobre trava VIVA" }
+    kind: gate
+    note:
+      en: >-
+        Overriding a live lock is a human decision on the record, not an agent
+        shortcut: --force is refused (unauthorized-force) unless the journey
+        carries a PE-recorded forceClaim authorization for that unit.
+      pt: >-
+        Sobrepor uma trava viva é decisão humana registrada, não atalho do
+        agente: --force é recusado (unauthorized-force) a menos que a jornada
+        carregue uma autorização forceClaim do PE para aquela unidade.
+    evidence: "src/dispatch/lock.ts:269"
+  - id: identity-per-task
+    label: { en: "Identity = Persona · task", pt: "Identidade = Persona · task" }
+    kind: deterministic
+    note:
+      en: >-
+        The addressable unit gained a task axis: the lock key folds in the task,
+        so one persona claiming two distinct tasks on one unit produces two
+        independent lock files.
+      pt: >-
+        A unidade endereçável ganhou um eixo de task: a chave da trava incorpora
+        a task, então uma persona reivindicando duas tasks distintas numa unidade
+        produz dois arquivos de trava independentes.
+    evidence: "src/dispatch/lock.ts:40"
+  - id: writes-predicate
+    label: { en: "writes / doesn't-write predicate", pt: "predicado escreve / não-escreve" }
+    kind: deterministic
+    note:
+      en: >-
+        Concurrency for a role derives from behavior, not a name list:
+        roleWritesToRepo returns false only for NON_WRITING_ROLES (qa); an
+        unknown role defaults to writes ⇒ serialize (fail safe).
+      pt: >-
+        Concorrência de um papel deriva do comportamento, não de uma lista de
+        nomes: roleWritesToRepo retorna false só para NON_WRITING_ROLES (qa); um
+        papel desconhecido cai em escreve ⇒ serializa (falha segura).
+    evidence: "src/dispatch/roles.ts:21"
+  - id: law-serialize
+    label: { en: "Law: any writer ⇒ serialize", pt: "Lei: qualquer escritor ⇒ serializa" }
+    kind: deterministic
+    note:
+      en: >-
+        validateBatch admits N non-writing dispatches on one unit only if each
+        carries a distinct --task; the moment any member writes, the duplicates
+        are serialized (same-repo / same-package rejects).
+      pt: >-
+        validateBatch admite N dispatches não-escritores numa unidade só se cada
+        um carrega uma --task distinta; no instante em que qualquer membro
+        escreve, as duplicatas serializam (rejeições same-repo / same-package).
+    evidence: "src/dispatch/law.ts:124"
+  - id: path-granularity
+    label: { en: "Path-lock: disjoint paths coexist", pt: "Path-lock: paths disjuntos coexistem" }
+    kind: deterministic
+    note:
+      en: >-
+        The lock descended from repo to path. Two writers in one repo coexist iff
+        their declared path sets are disjoint; overlap serializes. An empty set
+        means WHOLE (**) and overlaps everything (backward-compatible repo lock).
+      pt: >-
+        A trava desceu de repo para path. Dois escritores num repo coexistem sse
+        seus conjuntos de paths declarados são disjuntos; sobreposição serializa.
+        Conjunto vazio significa WHOLE (**) e sobrepõe tudo (trava de repo
+        retrocompatível).
+    evidence: "src/dispatch/lock.ts:455"
+  - id: guard-mutex
+    label: { en: "Per-unit guard mutex", pt: "Mutex de guarda por unidade" }
+    kind: structure
+    note:
+      en: >-
+        Scan→decide→write over the overlap set is serialized across processes by
+        a per-unit guard built on the same atomic link primitive, with a TTL so a
+        crashed holder cannot deadlock the unit.
+      pt: >-
+        Scan→decide→escreve sobre o conjunto de sobreposição é serializado entre
+        processos por uma guarda por unidade construída no mesmo primitivo
+        atômico de link, com TTL para que um dono travado não trave a unidade.
+    evidence: "src/dispatch/lock.ts:348"
+  - id: paths-age
+    label: { en: "Declared paths AGE", pt: "Paths declarados ENVELHECEM" }
+    kind: structure
+    note:
+      en: >-
+        The non-obvious failure: a declared path set drifts from reality. Field
+        evidence — one dev's scope grew 2→16 files legitimately; another's `bun
+        install` moved submodule pointers he never meant to touch.
+      pt: >-
+        A falha não-óbvia: um conjunto de paths declarado se afasta da realidade.
+        Evidência de campo — o escopo de um dev cresceu de 2→16 arquivos por
+        razão legítima; o `bun install` de outro mexeu em ponteiros de submódulo
+        que ele nunca quis tocar.
+    evidence: "src/dispatch/detect.ts:2"
+  - id: reconcile-paths
+    label: { en: "Reconcile against git-touched", pt: "Reconcilia contra o que o git tocou" }
+    kind: deterministic
+    note:
+      en: >-
+        The lock is reconciled against what the branch ACTUALLY moved — the
+        committed diff (base...HEAD) plus the working tree (status --porcelain),
+        with renames recording both endpoints — then re-checks overlap on the
+        real set. Drift that grows into a live claim's path surfaces as a
+        collision instead of a silent double-write.
+      pt: >-
+        A trava é reconciliada contra o que o branch REALMENTE moveu — o diff
+        commitado (base...HEAD) mais a árvore de trabalho (status --porcelain),
+        com renames registrando os dois extremos — e revê a sobreposição no
+        conjunto real. Drift que cresce até o path de um claim vivo aparece como
+        colisão em vez de escrita dupla silenciosa.
+    evidence: "src/dispatch/lock.ts:516"
+  - id: managed-exception
+    label: { en: "Managed exception (wait→rebase→resolve→review)", pt: "Exceção gerenciada (espera→rebase→resolve→review)" }
+    kind: judgment
+    note:
+      en: >-
+        Overlap is serialization-with-recovery, not a hard error: planOverlap
+        Resolution yields an ordered plan wait → rebase → resolve →
+        review-over-merge. NOTE — this branch was NOT observed racing in the
+        recorded scenario; it is read from code and tests, not a live collision.
+      pt: >-
+        Sobreposição é serialização-com-recuperação, não erro fatal:
+        planOverlapResolution devolve um plano ordenado espera → rebase → resolve
+        → review-over-merge. NOTA — este ramo NÃO foi observado em corrida no
+        cenário registrado; é leitura de código e testes, não colisão ao vivo.
+    evidence: "src/dispatch/resolution.ts:24"
+edges:
+  - from: atomic-claim
+    to: eexist-loser
+    label: { en: "target exists", pt: "alvo existe" }
+  - from: eexist-loser
+    to: liveness
+    label: { en: "inspect incumbent", pt: "inspeciona o dono" }
+  - from: liveness
+    to: reconcile-orphan
+    label: { en: "provably dead & no live entry", pt: "morto provado & sem entrada viva" }
+  - from: liveness
+    to: force-gate
+    label: { en: "alive → collision unless authorized", pt: "vivo → colisão salvo autorizado" }
+  - from: reconcile-orphan
+    to: atomic-claim
+    label: { en: "unlink, retry create", pt: "remove, retenta create" }
+  - from: atomic-claim
+    to: identity-per-task
+    label: { en: "key folds in task", pt: "chave incorpora a task" }
+  - from: identity-per-task
+    to: writes-predicate
+    label: { en: "role decides parallelism", pt: "papel decide paralelismo" }
+  - from: writes-predicate
+    to: law-serialize
+    label: { en: "any writer ⇒ serialize", pt: "qualquer escritor ⇒ serializa" }
+  - from: law-serialize
+    to: path-granularity
+    label: { en: "writers split by path", pt: "escritores separam por path" }
+  - from: path-granularity
+    to: guard-mutex
+    label: { en: "scan/decide/write serialized", pt: "scan/decide/escreve serializado" }
+  - from: path-granularity
+    to: paths-age
+    label: { en: "declaration drifts", pt: "declaração deriva" }
+  - from: paths-age
+    to: reconcile-paths
+    label: { en: "re-read from git", pt: "relê do git" }
+  - from: reconcile-paths
+    to: managed-exception
+    label: { en: "drift overlaps a live claim", pt: "drift sobrepõe claim vivo" }

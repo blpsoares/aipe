@@ -5,6 +5,7 @@
 // data structured, so the coordinator pastes a markdown table into chat without
 // re-deriving anything (item 3), and the delta (item 9) reuses the same
 // projection so the three surfaces never drift.
+import type { PublishState } from "../release/types";
 import type { UnitPhase } from "../session/types";
 import type { StatusFormat, StatusReport, UnitRow } from "./types";
 
@@ -103,6 +104,7 @@ const LIVE_LABEL: Record<UnitPhase, string> = {
   running: "alive",
   waiting: "blocked",
   unknown: "unknown",
+  lost: "lost",
   "dead-silent": "silent",
   landed: "landed",
   redirected: "redirect",
@@ -111,13 +113,39 @@ const LIVE_LABEL: Record<UnitPhase, string> = {
 function liveCell(phase: UnitPhase | null, color: boolean): string {
   if (phase === null) return paint("-", C.dim, color);
   const text = LIVE_LABEL[phase];
+  // `lost` shares red with `dead-silent` — both are not-alive and need eyes —
+  // but keeps its own label so the reader sees agentop lost the session rather
+  // than it ending quietly.
   const code =
-    phase === "running" ? C.green : phase === "unknown" ? C.amber : phase === "dead-silent" ? C.red : C.dim;
+    phase === "running"
+      ? C.green
+      : phase === "unknown"
+        ? C.amber
+        : phase === "dead-silent" || phase === "lost"
+          ? C.red
+          : C.dim;
   return paint(text, code, color);
 }
 
 function who(u: UnitRow): string {
   return u.role ? `${u.specialist}·${u.role}` : u.specialist;
+}
+
+// A merged unit's status, annotated with its publication position so a
+// merged-in-dev unit reads differently from a published one at a glance
+// (j-20260830-zd). Only the non-published cases are decorated — a plain "merged"
+// already means "merged AND published"; the noise is spent only where it warns.
+const PUBLISH_SUFFIX: Record<PublishState, string> = {
+  published: "",
+  "merged-unpublished": "·unpublished",
+  unknown: "·publish?",
+};
+function statusCell(u: UnitRow, color: boolean): string {
+  if (u.status !== "merged" || u.publishState === null) return u.status;
+  const suffix = PUBLISH_SUFFIX[u.publishState];
+  if (!suffix) return u.status;
+  const code = u.publishState === "merged-unpublished" ? C.amber : C.dim;
+  return u.status + paint(suffix, code, color);
 }
 
 // ── unit projections (shared by the full table and the delta) ────────────────
@@ -141,7 +169,7 @@ function envCell(u: UnitRow): string {
 
 function unitCells(u: UnitRow, format: StatusFormat, color: boolean): string[] {
   if (format === "compact") {
-    return [who(u), u.fqid, u.status, liveCell(u.liveness, color)];
+    return [who(u), u.fqid, statusCell(u, color), liveCell(u.liveness, color)];
   }
   return [
     u.journey,
@@ -150,10 +178,20 @@ function unitCells(u: UnitRow, format: StatusFormat, color: boolean): string[] {
     u.fqid,
     branchTail(u.branch),
     shortPr(u.pr),
-    u.status,
+    statusCell(u, color),
     liveCell(u.liveness, color),
     envCell(u),
   ];
+}
+
+// The represado section (item 2): repos whose merged work is not yet published,
+// shown in the same visibility class as WAITING ON YOU. `unknown` is listed too —
+// the house rule is to say "could not establish", not to hide it. A published
+// repo is silent. Reuses the generic grid, so it degrades to "(none)" when clear.
+function represadoRows(report: StatusReport): string[][] {
+  return report.releases
+    .filter((r) => r.state !== "published")
+    .map((r) => [r.repo, r.flow, r.state, clip(r.reason)]);
 }
 
 function unitHeaders(format: StatusFormat): string[] {
@@ -198,6 +236,11 @@ export function renderTable(report: StatusReport, format: StatusFormat, color: b
       color,
     ),
   );
+  out.push("");
+
+  // Represado — merged work not yet published (item 2).
+  out.push(label("REPRESADO — merged, not yet published", color));
+  out.push(...grid(["REPO", "FLOW", "STATE", "DETAIL"], represadoRows(report), color));
   out.push("");
 
   // Liveness + elision honesty.
@@ -248,6 +291,13 @@ export function renderDelta(
         color,
       ),
     );
+    out.push("");
+  }
+
+  const represado = represadoRows(report);
+  if (represado.length > 0) {
+    out.push(label("REPRESADO — merged, not yet published", color));
+    out.push(...grid(["REPO", "FLOW", "STATE", "DETAIL"], represado, color));
     out.push("");
   }
   return out;

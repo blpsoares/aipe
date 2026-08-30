@@ -22,6 +22,19 @@ async function ledgerWith(status: "dispatched" | "delivered" | "blocked"): Promi
 
 const live: AgentopRunner = async () => ({ code: 0, stdout: JSON.stringify({ sessions: [{ id: "s-1" }] }), stderr: "" });
 const gone: AgentopRunner = async () => ({ code: 0, stdout: JSON.stringify({ sessions: [] }), stderr: "" });
+// agentop STILL LISTS s-1 but marks it lost with a null activity — the exact
+// real case this unit exists to catch. Presence must not be read as life.
+const lost: AgentopRunner = async () => ({
+  code: 0,
+  stdout: JSON.stringify({ sessions: [{ id: "s-1", status: "lost", activity: null }] }),
+  stderr: "",
+});
+// Listed, but agentop marks it exited (a clean end). Present, but not alive.
+const exited: AgentopRunner = async () => ({
+  code: 0,
+  stdout: JSON.stringify({ sessions: [{ id: "s-1", status: "exited", activity: null }] }),
+  stderr: "",
+});
 const explodes: AgentopRunner = async () => {
   throw new Error("spawn agentop ENOENT");
 };
@@ -36,6 +49,30 @@ test("a landed wave exits 0", async () => {
 test("a dead-silent unit exits 5 (worst finding) and names its branch", async () => {
   const dir = await ledgerWith("dispatched");
   const r = await collectCommand({ workspace: dir, journeyId: "j1", runner: gone, timeoutMs: 1000, intervalMs: 10, sleep: async () => {} });
+  expect(r.code).toBe(5);
+  expect(r.lines).toEqual([
+    "DEAD-SILENT embark branch b worktree w — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind",
+  ]);
+});
+
+test("a session PRESENT in the list but marked lost is LOST, exits 5, and is NOT reported alive", async () => {
+  const dir = await ledgerWith("dispatched");
+  const r = await collectCommand({ workspace: dir, journeyId: "j1", runner: lost, timeoutMs: 1000, intervalMs: 10, sleep: async () => {} });
+  // The bug was: presence in the list → "the session is alive". A lost session
+  // is present but not alive; it must never carry the RUNNING "session is alive"
+  // line, and it must lead the coordinator to inspect rather than trust it.
+  expect(r.code).toBe(5);
+  expect(r.lines).toEqual([
+    'LOST embark session s-1 branch b worktree w — agentop lost this session (status "lost"): it did NOT exit cleanly and may be an orphaned process still holding the worktree. NOT alive, NOT a clean end. Inspect the branch read-only (git log), confirm no process is still writing, then re-dispatch to CONTINUE or escalate: never re-dispatch blind',
+  ]);
+  expect(r.lines[0]).not.toContain("the session is alive");
+});
+
+test("a session PRESENT in the list but marked exited is DEAD-SILENT, not RUNNING", async () => {
+  const dir = await ledgerWith("dispatched");
+  const r = await collectCommand({ workspace: dir, journeyId: "j1", runner: exited, timeoutMs: 1000, intervalMs: 10, sleep: async () => {} });
+  // A clean end that never recorded a delivery is dead-silent, same as absence
+  // — presence in the list is not proof of life.
   expect(r.code).toBe(5);
   expect(r.lines).toEqual([
     "DEAD-SILENT embark branch b worktree w — the session ended without recording. Inspect the branch read-only (git log) and re-dispatch it to CONTINUE from what is there, or escalate: never re-dispatch blind",

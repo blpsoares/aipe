@@ -74,15 +74,16 @@ This repository runs a two-branch flow, mirrored from `agentistics`:
   precedent — the coordinator held back one commit's promotion to bundle it
   with two other specialists' work into one release with actual content,
   instead of three releases in a row.
-- **Branch protection on `main` is PENDING.** As of this writing, `main`
-  still accepts a direct push from anyone with write access — there is no
-  enforced requirement yet that a change go through a reviewed, green-CI PR.
-  Once enabled, `main` will require an open PR with the `ci.yml` check
-  passing before a merge is allowed, bypassed only for the release
-  workflow's own version-bump commit (which pushes directly to `main`,
-  after the promotion PR itself was already gated — see `RELEASING.md`).
-  Until then, treat "PR + green CI to touch `main`" as the convention it
-  always was, not yet a rule the repository enforces for you.
+- **Branch protection on `main` is active.** `main` is protected by a
+  repository ruleset (**"Require PR + green CI on main"**): every change must
+  arrive through a pull request with the `check` status (`ci.yml`) green, and
+  branch deletion and non-fast-forward pushes are blocked. A direct push to
+  `main` is rejected outright (`GH013: Changes must be made through a pull
+  request`). This gates the promotion PR from `dev`. The release workflow works
+  *with* the ruleset rather than around it: it **never writes to `main`** — the
+  version bump is committed on `dev`, and the `release` job only tags the
+  already-merged commit and publishes, so no special exception to the ruleset
+  is needed. See `RELEASING.md` for the full account.
 
 ## Sending a PR
 
@@ -134,8 +135,9 @@ This repository runs a two-branch flow, mirrored from `agentistics`:
 7. **Don't touch the version.** It has a single source of truth in
    `.claude-plugin/plugin.json`, mirrored into four other files by
    `scripts/bump-version.ts`; `bun run version:check` is what detects drift.
-   Version bumps happen automatically on merge to `main` — see `RELEASING.md`
-   — never by hand in a contribution.
+   Version bumps happen automatically — the number is computed and committed
+   on `dev`, then published when `dev` is promoted to `main` (see
+   `RELEASING.md`) — never by hand in a contribution.
 
 ## Scope notes
 

@@ -5,6 +5,7 @@ import { DEFAULT_STATUS_PREF } from "../types";
 import type { JourneyLedger } from "../../journey/types";
 import type { PersonaRegistryEntry } from "../../hire-specialists/types";
 import type { ModelPolicy } from "../../model/types";
+import type { RepoReleaseState } from "../../release/types";
 
 const policy: ModelPolicy = { default: "standard", authorizationTiers: ["frontier"], reasoningNotifyMaxDispatches: 8 };
 const roster: PersonaRegistryEntry[] = [
@@ -13,7 +14,7 @@ const roster: PersonaRegistryEntry[] = [
 ];
 
 function reliableLive(ids: string[]): LiveSessions {
-  return { source: "agentop", reliable: true, ids: new Set(ids) };
+  return { source: "agentop", reliable: true, sessions: new Map(ids.map((id) => [id, "alive"])) };
 }
 
 const base = {
@@ -24,6 +25,7 @@ const base = {
   policy,
   pref: DEFAULT_STATUS_PREF,
   elision: null,
+  releaseStates: new Map<string, RepoReleaseState>(),
 };
 
 test("a unit carries persona role, fqid, branch, pr and ledger status (item 2)", () => {
@@ -127,7 +129,7 @@ test("session liveness: alive vs silent vs unknown, never guessed (item 5)", () 
   expect(alive.units[0]!.liveness).toBe("running");
   const silent = assemble({ ...base, ledgers: [mk("j2", "s-2")], live: reliableLive(["other"]) });
   expect(silent.units[0]!.liveness).toBe("dead-silent");
-  const unknown = assemble({ ...base, ledgers: [mk("j3", "s-3")], live: { source: "agentop", reliable: false, ids: new Set() } });
+  const unknown = assemble({ ...base, ledgers: [mk("j3", "s-3")], live: { source: "agentop", reliable: false, sessions: new Map() } });
   expect(unknown.units[0]!.liveness).toBe("unknown");
 });
 
@@ -191,7 +193,7 @@ test("liveness note is honest when agentop is absent but sessions exist (item 6)
   const ledgers: JourneyLedger[] = [
     { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched", mode: "session", sessionId: "s" }] },
   ];
-  const report = assemble({ ...base, ledgers, live: { source: "none", reliable: false, ids: new Set() } });
+  const report = assemble({ ...base, ledgers, live: { source: "none", reliable: false, sessions: new Map() } });
   expect(report.units[0]!.liveness).toBe("unknown");
   expect(report.liveness.note).toContain("agentop not installed");
 });
@@ -230,7 +232,7 @@ test("when liveness is UNRELIABLE, a dispatched session is NOT declared finished
   const ledgers: JourneyLedger[] = [
     { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched", mode: "session", sessionId: "s" }] },
   ];
-  const report = assemble({ ...base, ledgers, live: { source: "agentop", reliable: false, ids: new Set() } });
+  const report = assemble({ ...base, ledgers, live: { source: "agentop", reliable: false, sessions: new Map() } });
   expect(report.waiting.some((w) => w.kind === "finished-unprocessed")).toBe(false);
 });
 

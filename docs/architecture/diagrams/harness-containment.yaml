@@ -1,0 +1,281 @@
+# Diagram spec — NOT rendered here. An external pipeline renders EN + PT from
+# this single source. Every node carries `evidence: file:line`.
+id: harness-containment
+type: graph
+argument:
+  en: >-
+    Session-mode dispatch is non-interactive by construction, so a harness is
+    eligible only if a block-before-execute hook can be TRUSTED with no human
+    present. At RUNTIME that question is binary — containmentHook() is null or it
+    is not — and only the four adapter-backed harnesses ever reach dispatch. But
+    the product records a WIDER knowledge in a three-state ledger over the ten
+    harnesses agentop can host: containable-proven, non-containable-proven, and
+    unestablished. The third state exists because "no adapter yet" and "cannot be
+    contained without a human" had collapsed into one misleading "coming soon" —
+    the exact signal the PE flagged for Antigravity. The binding refusal is still
+    re-run at the moment a session actually starts, not just as advice.
+  pt: >-
+    Dispatch em modo sessão é não-interativo por construção, então um harness só
+    é elegível se um hook block-before-execute puder ser CONFIÁVEL sem humano
+    presente. No RUNTIME essa pergunta é binária — containmentHook() é null ou
+    não é — e só os quatro harnesses com adapter chegam ao dispatch. Mas o
+    produto registra um conhecimento MAIS AMPLO num ledger de três estados sobre
+    os dez harnesses que o agentop pode hospedar: containable-proven,
+    non-containable-proven e unestablished. O terceiro estado existe porque "sem
+    adapter ainda" e "não pode ser contido sem humano" haviam colapsado num único
+    "coming soon" enganoso — o exato sinal que o PE sinalizou para o Antigravity.
+    A recusa vinculante ainda é reexecutada no instante em que uma sessão de fato
+    começa, não só como conselho.
+nodes:
+  - id: rule
+    label: { en: "containmentHook() null ⇒ not eligible", pt: "containmentHook() null ⇒ não elegível" }
+    kind: structure
+    note:
+      en: >-
+        The whole eligibility rule in one line: a harness whose adapter returns a
+        null containment hook cannot be governed, so AIPe never starts a session
+        it cannot contain. isContainable is exactly containmentHook() !== null.
+      pt: >-
+        A regra de elegibilidade inteira numa linha: um harness cujo adapter
+        devolve hook de contenção null não pode ser governado, então o AIPe nunca
+        inicia uma sessão que não pode conter. isContainable é exatamente
+        containmentHook() !== null.
+    evidence: "src/harness/types.ts:155"
+  - id: agentop-null
+    label: { en: "agentopHarness null ⇒ no runner identity", pt: "agentopHarness null ⇒ sem identidade de runner" }
+    kind: structure
+    note:
+      en: >-
+        A second, independent path to ineligibility: if agentop has no name for
+        this harness, there is nothing to address on the command line — the
+        caller MUST treat null as "cannot session-dispatch" and never let it
+        reach an argv.
+      pt: >-
+        Um segundo caminho, independente, para inelegibilidade: se o agentop não
+        tem nome para este harness, não há o que endereçar na linha de comando —
+        o chamador DEVE tratar null como "não pode dispatch em sessão" e nunca
+        deixar chegar num argv.
+    evidence: "src/harness/types.ts:61"
+  - id: ledger
+    label: { en: "Containment ledger — three states, ten harnesses", pt: "Ledger de contenção — três estados, dez harnesses" }
+    kind: structure
+    note:
+      en: >-
+        Beyond the binary runtime rule, aipe records for EVERY harness agentop
+        can host whether a reliable non-interactive interception hook exists at
+        all. The answer is kept in THREE states, not two — containable-proven,
+        non-containable-proven, unestablished — as a data ledger the rest of aipe
+        reads (containmentFor / harnessesInState). It does NOT change the dispatch
+        union or the eligibility rule; the four adapter-backed rows are locked to
+        isContainable(getAdapter(id)) by compat.test.ts, so this file cannot drift
+        from code behavior. Every proven line cites a PRIMARY source (the tool's
+        own docs) with the date it was read.
+      pt: >-
+        Além da regra binária de runtime, o aipe registra, para CADA harness que
+        o agentop pode hospedar, se existe algum hook de interceptação
+        não-interativo confiável. A resposta é mantida em TRÊS estados, não dois —
+        containable-proven, non-containable-proven, unestablished — como um ledger
+        de dados que o resto do aipe lê (containmentFor / harnessesInState). NÃO
+        muda a união de dispatch nem a regra de elegibilidade; as quatro linhas
+        com adapter são travadas em isContainable(getAdapter(id)) pelo
+        compat.test.ts, então este arquivo não pode derivar do comportamento do
+        código. Toda linha "proven" cita uma fonte PRIMÁRIA (a doc do próprio
+        tool) com a data em que foi lida.
+    evidence: "src/harness/compat.ts:12"
+  - id: states-partition
+    label: { en: "6 containable-proven · 3 non-containable-proven · 1 unestablished", pt: "6 containable-proven · 3 non-containable-proven · 1 unestablished" }
+    kind: structure
+    note:
+      en: >-
+        Current membership, computed from the ledger by harnessesInState — data,
+        not hardcoded, so it moves as harnesses are added or a verdict changes.
+        As read on 2026-08-30: containable-proven = claude-code, gemini,
+        factory-droid, kimi-code, opencode, pi; non-containable-proven = codex,
+        copilot, cursor; unestablished = antigravity. Only four (claude-code,
+        gemini, codex, copilot) have a live adapter wired into dispatch — the rest
+        are documented verdicts with primary-source quotes, ledger-only for now.
+      pt: >-
+        Membership atual, computada do ledger por harnessesInState — dado, não
+        hardcoded, então se move conforme harnesses são adicionados ou um veredito
+        muda. Como lido em 2026-08-30: containable-proven = claude-code, gemini,
+        factory-droid, kimi-code, opencode, pi; non-containable-proven = codex,
+        copilot, cursor; unestablished = antigravity. Só quatro (claude-code,
+        gemini, codex, copilot) têm adapter vivo ligado ao dispatch — o resto são
+        veredictos documentados com citações de fonte primária, por ora só no
+        ledger.
+    evidence: "src/harness/compat.ts:70"
+  - id: unestablished
+    label: { en: "unestablished — the state the old vocabulary lacked", pt: "unestablished — o estado que faltava ao vocabulário antigo" }
+    kind: structure
+    note:
+      en: >-
+        Antigravity is its only member today (membership is data and can change).
+        Its docs show a config-file PreToolUse decision:"deny" hard-block with NO
+        documented trust gate — a genuine adapter candidate — but do NOT confirm
+        the hooks file loads under an unattended headless run. So it is neither
+        proven-containable nor proven-non-containable. This is the answer to the
+        PE's flag: not a "coming soon" lumped in with Codex/Copilot/Cursor, but an
+        honestly-open question the primary docs do not yet resolve.
+      pt: >-
+        Antigravity é seu único membro hoje (membership é dado e pode mudar). Sua
+        doc mostra um hard-block PreToolUse decision:"deny" em arquivo de config
+        SEM gate de confiança documentado — um candidato genuíno a adapter — mas
+        NÃO confirma que o arquivo de hooks carrega num run headless sem humano.
+        Então não é nem contível-provado nem não-contível-provado. Esta é a
+        resposta à sinalização do PE: não um "coming soon" jogado junto com
+        Codex/Copilot/Cursor, mas uma questão honestamente em aberto que a doc
+        primária ainda não resolve.
+    evidence: "src/harness/compat.ts:35"
+  - id: claude-code
+    label: { en: "Claude Code — containable", pt: "Claude Code — contível" }
+    kind: deterministic
+    note:
+      en: >-
+        Returns a real hook: a PreToolUse Bash entry in .claude/settings.json that
+        runs `aipe session guard`. Eligible for session mode.
+      pt: >-
+        Devolve um hook real: uma entrada PreToolUse Bash em
+        .claude/settings.json que roda `aipe session guard`. Elegível para modo
+        sessão.
+    evidence: "src/harness/claude-code.ts:143"
+  - id: gemini
+    label: { en: "Gemini — containable (mirror of Copilot)", pt: "Gemini — contível (espelho do Copilot)" }
+    kind: deterministic
+    note:
+      en: >-
+        Returns a real BeforeTool hook in .gemini/settings.json. It is the mirror
+        case that proves the rule is about mechanism, not vendor: Gemini's folder
+        trust is DISABLED by default, so a fresh worktree is unaffected. Had it
+        been default-on, this adapter's answer would flip to null — exactly
+        Copilot's situation.
+      pt: >-
+        Devolve um hook BeforeTool real em .gemini/settings.json. É o caso-espelho
+        que prova que a regra é sobre mecanismo, não fornecedor: o folder trust do
+        Gemini é DESABILITADO por padrão, então uma worktree nova não é afetada.
+        Fosse default-on, a resposta deste adapter viraria null — exatamente a
+        situação do Copilot.
+    evidence: "src/harness/gemini.ts:82"
+  - id: codex-written
+    label: { en: "Codex — hook is written…", pt: "Codex — o hook é escrito…" }
+    kind: structure
+    note:
+      en: >-
+        installIntegration DOES write a well-formed PreToolUse hook to
+        .codex/hooks.json. The hook exists on disk.
+      pt: >-
+        installIntegration DE FATO escreve um hook PreToolUse bem-formado em
+        .codex/hooks.json. O hook existe em disco.
+    evidence: "src/harness/codex.ts:178"
+  - id: codex-untrusted
+    label: { en: "…but never TRUSTED ⇒ null on purpose", pt: "…mas nunca CONFIADO ⇒ null de propósito" }
+    kind: denied
+    note:
+      en: >-
+        Codex only loads a project's non-managed hook after a human interactively
+        TRUSTS it via the `/hooks` CLI — trust is per-hash, with no config-file
+        way to self-declare it. Non-interactive dispatch cannot clear that gate,
+        so containmentHook() returns null deliberately: silently wrong (a hook
+        that blocks nothing) is worse than ineligible.
+      pt: >-
+        O Codex só carrega o hook não-gerenciado de um projeto depois que um
+        humano o CONFIA interativamente via `/hooks` — a confiança é por hash, sem
+        jeito de autodeclarar em arquivo de config. Dispatch não-interativo não
+        vence esse gate, então containmentHook() devolve null de propósito:
+        silenciosamente errado (um hook que não bloqueia nada) é pior que
+        inelegível.
+    evidence: "src/harness/codex.ts:210"
+  - id: copilot-trust
+    label: { en: "Copilot — directory trust default-ON", pt: "Copilot — directory trust default-ON" }
+    kind: denied
+    note:
+      en: >-
+        A DIFFERENT mechanism, same outcome: Copilot CLI asks the user to confirm
+        trust for any directory it has not seen before, default-ON. A worktree is
+        by construction new — absent from the CLI's trust record — so it always
+        hits the prompt. The global trustedFolders escape would outlive the
+        worktree and its effect on hook-loading is unconfirmed, so containmentHook
+        () returns null.
+      pt: >-
+        Um mecanismo DIFERENTE, mesmo desfecho: o Copilot CLI pede ao usuário
+        para confirmar confiança em qualquer diretório que ele não viu antes,
+        default-ON. Uma worktree é por construção nova — ausente do registro de
+        confiança do CLI — então sempre bate no prompt. O escape global
+        trustedFolders sobreviveria à worktree e seu efeito no carregamento de
+        hooks é não-confirmado, então containmentHook() devolve null.
+    evidence: "src/harness/copilot.ts:44"
+  - id: generic
+    label: { en: "Generic — degraded path (file-based)", pt: "Generic — caminho degradado (por arquivo)" }
+    kind: structure
+    note:
+      en: >-
+        The additive fallback for any AGENTS.md-style harness with no native
+        adapter. It cannot block-before-execute, so it is never session-eligible;
+        it is the one adapter with agentopHarness null. Awareness ships as a
+        STATIC file (a snapshot, not recomputed per session) and personas are
+        plain markdown with no auto-load frontmatter. Use it to install content,
+        never to contain a session.
+      pt: >-
+        O fallback aditivo para qualquer harness estilo AGENTS.md sem adapter
+        nativo. Não consegue block-before-execute, então nunca é elegível a
+        sessão; é o único adapter com agentopHarness null. A awareness vai como
+        arquivo ESTÁTICO (um snapshot, não recalculado por sessão) e as personas
+        são markdown puro sem frontmatter de auto-load. Use para instalar
+        conteúdo, nunca para conter uma sessão.
+    evidence: "src/harness/generic.ts:32"
+  - id: dispatch-gate
+    label: { en: "Eligibility re-run at session start", pt: "Elegibilidade reexecutada ao iniciar sessão" }
+    kind: gate
+    note:
+      en: >-
+        `aipe dispatch validate` is only advisory and `--harness` on `journey
+        record` is unvalidated, so a ledger unit can name a non-containable
+        harness. The binding refusal is re-run in dispatchCommand, on the path
+        that actually starts sessions: a codex/copilot unit is refused with a
+        non-zero exit BEFORE any hook is written or any session runs.
+      pt: >-
+        `aipe dispatch validate` é só consultivo e `--harness` no `journey record`
+        é não-validado, então uma unidade do ledger pode nomear um harness
+        não-contível. A recusa vinculante é reexecutada em dispatchCommand, no
+        caminho que de fato inicia sessões: uma unidade codex/copilot é recusada
+        com saída não-zero ANTES de qualquer hook ser escrito ou sessão rodar.
+    evidence: "src/session/cli.ts:466"
+edges:
+  - from: rule
+    to: ledger
+    label: { en: "binary at runtime → recorded wider", pt: "binário no runtime → registrado mais amplo" }
+  - from: ledger
+    to: states-partition
+    label: { en: "three states", pt: "três estados" }
+  - from: states-partition
+    to: unestablished
+    label: { en: "the novel third", pt: "o terceiro, novo" }
+  - from: rule
+    to: claude-code
+    label: { en: "real hook → eligible", pt: "hook real → elegível" }
+  - from: rule
+    to: gemini
+    label: { en: "real hook → eligible", pt: "hook real → elegível" }
+  - from: rule
+    to: codex-written
+    label: { en: "codex path", pt: "caminho codex" }
+  - from: codex-written
+    to: codex-untrusted
+    label: { en: "written ≠ trusted", pt: "escrito ≠ confiado" }
+  - from: rule
+    to: copilot-trust
+    label: { en: "worktree always new", pt: "worktree sempre nova" }
+  - from: agentop-null
+    to: generic
+    label: { en: "no runner name", pt: "sem nome de runner" }
+  - from: rule
+    to: generic
+    label: { en: "no block-before-execute", pt: "sem block-before-execute" }
+  - from: codex-untrusted
+    to: dispatch-gate
+    label: { en: "refused at start", pt: "recusado no início" }
+  - from: copilot-trust
+    to: dispatch-gate
+    label: { en: "refused at start", pt: "recusado no início" }
+  - from: gemini
+    to: dispatch-gate
+    label: { en: "mirror: default-off trust passes", pt: "espelho: trust default-off passa" }

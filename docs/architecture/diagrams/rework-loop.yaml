@@ -1,0 +1,127 @@
+# Diagram spec — NOT rendered here. An external pipeline renders EN + PT from
+# this single source. Every node carries `evidence: file:line`.
+id: rework-loop
+type: state-machine
+argument:
+  en: >-
+    The fix loop is the most-travelled path in the system, and every step of it
+    is adjudicated: QA rejection is recorded as `failed` WITH evidence of the
+    defect, reopening the unit requires a `--reason`, and the stale session id is
+    forced out so re-dispatch always starts a NEW session — a rejected delivery
+    is never silently re-blessed by reusing the one that produced it.
+  pt: >-
+    O loop de conserto é o caminho mais percorrido do sistema, e cada passo é
+    adjudicado: a reprovação do QA é registrada como `failed` COM evidência do
+    defeito, reabrir a unidade exige `--reason`, e o id de sessão obsoleto é
+    forçado para fora para que o re-dispatch sempre inicie uma sessão NOVA — uma
+    entrega reprovada nunca é reabençoada em silêncio reusando a que a produziu.
+nodes:
+  - id: delivered
+    label: { en: "delivered", pt: "delivered" }
+    kind: deterministic
+    note:
+      en: "The dev reported done with attached evidence, and (if a PR is named) green CI."
+      pt: "O dev reportou concluído com evidência anexada e (se nomeia PR) CI verde."
+    evidence: "src/journey/ledger.ts:296"
+  - id: qa-verdict
+    label: { en: "QA gate — verdict", pt: "Gate de QA — veredito" }
+    kind: gate
+    note:
+      en: >-
+        An independent QA persona reviews the diff against the acceptance
+        criteria, not the author's report. Two outcomes: pass → verified, reject →
+        failed. QA must record under its OWN --task or the CLI refuses the write
+        (it would collide with the dev's record).
+      pt: >-
+        Uma persona de QA independente revisa o diff contra os critérios de aceite,
+        não o relato do autor. Dois desfechos: aprova → verified, reprova →
+        failed. O QA deve registrar sob sua PRÓPRIA --task ou o CLI recusa a
+        escrita (colidiria com o registro do dev).
+    evidence: "skills/review-delivery/SKILL.md:10"
+  - id: failed
+    label: { en: "failed (with evidence)", pt: "failed (com evidência)" }
+    kind: judgment
+    note:
+      en: >-
+        The rejection is recorded as `failed` and carries evidence of the defect —
+        not a bare verdict. In the recorded scenario one PR was rejected three
+        times, each round finding a defect the previous did not.
+      pt: >-
+        A reprovação é registrada como `failed` e carrega evidência do defeito —
+        não um veredito nu. No cenário registrado uma PR foi reprovada três vezes,
+        cada rodada achando um defeito que a anterior não achou.
+    evidence: "src/journey/types.ts:7"
+  - id: redispatch-reason
+    label: { en: "re-dispatch requires --reason", pt: "re-dispatch exige --reason" }
+    kind: deterministic
+    note:
+      en: >-
+        Moving a delivered/verified unit back to `dispatched` is refused without a
+        --reason, so reopening finished work is always deliberate and audited. The
+        guard keys on the UNIT (repo+package+task), so a fix can reuse or swap the
+        specialist and the invariant still holds.
+      pt: >-
+        Mover uma unidade delivered/verified de volta a `dispatched` é recusado
+        sem --reason, então reabrir trabalho concluído é sempre deliberado e
+        auditado. A guarda chaveia na UNIDADE (repo+package+task), então um
+        conserto pode reusar ou trocar o especialista e a invariante se mantém.
+    evidence: "src/journey/ledger.ts:318"
+  - id: new-session
+    label: { en: "stale sessionId forced out → NEW session", pt: "sessionId obsoleto forçado para fora → sessão NOVA" }
+    kind: deterministic
+    note:
+      en: >-
+        On reopening, the sticky sessionId is explicitly cleared (present-but-
+        undefined ⇒ "clear", not "inherit"). Without this the re-dispatch would
+        silently no-op: the pending filter only picks up a session unit that is
+        `dispatched` and has NO sessionId, so a unit still carrying its OLD id
+        would never start a new session.
+      pt: >-
+        Ao reabrir, o sessionId sticky é explicitamente limpo (presente-mas-
+        undefined ⇒ "limpa", não "herda"). Sem isso o re-dispatch faria no-op
+        silencioso: o filtro de pendentes só pega uma unidade de sessão que esteja
+        `dispatched` e SEM sessionId, então uma unidade ainda carregando o id
+        ANTIGO nunca iniciaria uma sessão nova.
+    evidence: "src/journey/ledger.ts:410"
+  - id: dispatched
+    label: { en: "dispatched (fresh)", pt: "dispatched (nova)" }
+    kind: deterministic
+    note:
+      en: >-
+        A new specialist session takes the fix task. The pr/evidence of the prior
+        try are already dropped (not sticky), so the re-gate judges the new work,
+        not a leftover claim.
+      pt: >-
+        Uma nova sessão de especialista assume a task de conserto. O pr/evidence da
+        tentativa anterior já foram descartados (não são sticky), então o re-gate
+        julga o trabalho novo, não um claim remanescente.
+    evidence: "src/journey/ledger.ts:400"
+  - id: verified
+    label: { en: "verified (re-gate passed)", pt: "verified (re-gate aprovou)" }
+    kind: judgment
+    note:
+      en: "The fixed delivery passes QA on re-gate and is cleared for the PE."
+      pt: "A entrega consertada passa no QA no re-gate e é liberada para o PE."
+    evidence: "src/journey/types.ts:12"
+edges:
+  - from: delivered
+    to: qa-verdict
+    label: { en: "QA reviews the diff", pt: "QA revisa o diff" }
+  - from: qa-verdict
+    to: failed
+    label: { en: "reject (--status failed + evidence)", pt: "reprova (--status failed + evidência)" }
+  - from: qa-verdict
+    to: verified
+    label: { en: "pass", pt: "aprova" }
+  - from: failed
+    to: redispatch-reason
+    label: { en: "fix loop", pt: "loop de conserto" }
+  - from: redispatch-reason
+    to: new-session
+    label: { en: "reopen unit", pt: "reabre unidade" }
+  - from: new-session
+    to: dispatched
+    label: { en: "pending filter picks it up", pt: "filtro de pendentes a pega" }
+  - from: dispatched
+    to: delivered
+    label: { en: "fix delivered → re-gate", pt: "conserto entregue → re-gate" }
