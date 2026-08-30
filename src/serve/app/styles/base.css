@@ -27,7 +27,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 /* Sidebar */
 .sidebar { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; padding: 14px 12px; min-width: 0; }
 .brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 14px; }
-.brand .mark { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(140deg, var(--accent-2), var(--accent)); display: grid; place-items: center; color: #04120c; font-family: var(--mono); font-weight: 800; font-size: 16px; flex: 0 0 auto; box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
+.brand .mark { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(140deg, var(--accent-2), var(--accent)); display: grid; place-items: center; color: var(--on-brand); font-family: var(--mono); font-weight: 800; font-size: 16px; flex: 0 0 auto; box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
 .brand .name { font-weight: 750; letter-spacing: -.02em; font-size: 15px; white-space: nowrap; }
 .brand .name small { display: block; font-weight: 500; font-size: 11px; color: var(--ink-3); letter-spacing: 0; }
 /* Collapsed: hide the LABELS only. `span:not(.ic)` keeps the icon span (.ic) —
@@ -62,7 +62,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 .langseg { display: inline-flex; padding: 3px; gap: 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
 .langseg button { padding: 5px 9px; border-radius: 7px; font-size: 11px; font-weight: 700; color: var(--ink-3); font-family: var(--mono); letter-spacing: .04em; transition: color .14s, background .14s; }
 .langseg button:hover { color: var(--ink-2); }
-.langseg button.on { color: #04120c; background: linear-gradient(140deg, var(--accent-2), var(--accent)); }
+.langseg button.on { color: var(--on-brand); background: linear-gradient(140deg, var(--accent-2), var(--accent)); }
 /* settings */
 .set-h { font-weight: 720; font-size: 15px; letter-spacing: -.01em; }
 .set-sub-h { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 20px 0 4px; }
@@ -79,8 +79,14 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 /* org chart (SVG tree) */
 /* user-select:none so dragging over the SVG <text> labels pans instead of
    selecting text; the click that opens a specialist's CV still fires. */
-.orgwrap { overflow-x: auto; overflow-y: hidden; padding: 10px 6px; user-select: none; -webkit-user-select: none; -moz-user-select: none; }
+/* The org viewport is BOUNDED (width from its constrained parent, height a
+   viewport fraction) and CLIPS — this is what lets the fit (runtime/org.ts) scale
+   the SVG down to fit on load instead of letting the 2700px-wide graph overflow
+   and scroll. The chain above must not grow to the SVG's intrinsic width, so the
+   grid item (.org-desktop) is min-width:0. */
+.orgwrap { position: relative; width: 100%; max-width: 100%; height: min(66vh, 600px); overflow: hidden; padding: 10px 6px; user-select: none; -webkit-user-select: none; -moz-user-select: none; }
 .orgwrap svg { display: block; }
+.org-desktop { min-width: 0; overflow: hidden; }
 /* org toolbar: search + zoom/reset/fullscreen controls */
 .org-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .org-search { display: inline-flex; align-items: center; gap: 8px; flex: 1 1 220px; min-width: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); color: var(--ink-3); transition: border-color .15s; }
@@ -170,7 +176,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 /* Buttons */
 .btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 10px; font-weight: 650; font-size: 13px; border: 1px solid transparent; transition: filter .15s, background .15s, border-color .15s, transform .1s; }
 .btn:active { transform: translateY(1px); }
-.btn-primary { background: linear-gradient(140deg, var(--accent-2), var(--accent)); color: #04120c; box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent); }
+.btn-primary { background: linear-gradient(140deg, var(--accent-2), var(--accent)); color: var(--on-brand); box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent); }
 .btn-primary:hover { filter: brightness(1.05); }
 .btn-ghost { background: var(--panel-2); border-color: var(--line); color: var(--ink); }
 .btn-ghost:hover { border-color: var(--line-2); }
@@ -179,11 +185,19 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 650; }
 .chip .d { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .chip .sic { width: 13px; height: 13px; flex: 0 0 auto; }
-.chip.active, .chip.dispatched { color: var(--sky); background: var(--sky-w); } .chip.active .sic, .chip.dispatched .sic { animation: pulse 2.4s infinite; }
-.chip.delivered, .chip.merged, .chip.verified { color: var(--accent-ink); background: var(--accent-wash); }
-.chip.escalated, .chip.escalate { color: var(--amber); background: var(--amber-w); }
-.chip.failed { color: var(--rose); background: color-mix(in srgb, var(--rose) 13%, transparent); }
-.chip.available, .chip.idle, .chip.removed { color: var(--slate); background: var(--slate-w); }
+/* State chips paint through the per-state --st-* tokens (SDD §9): one token per
+   ledger state, so delivered / verified / merged read as DISTINCT hues (the old
+   mapping collapsed all three to the accent). */
+.chip.dispatched { color: rgb(var(--st-dispatched)); background: rgb(var(--st-dispatched) / .13); }
+.chip.active     { color: rgb(var(--st-running));    background: rgb(var(--st-running) / .13); }
+.chip.delivered  { color: rgb(var(--st-delivered));  background: rgb(var(--st-delivered) / .13); }
+.chip.verified   { color: rgb(var(--st-verified));   background: rgb(var(--st-verified) / .14); }
+.chip.merged     { color: rgb(var(--st-merged));     background: rgb(var(--st-merged) / .13); }
+.chip.escalated, .chip.escalate, .chip.blocked { color: rgb(var(--st-escalated)); background: rgb(var(--st-escalated) / .13); }
+.chip.redirected { color: rgb(var(--st-redirected)); background: rgb(var(--st-redirected) / .13); }
+.chip.failed     { color: rgb(var(--st-failed));     background: rgb(var(--st-failed) / .13); }
+.chip.available, .chip.idle, .chip.removed { color: rgb(var(--st-removed)); background: rgb(var(--st-removed) / .13); }
+.chip.active .sic, .chip.dispatched .sic { animation: pulse 2.4s infinite; }
 
 /* Stage guide (legend) — the plain-language glossary of pipeline stages */
 .legend { padding: 4px 6px 6px; }
@@ -416,7 +430,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
   .hero { flex-wrap: wrap; } .hero .cta { margin-left: 0; width: 100%; } .hero .cta .btn { width: 100%; justify-content: center; }
   /* bottom tab bar — the primary mobile nav */
   .tabbar {
-    display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 46;
     background: color-mix(in srgb, var(--panel) 86%, transparent); backdrop-filter: blur(18px) saturate(1.4);
     border-top: 1px solid var(--line); padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
@@ -430,3 +444,197 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
   .tabbar .tbadge.crit { background: var(--rose); animation: pulse 2s infinite; }
 }
 @media (min-width: 861px) { #hamb { display: none; } }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Redesign (j-20260827-s9) — Agora / Equipe / Histórico / Glossário.
+   One visual system: tokens only, both themes, no hard-coded color. Every wide
+   block (the board, the jargon table) collapses rather than scrolls the page.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Section + zone scaffolding ------------------------------------------------ */
+.sec-h { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; color: var(--ink); }
+.zone { display: grid; gap: 12px; min-width: 0; }
+.zone-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.zone-title { margin: 0; font-size: 15px; font-weight: 650; color: var(--ink); }
+.zone-sub { color: var(--ink-3); font-size: 12.5px; line-height: 1.45; }
+.zone-n { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--ink-2); background: var(--panel-3); border-radius: 999px; padding: 1px 10px; flex: none; }
+.zone-cards { display: grid; gap: 10px; min-width: 0; }
+.zone-empty { padding: 14px; border: 1px dashed var(--line-2); border-radius: var(--radius); text-align: center; }
+
+/* Zone 1 — "Needs you": loud when it has cards, calm when empty ------------- */
+.zone-needs .zone-n { color: #000; background: var(--amber); }
+.allclear { display: flex; align-items: center; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--accent-wash); }
+.allclear-orb { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--accent-ink); flex: none; }
+.allclear b { font-size: 14.5px; }
+.allclear p { margin: 3px 0 0; }
+
+/* Zone 2 — "Happening now" -------------------------------------------------- */
+.happening-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.happening-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); cursor: pointer; min-width: 0; transition: border-color .15s, background .15s; }
+.happening-row:hover { border-color: var(--line-2); background: var(--panel-2); }
+.happening-name { font-weight: 600; flex: none; }
+.happening-task, .happening-flag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* Zone 3 — the collapsible whole board ------------------------------------- */
+.board-toggle { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); cursor: pointer; }
+.board-toggle:hover { border-color: var(--line-2); }
+.board-toggle .zone-sub { margin-left: auto; }
+.board-wrap { display: grid; gap: 14px; margin-top: 12px; min-width: 0; }
+.board-lead { margin: 0; }
+.observations { display: grid; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--line-2); }
+.obs-h { font-size: 13.5px; }
+
+/* The four-column board ---------------------------------------------------- */
+.board4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; min-width: 0; }
+.bcol { display: flex; flex-direction: column; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.bcol-head { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.bcol-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 13px; }
+/* Column dots use the state ramp (SDD §9): each column takes the --st-* of the
+   state it holds, so the board legend and the chips agree by construction. */
+.bcol-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: rgb(var(--st-removed)); }
+.bcol-working   .bcol-dot { background: rgb(var(--st-running)); }
+.bcol-needs-you .bcol-dot { background: rgb(var(--st-escalated)); }
+.bcol-in-review .bcol-dot { background: rgb(var(--st-delivered)); }
+.bcol-ready     .bcol-dot { background: rgb(var(--st-verified)); }
+.bcol-integrated .bcol-dot { background: rgb(var(--st-merged)); }
+.bcol-count { margin-left: auto; font-family: var(--mono); color: var(--ink-3); background: var(--panel-3); border-radius: 999px; padding: 0 8px; }
+.bcol-sub { margin-top: 5px; color: var(--ink-3); font-size: 11.5px; line-height: 1.4; }
+.bcol-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+.bcol-empty { padding: 8px 2px; }
+
+/* A board card — task/persona/branch/PR/state together --------------------- */
+.bcard { display: grid; gap: 6px; width: 100%; text-align: left; padding: 10px; border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: 10px; background: var(--panel); cursor: pointer; min-width: 0; transition: border-color .15s, box-shadow .15s; }
+.bcard:hover { border-color: var(--line-2); box-shadow: var(--shadow-1); }
+.bcol-needs-you .bcard.actor-you { border-left-color: var(--amber); background: var(--amber-w); }
+.bcol-needs-you .bcard.actor-dev, .bcol-needs-you .bcard.actor-coord { opacity: .82; }
+.bc-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bc-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.bc-chip { margin-left: auto; color: var(--ink-2); flex: none; display: inline-flex; }
+.bc-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); min-width: 0; }
+.bc-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.bc-branch, .bc-actor { font-size: 11px; color: var(--ink-3); min-width: 0; }
+.bc-branch code { font-family: var(--mono); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%; vertical-align: bottom; }
+.bc-k { color: var(--ink-3); }
+.bc-actor b { color: var(--ink-2); }
+.bc-note { font-size: 11px; display: flex; align-items: center; gap: 5px; }
+.bc-note.you { color: var(--amber); font-weight: 600; }
+.bc-note.warn { color: var(--rose); }
+.bc-note.muted { color: var(--ink-3); font-style: italic; }
+.bc-pr { font-size: 11.5px; font-weight: 600; }
+
+/* Equipe — sections + toolbox rows ----------------------------------------- */
+.team-sec { min-width: 0; }
+.tb-row { padding: 10px 0; border-top: 1px solid var(--line); gap: 10px; }
+.tb-row:first-of-type { border-top: 0; }
+
+/* Histórico — the honest metrics placeholder ------------------------------- */
+.pill-pending { font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--amber); background: var(--amber-w); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); border-radius: 999px; padding: 3px 10px; flex: none; }
+.metric-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.metric-tile { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); text-align: center; }
+.metric-tile.is-pending { border-style: dashed; }
+.mt-n { font-size: 26px; font-weight: 750; }
+.mt-n.muted { color: var(--ink-3); }
+.mt-k { margin-top: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.hist-metrics-note { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; }
+
+/* Glossário — jargon translation table ------------------------------------- */
+.jargon-tbl { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.jargon-row { display: grid; grid-template-columns: minmax(120px, 0.9fr) 2fr; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); min-width: 0; }
+.jargon-row:first-child { border-top: 0; }
+.jargon-head { background: var(--panel-2); font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.jargon-term { font-weight: 650; color: var(--accent-ink); }
+.jargon-plain { color: var(--ink-2); }
+
+/* Responsive: the board and tables collapse instead of scrolling the page --- */
+@media (max-width: 1100px) { .board4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .board4 { grid-template-columns: 1fr; }
+  .jargon-row { grid-template-columns: 1fr; gap: 3px; }
+  .jargon-head { display: none; }
+  .zone-h { flex-wrap: wrap; }
+}
+
+/* ── Atividade (j-20260829-dp) — the configurable board with its own home ─────── */
+/* The control bar: build-your-own-board (item 4) — the simple that works. */
+.actbar { padding: 12px 14px; min-width: 0; }
+.actbar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.actbar-spacer { flex: 1 1 auto; }
+/* wrap the segmented group under its label at narrow widths so the controls
+   never force the board section wider than the viewport (320px, no overflow). */
+.actbar-group { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.actbar-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; user-select: none; }
+.actbar-toggle input { accent-color: var(--accent); }
+.actbar-filters.is-on { border-color: var(--accent); color: var(--accent-ink); }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 9px; overflow: hidden; }
+.seg-btn { padding: 5px 11px; font-size: 12px; font-weight: 600; background: var(--panel); color: var(--ink-2); border: none; border-left: 1px solid var(--line-2); cursor: pointer; transition: background .12s, color .12s; }
+.seg-btn:first-child { border-left: none; }
+.seg-btn.is-on { background: var(--accent); color: var(--on-brand); }
+.actbar-filters-panel { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 9px; }
+.af-row { display: flex; gap: 10px; align-items: baseline; }
+.af-k { min-width: 66px; flex: 0 0 auto; }
+.af-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.fchip { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 11.5px; font-weight: 600; background: var(--panel); color: var(--ink-2); cursor: pointer; transition: background .12s, color .12s, border-color .12s; }
+.fchip:hover { border-color: var(--accent); }
+.fchip.is-on { background: var(--accent); color: var(--on-brand); border-color: transparent; }
+
+/* The board: horizontal scroll lives INSIDE this container (never the page); each
+   column has a contained height and its own vertical scroll (item 1). */
+/* min-width:0 down the whole chain so the wide board strip scrolls WITHIN
+   .aboard (overflow-x:auto) instead of growing its grid/flex ancestors and
+   spilling into a page/view horizontal scroll — the min-width:auto trap, same
+   fix as the org viewport. Required now that the board nests inside Agora's
+   collapsible section (j-20260827-s9). */
+.aboard-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.aboard-norm { display: flex; align-items: center; gap: 6px; }
+.aboard-norm code { font-family: var(--mono); font-size: 11px; background: var(--panel-2); padding: 1px 7px; border-radius: 6px; color: var(--ink-2); }
+.aboard { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; min-width: 0; }
+.acol { flex: 0 0 296px; display: flex; flex-direction: column; min-width: 0; max-height: calc(100vh - 268px); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.acol-head { padding: 10px 12px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.acol-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 13px; }
+.acol-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acol-count { margin-left: auto; flex: 0 0 auto; font-size: 12px; color: var(--ink-2); background: var(--panel-3); padding: 0 8px; border-radius: 999px; }
+.acol-sub { font-size: 11.5px; margin-top: 3px; }
+.acol-wrap { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+.acol-body { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.acol-more { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 8px; border-top: 1px dashed var(--line-2); flex: 0 0 auto; font-size: 11px; }
+.acol-empty { padding: 18px 8px; text-align: center; }
+
+/* The card: seven fields, primary legible, envelope by-exception (SDD §8). */
+/* flex:0 0 auto is LOAD-BEARING: .acol-body is a flex column, so without it the
+   flexbox SHRINKS every card toward zero height (a long column squeezed 62 cards
+   to ~2px each — empty cards, dead scroll, clipped content) instead of letting
+   them keep their height and the column scroll. Never remove it. Guarded in
+   activity-layout.test.ts because happy-dom computes no layout, so a view test
+   cannot catch this collapse. */
+.acol-body .acard { flex: 0 0 auto; }
+.acard { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid transparent; border-radius: 10px; box-shadow: var(--shadow-1); overflow: hidden; }
+.acard.actor-you { border-left-color: rgb(var(--st-escalated)); }
+.acard.actor-dev { border-left-color: rgb(var(--st-failed)); }
+.acard.actor-coord { border-left-color: rgb(var(--st-redirected)); }
+.acard-open { width: 100%; text-align: left; background: none; border: none; padding: 10px 11px; display: flex; flex-direction: column; gap: 5px; cursor: pointer; }
+.acard-open:hover { background: var(--panel-2); }
+.ac-head { display: flex; align-items: center; gap: 7px; }
+.ac-name { font-weight: 650; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-head .chip { margin-left: auto; flex: 0 0 auto; }
+.ac-title { font-weight: 600; font-size: 12.5px; line-height: 1.3; color: var(--ink); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ac-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+.ac-journey { font-size: 10.5px; }
+.ac-env { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.ac-env-i { font-family: var(--mono); font-size: 10px; color: var(--ink-3); background: var(--panel-2); padding: 1px 6px; border-radius: 999px; display: inline-flex; align-items: center; gap: 3px; }
+.ac-env-i.is-exc { color: rgb(var(--st-escalated)); background: rgb(var(--st-escalated) / .13); font-weight: 650; }
+.ac-pending { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: rgb(var(--st-running)); font-style: italic; }
+.ac-actor { font-size: 11px; }
+.ac-actor .ac-k { color: var(--ink-3); }
+.ac-pr { display: inline-block; margin: 0 11px 9px; font-size: 11.5px; }
+
+/* The read-only "next step" command, reusing the Floor-actionable affordance. */
+.acard .ic-cmd { margin: 0 10px 9px; }
+
+.zone-link { background: none; border: none; color: var(--accent-ink); font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 0; }
+.zone-link:hover { text-decoration: underline; }
+
+@media (max-width: 720px) {
+  .acol { flex-basis: 84vw; max-height: none; }
+  .aboard { scroll-snap-type: x proximity; }
+  .acol { scroll-snap-align: start; }
+}

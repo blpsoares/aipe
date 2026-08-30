@@ -24,13 +24,10 @@ import { Icon } from "./Icon";
 
 const appRoutes = routes as Route[];
 
-// The monolith's palette (app.html:1236-1241) lists goto for EXACTLY these 6
-// views, in this order — note it excludes /toolbox and /settings, which the
-// sidebar has but the palette does not. This is a parity migration, so we pin
-// the goto list to these paths rather than deriving from all of routes.generated
-// (which would silently add "Go to Toolbox"/"Go to Settings"). We still resolve
-// each path through routes.generated to keep its label/icon in sync.
-const GOTO_PATHS = ["/overview", "/org", "/pipeline", "/team", "/activity", "/monitor"];
+// After the redesign the console has only 5 screens (3 primary + 2 footer), so
+// the palette derives its goto list straight from routes.generated, order-sorted
+// — it can no longer drift from the sidebar. Every screen is reachable here.
+const GOTO_PATHS = appRoutes.map((r) => r.path);
 
 export interface CmdItem {
   g: string;

@@ -14,6 +14,7 @@ import { useState } from "preact/hooks";
 import { decisions, observations, dispatches, pinnedDispatch, snapshot } from "../runtime/store";
 import { t, interpolate } from "../runtime/i18n";
 import { decisionAction } from "../runtime/floor";
+import { CopyCmd } from "./CopyCmd";
 import type { Dispatch } from "../runtime/store";
 import type { DecisionItem } from "../runtime/floor";
 
@@ -42,32 +43,7 @@ function wtName(p?: string): string {
   return p ? p.split("/").pop() || p : "";
 }
 
-// One-click copy of the exact command. Copying is inherently read-only — the
-// spec's explicit choice: a console that SHOWS the command carries no risk of a
-// destructive click, because it never runs anything.
-function CopyCmd({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = (e: MouseEvent) => {
-    e.stopPropagation();
-    try {
-      void navigator?.clipboard?.writeText(command);
-    } catch {
-      // clipboard unavailable — the command text is still visible to select by hand
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <div class="ic-cmd">
-      <code class="ic-cmd-text">{command}</code>
-      <button type="button" class="ic-cmd-copy" onClick={copy} aria-label={t("fa_copy")}>
-        {copied ? t("fa_copied") : t("fa_copy")}
-      </button>
-    </div>
-  );
-}
-
-function ActionRow({ item }: { item: DecisionItem }) {
+export function ActionRow({ item }: { item: DecisionItem }) {
   const d = findDispatch(item.unit, item.journey, item.specialist);
   const card = decisionAction(item, d, snapshot.value.workspaceDir);
   const on = !!d && pinnedDispatch.value === d;

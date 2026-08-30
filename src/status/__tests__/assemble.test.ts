@@ -59,6 +59,51 @@ test("a unit carries persona role, fqid, branch, pr and ledger status (item 2)",
   expect(u.hasEvidence).toBe(true);
 });
 
+// v4 (j-20260829-dp): `aipe status --json` used to DROP the envelope, so the
+// coordinator had to read the YAMLs by hand to answer the PE. UnitRow now carries
+// harness/model/tier/intensity, plus the swept-in worktree and ciBypass.
+test("a unit exposes the envelope (harness/model/tier/intensity) and the swept fields", () => {
+  const ledgers: JourneyLedger[] = [
+    {
+      id: "j1",
+      dispatches: [
+        {
+          repo: "aipe",
+          specialist: "Jesse",
+          branch: "b",
+          worktree: "/ws/aipe/.worktrees/j1-jesse",
+          status: "delivered",
+          harness: "claude-code",
+          model: "claude-opus-4-8",
+          tier: "reasoning",
+          intensity: "ultracode",
+          ciBypass: "no-checks",
+          evidence: { by: "dev", commands: ["bun test"], summary: "green" },
+        },
+      ],
+    },
+  ];
+  const u = assemble({ ...base, ledgers, live: reliableLive([]) }).units[0]!;
+  expect(u.harness).toBe("claude-code");
+  expect(u.model).toBe("claude-opus-4-8");
+  expect(u.tier).toBe("reasoning");
+  expect(u.intensity).toBe("ultracode");
+  expect(u.worktree).toBe("/ws/aipe/.worktrees/j1-jesse");
+  expect(u.ciBypass).toBe("no-checks");
+});
+
+test("a legacy record with no envelope exposes nulls, never invented values", () => {
+  const ledgers: JourneyLedger[] = [
+    { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched" }] },
+  ];
+  const u = assemble({ ...base, ledgers, live: reliableLive([]) }).units[0]!;
+  expect(u.harness).toBeNull();
+  expect(u.model).toBeNull();
+  expect(u.tier).toBeNull();
+  expect(u.intensity).toBeNull();
+  expect(u.ciBypass).toBeNull();
+});
+
 test("role is null when the roster does not name the specialist (reported, not guessed)", () => {
   const ledgers: JourneyLedger[] = [
     { id: "j1", dispatches: [{ repo: "aipe", specialist: "Ghost", branch: "b", worktree: "w", status: "dispatched" }] },
@@ -159,4 +204,50 @@ test("no session-mode units → liveness note says so, not a false 'alive'", () 
   ];
   const report = assemble({ ...base, ledgers, live: reliableLive([]) });
   expect(report.liveness.note).toContain("not applicable");
+});
+
+// ── Item 4 (j-20260829-5q): the queue that gets lost in a coordinator switch ──
+// "finished-but-unprocessed" = a session-mode unit still `dispatched` in the
+// ledger whose session has RELIABLY exited (dead-silent). Derived, not invented.
+test("a dispatched session that reliably EXITED surfaces as finished-unprocessed (item 4)", () => {
+  const ledgers: JourneyLedger[] = [
+    { id: "j1", dispatches: [{ repo: "aipe", task: "t", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched", mode: "session", sessionId: "s-gone" }] },
+  ];
+  const report = assemble({ ...base, ledgers, live: reliableLive([]) }); // s-gone not in the live list
+  const item = report.waiting.find((w) => w.kind === "finished-unprocessed");
+  expect(item).toBeDefined();
+  expect(item!.fqid).toBe("aipe");
+  expect(item!.specialist).toBe("Jesse");
+});
+
+test("a dispatched session that is STILL live is not finished-unprocessed (no false queue)", () => {
+  const ledgers: JourneyLedger[] = [
+    { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched", mode: "session", sessionId: "s-live" }] },
+  ];
+  const report = assemble({ ...base, ledgers, live: reliableLive(["s-live"]) });
+  expect(report.waiting.some((w) => w.kind === "finished-unprocessed")).toBe(false);
+});
+
+test("when liveness is UNRELIABLE, a dispatched session is NOT declared finished (never guess exited)", () => {
+  const ledgers: JourneyLedger[] = [
+    { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched", mode: "session", sessionId: "s" }] },
+  ];
+  const report = assemble({ ...base, ledgers, live: { source: "agentop", reliable: false, ids: new Set() } });
+  expect(report.waiting.some((w) => w.kind === "finished-unprocessed")).toBe(false);
+});
+
+test("an already-delivered unit is not re-surfaced as finished-unprocessed (it was processed)", () => {
+  const ledgers: JourneyLedger[] = [
+    { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "delivered", mode: "session", sessionId: "s-gone", evidence: { by: "dev", commands: ["x"], summary: "y" } }] },
+  ];
+  const report = assemble({ ...base, ledgers, live: reliableLive([]) });
+  expect(report.waiting.some((w) => w.kind === "finished-unprocessed")).toBe(false);
+});
+
+test("a dispatched session that NEVER launched (no sessionId) is not called 'finished' (it never started)", () => {
+  const ledgers: JourneyLedger[] = [
+    { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched", mode: "session" }] },
+  ];
+  const report = assemble({ ...base, ledgers, live: reliableLive([]) });
+  expect(report.waiting.some((w) => w.kind === "finished-unprocessed")).toBe(false);
 });

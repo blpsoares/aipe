@@ -33,6 +33,12 @@ const unit = (over: Partial<UnitRow>): UnitRow => ({
   liveness: null,
   hasEvidence: false,
   publishState: null,
+  harness: null,
+  model: null,
+  tier: null,
+  intensity: null,
+  worktree: "w",
+  ciBypass: null,
   ...over,
 });
 

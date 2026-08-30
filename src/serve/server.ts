@@ -9,7 +9,7 @@ import { watch } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Server } from "bun";
-import { buildServePayload } from "./payload";
+import { buildServePayload, startPrMergeRefresher } from "./payload";
 import { buildClient } from "./app/build-client";
 import { authorize, requiresAuth, unauthorized } from "./auth";
 import { handleRequest } from "./handler";
@@ -180,6 +180,11 @@ function monitorStream(workspace: string, track?: Track): Response {
 
 export function startServer(opts: ServeOpts): Server<undefined> {
   const { workspace, port, host } = opts;
+
+  // The ONE PR-merge poller for this server (re-gate B2): it refreshes the merge
+  // cache off the render path so buildServePayload never touches the network. Its
+  // timer is unref'd, so it never keeps the process alive on its own.
+  startPrMergeRefresher(workspace);
 
   // Off loopback the console is reachable by anyone on the network, and it
   // serves the whole workspace (/api/snapshot) plus the code specialists are
