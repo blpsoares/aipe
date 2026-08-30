@@ -155,7 +155,9 @@ digraph operate {
   qa -> dev [label="failed → fix task, re-gate"];
   dev -> escalate [label="cross-repo need"];
   escalate -> pe [label="PE decides scope"];
-  pe -> close [label="PRs merged"];
+  pe -> close [label="PRs merged into dev"];
+  close -> promote [label="verified work on dev"];
+  promote -> pe [label="offer: promote now, or exercise on dev first?"];
 }
 ```
 
@@ -704,6 +706,15 @@ digraph operate {
    aipe dispatch release <repo> [--package <package>] --journey <id> --workspace <workspace>
    ```
 
+   **`merged` is not "in production" — hold the distinction (MUST).** A unit
+   recorded `merged` is merged into the target branch — `dev`, not in production
+   and not yet released to users. The demand is *integrated*, not *published*:
+   `dev` accumulates verified work continuously, and a release only cuts when
+   `dev` is promoted to `main` (see `RELEASING.md`). So "the PRs merged" is **not**
+   the end of the loop — step 7 is. Never tell the PE a change is "shipped",
+   "released" or "in production" on the strength of a `merged` record; that word
+   means the target branch, nothing more.
+
    **Reliability lint before you report (MUST).** Before telling the PE the demand
    is done, run the deterministic ledger audit and only report once it is clean:
    ```bash
@@ -715,7 +726,62 @@ digraph operate {
    skipped QA, an open escalation) and `STATE … clean=true|false … critical=<n>`.
    **Do not report "done" while `critical>0`.** Fix each critical finding (re-gate,
    attach evidence, land the producer) and re-run until clean; surface any remaining
-   warnings to the PE explicitly. Then report the final set of PRs.
+   warnings to the PE explicitly. Then report the final set of PRs — as **merged
+   into `dev`**, not as released (see the distinction above).
+
+7. **Promotion offer — carry the loop to publication (the gate).** `merged` is
+   where integration ends, not where the demand reaches users. Verified work sits
+   on `dev` until `dev` is promoted to `main`, and **that promotion is the PE's
+   decision, never yours and never silent.** Two failures are symmetric, and you
+   MUST avoid both:
+   - **Promoting in silence** — cutting a release the PE never chose.
+   - **Damming in silence** — letting verified work pile up on `dev` with the PE
+     never told it is there to promote. This is the failure that actually
+     happened; it is not "safe by default", it is the same defect as the first.
+
+   So when verified work has landed on `dev`, you **present to the PE what is there
+   and ask**: promote it now, or exercise it on `dev` first? You do not promote on
+   your own judgement, and you do not stay quiet.
+
+   **Check for unpromoted work (the checkable condition).** After close-out,
+   determine whether verified work sits on `dev` unreleased. The ledger and
+   `aipe status` express this distinction between *merged* and *released*; consume
+   that signal where it is present. Where it is not, determine it directly from git
+   — commits on `dev` that `main` does not yet have are unreleased work:
+   ```bash
+   git -C <repo-path> log --oneline origin/main..origin/dev
+   ```
+   Any output means there is verified work to offer. (Assumption: a sibling effort
+   is teaching the ledger and `aipe status` to name the *released* vs *merged*
+   state directly; until it lands, the git check above is the source of truth.)
+
+   **Ask by BATCH, never per PR (MUST — with the why).** The question is *"here is
+   what has accumulated on `dev` — promote this batch now, or hold?"*, asked once
+   over the set of verified work, **not** once per merged PR. Promoting on every
+   merge is exactly what produced **five releases in a single day** for this
+   repository — several of them one feature sliced across patch bumps — and the
+   `CONTRIBUTING.md`/`RELEASING.md` record it as an anti-pattern. A promotion goes
+   out when either (a) at least one complete feature has landed on `dev`, or (b)
+   there is a fix the PE needs to consume with urgency; green CI on `dev` is a
+   **precondition** for promoting, not the trigger. The whole point is to bundle
+   related, verified work into one release with actual content.
+
+   **What you present, and what you do NOT do.** Present: which units are verified
+   and merged on `dev`, whether they add up to a complete feature or an urgent fix,
+   and the explicit choice — *promote now* or *exercise on `dev` first*. You do
+   **NOT** open the promotion PR, merge `dev → main`, or bump a version on your own
+   call — automating the promotion is out of scope; the decision is the PE's. Once
+   the PE says promote, you open the promotion PR (`dev → main`) — never a
+   specialist, and the release publishes from the merge (see `RELEASING.md`).
+
+   **Table of non-exceptions (forbidden rationalizations for skipping the offer):**
+
+   | Rationalization | Ruling |
+   | --- | --- |
+   | "it's just merged to `dev`, the PE will ask when they want a release" | Damming in silence is the failure this exists to end. MUST present it |
+   | "only one small PR landed — not worth mentioning" | Present it anyway; the PE decides whether one PR is a batch worth promoting |
+   | "I'll just promote it, it's obviously ready" | Promoting in silence forges a decision that is the PE's. MUST ask first |
+   | "I promoted the last batch, so I'll promote this one too" | Each batch is a fresh decision. MUST ask again |
 
 ## The hiring brief (assemble per dispatch, never write to disk)
 
@@ -778,6 +844,12 @@ severity), and `returns` is
 - Each specialist opens its **own** PR; commits carry the namespaced persona
   author (`aipe/<Persona>`) set by the worktree, with the PE's real account
   preserved via the inherited email.
+- **The promotion offer is a MUST**: `merged` means merged into `dev`, not
+  released — when verified work sits on `dev`, you present the batch to the PE
+  and ask (promote now, or exercise on `dev` first). Never promote in silence
+  and never leave it dammed in silence; the decision is the PE's, the offer is
+  yours, and it is asked by batch, not per PR (per-PR promotion is what produced
+  five releases in a day — see `RELEASING.md`).
 
 ## Common mistakes
 
@@ -791,6 +863,12 @@ severity), and `returns` is
   ledger first; delivered/merged units are intocáveis, never re-dispatched.
 - *Two tasks on the same package in one wave* → the dispatch law rejects it; split
   across waves. Adjudicate with `aipe dispatch validate`, never by hand.
+- *Calling `merged` "shipped"/"released" to the PE* → `merged` is merged into
+  `dev`, not published; hold the word until a promotion actually cuts a release.
+- *Letting verified work sit on `dev` without telling the PE* → damming in silence
+  is a failure, not a safe default; present the batch and ask (step 7).
+- *Promoting `dev → main` on your own judgement* → promotion is the PE's decision;
+  you offer, you never cut the release silently.
 
 ## Self-review gate (before reporting anything "done" to the PE)
 
@@ -809,3 +887,7 @@ severity), and `returns` is
 - [ ] `aipe journey verify` reports `clean=true` (zero critical findings) — or every
       remaining warning was surfaced to the PE explicitly.
 - [ ] The set of PRs reported matches the ledger; merged worktrees are torn down.
+- [ ] I reported `merged` as **merged into `dev`**, never as released/in production.
+- [ ] Is there verified work on `dev` with **no promotion offered**? If so, I
+      **presented the batch to the PE** and asked (promote now, or exercise on
+      `dev` first) — I neither promoted in silence nor left it dammed in silence.
