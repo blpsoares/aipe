@@ -10,7 +10,7 @@ import { DEFAULT_STATUS_PREF } from "../types";
 
 const policy: ModelPolicy = { default: "standard", authorizationTiers: ["frontier"], reasoningNotifyMaxDispatches: 8 };
 const roster: PersonaRegistryEntry[] = [{ name: "Jesse", role: "dev-fullstack", repo: "aipe", path: null }];
-const live: LiveSessions = { source: "none", reliable: false, ids: new Set() };
+const live: LiveSessions = { source: "none", reliable: false, sessions: new Map() };
 
 const rel = (repo: string, over: Partial<RepoReleaseState>): RepoReleaseState => ({
   repo,

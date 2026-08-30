@@ -78,6 +78,13 @@ test("armadilha 2: liveness dead-silent → Precisa de você, nunca Trabalhando"
   expect(columnOf(d({ liveness: "dead-silent" }))).toBe("needs-you");
 });
 
+// lost — o terceiro estado (jornada j-20260830-8b): agentop PERDEU a sessão. Não
+// é viva (deixá-la em Trabalhando seria a mentira "presença == vida") nem um fim
+// limpo. O console tem de MOSTRÁ-LA em Precisa de você, nunca sumir com o card.
+test("lost: agentop perdeu a sessão → Precisa de você, nunca Trabalhando (não some)", () => {
+  expect(columnOf(d({ liveness: "lost" }))).toBe("needs-you");
+});
+
 test("liveness unknown (não dá para verificar) fica em Trabalhando, mas sinalizável", () => {
   expect(columnOf(d({ liveness: "unknown" }))).toBe("working");
 });
@@ -88,9 +95,11 @@ test("subagent dispatched (sem liveness) → Trabalhando", () => {
 
 // ── quem age em seguida (para recuar o que não é do PE) — SDD §11.2. ──────────
 
-test("boardActor: escalated/dead-silent/waiting-approval são do PE ('you')", () => {
+test("boardActor: escalated/dead-silent/lost/waiting-approval são do PE ('you')", () => {
   expect(boardActor(d({ status: "escalated" }))).toBe("you");
   expect(boardActor(d({ status: "dispatched", liveness: "dead-silent" }))).toBe("you");
+  // lost: inspecionar é do PE — re-despachar/matar é decisão dele com o coordenador.
+  expect(boardActor(d({ status: "dispatched", liveness: "lost" }))).toBe("you");
   expect(boardActor(d({ status: "dispatched", liveness: "running" }), waitingSess)).toBe("you");
 });
 

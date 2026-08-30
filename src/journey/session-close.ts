@@ -9,7 +9,7 @@
 // agentop, or a unit that never ran in session mode all produce an ordinary
 // NOTE line — never an error, never a lost record.
 import { buildKillArgs } from "../session/batch";
-import { parseSessionList } from "../session/poll";
+import { parseSessionLiveness, type Liveness } from "../session/poll";
 import type { AgentopRunner } from "../session/types";
 import type { DispatchStatus, JourneyDispatch } from "./types";
 
@@ -50,18 +50,24 @@ export const SESSION_CLOSING_STATUSES: ReadonlySet<DispatchStatus> = new Set<Dis
 // draws — and a close cannot be honestly confirmed against it.
 async function liveSessionIds(
   runner: AgentopRunner,
-): Promise<{ reliable: boolean; live: ReadonlySet<string> }> {
+): Promise<{ reliable: boolean; live: ReadonlyMap<string, Liveness> }> {
   let result: { code: number; stdout: string; stderr: string };
   try {
     result = await runner(["session", "list", "--json"]);
   } catch {
-    return { reliable: false, live: new Set() };
+    return { reliable: false, live: new Map() };
   }
-  if (result.code !== 0) return { reliable: false, live: new Set() };
+  if (result.code !== 0) return { reliable: false, live: new Map() };
   try {
-    return { reliable: true, live: parseSessionList(result.stdout) };
+    // parseSessionLiveness returns id → liveness, but THIS check needs only
+    // PRESENCE: "did agentop list this id at all", so a code-0 kill can be
+    // believed. An id agentop still lists — even one it has marked lost or
+    // exited — is a session that existed to be closed, so `live.has(id)` (not
+    // the liveness value) is exactly the right question here; the shared parser
+    // is used only so this reads the same list the poll loop does.
+    return { reliable: true, live: parseSessionLiveness(result.stdout) };
   } catch {
-    return { reliable: false, live: new Set() };
+    return { reliable: false, live: new Map() };
   }
 }
 
