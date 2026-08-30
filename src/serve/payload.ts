@@ -10,7 +10,7 @@ import { buildSnapshot, type Snapshot } from "../dashboard/snapshot";
 import { ghPrState, type PrState, type PrStateFetcher } from "../journey/reconcile";
 import { listJourneys } from "../journey/ledger";
 import { readLive, type SessionInfo } from "./sessions";
-import { dispatchPhase } from "../session/poll";
+import { dispatchPhase, type Liveness } from "../session/poll";
 import type { UnitPhase } from "../session/types";
 import type { JourneyDispatch } from "../journey/types";
 import type { JourneyView } from "../dashboard/snapshot";
@@ -249,26 +249,31 @@ export function annotateIntegrated(
  * calculation, don't re-derive"). Subagent dispatches are left untouched (no
  * session to describe).
  *
- * `liveIds` is the live-session id set; `reliable` says whether it can be trusted
- * (a failed/unreadable `session list` is "we cannot tell", NOT "everyone is
- * dead"). `worktreeExists` is positive death evidence INDEPENDENT of agentop: a
- * still-`dispatched` record whose worktree is gone from disk is dead-silent even
- * when the live list is unreadable — the "`dispatched` no ledger ≠ vivo"
- * cross-check (trap 2). It never overrides a phase we could positively establish
- * (`running`) or a terminal ledger state (`landed`/`redirected`/`waiting`).
+ * `live` maps each id agentop LISTED to the liveness derived from its `status`
+ * (parseSessionLiveness) — NOT a bare set of "present" ids. That is what makes
+ * this claim honest: a session agentop still lists but has marked `lost` becomes
+ * the `lost` phase, and one it has marked terminal becomes `dead-silent`, exactly
+ * as `aipe status` and the poll loop report them — presence is not proof of life.
+ * `reliable` says whether the map can be trusted (a failed/unreadable
+ * `session list` is "we cannot tell", NOT "everyone is dead"). `worktreeExists`
+ * is positive death evidence INDEPENDENT of agentop: a still-`dispatched` record
+ * whose worktree is gone from disk is dead-silent even when the live list is
+ * unreadable — the "`dispatched` no ledger ≠ vivo" cross-check (trap 2). It never
+ * overrides a phase we could positively establish (`running`) or a terminal
+ * ledger state (`landed`/`redirected`/`waiting`) — nor a `lost` we established.
  */
 export function annotateLiveness(
   journeys: JourneyView[],
-  liveIds: Set<string>,
+  live: Map<string, Liveness>,
   reliable: boolean,
   worktreeExists: (path: string) => boolean,
 ): JourneyView[] {
-  const settled = new Set<UnitPhase>(["running", "landed", "redirected", "waiting"]);
+  const settled = new Set<UnitPhase>(["running", "landed", "redirected", "waiting", "lost"]);
   return journeys.map((j) => ({
     ...j,
     dispatches: j.dispatches.map((d): LiveDispatch => {
       if (d.mode !== "session") return d;
-      let phase = dispatchPhase(d, liveIds, reliable);
+      let phase = dispatchPhase(d, live, reliable);
       if (!settled.has(phase) && d.worktree && !worktreeExists(d.worktree)) phase = "dead-silent";
       return { ...d, liveness: phase };
     }),
@@ -277,7 +282,7 @@ export function annotateLiveness(
 
 export async function buildServePayload(
   workspace: string,
-  read: () => Promise<{ sessions: SessionInfo[]; liveIds: Set<string>; reliable: boolean }> = readLive,
+  read: () => Promise<{ sessions: SessionInfo[]; live: Map<string, Liveness>; reliable: boolean }> = readLive,
   worktreeExists: (path: string) => boolean = existsSync,
   isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
   prState: (prUrl: string) => PrMergeState = prStateFromCache,
@@ -288,12 +293,12 @@ export async function buildServePayload(
   // (a pure-subagent workspace) — then the live set is empty but RELIABLE (there
   // is genuinely nothing to be alive), so no session-mode unit exists to mislabel.
   const hasSession = hasSessionDispatch(snapshot.journeys);
-  const { sessions: all, liveIds, reliable } = hasSession
+  const { sessions: all, live, reliable } = hasSession
     ? await read()
-    : { sessions: [] as SessionInfo[], liveIds: new Set<string>(), reliable: true };
+    : { sessions: [] as SessionInfo[], live: new Map<string, Liveness>(), reliable: true };
   // Liveness first, then the merge truth (defect 2): both annotate dispatches and
   // compose cleanly (each spreads the whole dispatch, preserving the other's field).
-  const journeys = annotateIntegrated(annotateLiveness(snapshot.journeys, liveIds, reliable, worktreeExists), isAncestor, prState);
+  const journeys = annotateIntegrated(annotateLiveness(snapshot.journeys, live, reliable, worktreeExists), isAncestor, prState);
   const sessions = relevantSessions(all, snapshot.journeys);
   const coordinatorSessions = coordinatorSessionsOf(all, workspace);
   return { ...snapshot, journeys, sessions, coordinatorSessions };

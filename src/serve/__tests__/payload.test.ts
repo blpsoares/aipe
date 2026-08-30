@@ -16,6 +16,7 @@ import {
 import type { SessionInfo } from "../sessions";
 import type { JourneyView } from "../../dashboard/snapshot";
 import type { PrState } from "../../journey/reconcile";
+import type { Liveness } from "../../session/poll";
 
 const journeys = [
   { id: "j", dispatches: [
@@ -56,37 +57,62 @@ test("coordinatorSessionsOf keeps only RUNNING sessions rooted at the workspace 
 const sess = (over: Partial<Record<string, unknown>> = {}) =>
   ({ id: "j", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "/wt", status: "dispatched", mode: "session", sessionId: "s1", ...over }] }) as unknown as JourneyView[][number];
 
-const liveOf = (over: Partial<Record<string, unknown>>, live: Set<string>, reliable: boolean, exists: (p: string) => boolean) =>
+// The live map is id → liveness (parseSessionLiveness), NOT a bare presence set:
+// this is the fix that lets the console draw the SAME lost/gone distinctions
+// `aipe status` does. `L(...)` builds a typed map for the fixtures.
+const L = (...pairs: [string, Liveness][]) => new Map<string, Liveness>(pairs);
+const liveOf = (over: Partial<Record<string, unknown>>, live: Map<string, Liveness>, reliable: boolean, exists: (p: string) => boolean) =>
   (annotateLiveness([sess(over)], live, reliable, exists)[0]!.dispatches[0] as { liveness?: string }).liveness;
 
-test("annotateLiveness: sessão viva (sessionId no live-set confiável) → running", () => {
-  expect(liveOf({}, new Set(["s1"]), true, () => true)).toBe("running");
+test("annotateLiveness: sessão viva (status running no mapa confiável) → running", () => {
+  expect(liveOf({}, L(["s1", "alive"]), true, () => true)).toBe("running");
+});
+
+// The fix, on the console surface: a session agentop still LISTS but has marked
+// `lost` is NOT running and NOT a clean end — it is the third state, and the
+// console must say so (não some com o card, não mente "trabalhando").
+test("annotateLiveness: listada mas agentop marcou lost → lost (nem viva, nem fim limpo)", () => {
+  expect(liveOf({}, L(["s1", "lost"]), true, () => true)).toBe("lost");
+});
+
+// A `lost` positively established from a RELIABLE list is knowledge, not a guess:
+// the worktree-gone cross-check (trap 2) must not silently rewrite it to
+// dead-silent — that would trade the lost-truth for a clean-end lie. `lost` is in
+// the `settled` set exactly like `running`.
+test("annotateLiveness: lost de lista confiável NÃO é rebaixado a dead-silent com worktree ausente", () => {
+  expect(liveOf({ worktree: "/gone" }, L(["s1", "lost"]), true, (p) => p !== "/gone")).toBe("lost");
+});
+
+// A session agentop LISTS but has marked terminal (exited/closed) → gone → the
+// same dead-silent as never being in the list; presence alone never keeps it alive.
+test("annotateLiveness: listada mas status terminal (exited→gone) → dead-silent", () => {
+  expect(liveOf({}, L(["s1", "gone"]), true, () => true)).toBe("dead-silent");
 });
 
 test("armadilha 2: dispatched com worktree removido do disco NÃO é running → dead-silent", () => {
   // reliable, mas s1 não está vivo E o worktree sumiu → morto, nunca "trabalhando"
-  expect(liveOf({ worktree: "/gone" }, new Set(), true, (p) => p !== "/gone")).toBe("dead-silent");
+  expect(liveOf({ worktree: "/gone" }, L(), true, (p) => p !== "/gone")).toBe("dead-silent");
 });
 
 test("armadilha 2: agentop ilegível (unreliable) + worktree removido → dead-silent", () => {
-  expect(liveOf({ worktree: "/gone" }, new Set(), false, () => false)).toBe("dead-silent");
+  expect(liveOf({ worktree: "/gone" }, L(), false, () => false)).toBe("dead-silent");
 });
 
 test("liveness ilegível (unreliable) com worktree presente → unknown (nem trabalhando nem morto)", () => {
-  expect(liveOf({}, new Set(), false, () => true)).toBe("unknown");
+  expect(liveOf({}, L(), false, () => true)).toBe("unknown");
 });
 
 test("dispatch subagent (sem sessão) não recebe campo liveness", () => {
-  expect(liveOf({ mode: "subagent" }, new Set(), true, () => true)).toBeUndefined();
+  expect(liveOf({ mode: "subagent" }, L(), true, () => true)).toBeUndefined();
 });
 
 test("estado terminal do ledger (verified→landed) permanece landed, ignora liveness/worktree", () => {
-  expect(liveOf({ status: "verified" }, new Set(), false, () => false)).toBe("landed");
+  expect(liveOf({ status: "verified" }, L(), false, () => false)).toBe("landed");
 });
 
 test("blocked→waiting e redirected→redirected vêm do ledger, não do live-set", () => {
-  expect(liveOf({ status: "blocked" }, new Set(), false, () => false)).toBe("waiting");
-  expect(liveOf({ status: "redirected" }, new Set(), false, () => false)).toBe("redirected");
+  expect(liveOf({ status: "blocked" }, L(), false, () => false)).toBe("waiting");
+  expect(liveOf({ status: "redirected" }, L(), false, () => false)).toBe("redirected");
 });
 
 // ── annotateIntegrated — a VERDADE do merge (defeito 2, j-20260829-dp): a tela lê

@@ -232,7 +232,7 @@ test("when liveness is UNRELIABLE, a dispatched session is NOT declared finished
   const ledgers: JourneyLedger[] = [
     { id: "j1", dispatches: [{ repo: "aipe", specialist: "Jesse", branch: "b", worktree: "w", status: "dispatched", mode: "session", sessionId: "s" }] },
   ];
-  const report = assemble({ ...base, ledgers, live: { source: "agentop", reliable: false, ids: new Set() } });
+  const report = assemble({ ...base, ledgers, live: { source: "agentop", reliable: false, sessions: new Map() } });
   expect(report.waiting.some((w) => w.kind === "finished-unprocessed")).toBe(false);
 });
 

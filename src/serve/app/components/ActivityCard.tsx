@@ -59,6 +59,14 @@ export function ActivityCard({ card, norm }: { card: BoardCard; norm: Envelope }
           <span class="tag">{fqidOf(d)}</span>
           {d.journey ? <span class="ac-journey sub">· {d.journey}</span> : null}
         </div>
+        {/* `lost` — the third state (jornada j-20260830-8b): agentop lost the
+            session. Named explicitly so a person reads WHY it needs them, and is
+            never confused with a clean end (dead-silent) or with "working". */}
+        {d.liveness === "lost" ? (
+          <div class="ac-lost sub" title={t("board_lost_t")}>
+            <Icon name="warn" size={11} /> {t("board_lost")}
+          </div>
+        ) : null}
         <Envelope_ card={card} norm={norm} />
         {d.integrationPending ? (
           <div class="ac-pending sub" title={t("ac_checking_merge_t")}>

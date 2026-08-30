@@ -113,6 +113,26 @@ test("a needs-you card offers a copyable next-step command (console stays read-o
   expect(needs.querySelector(".ic-cmd-text")!.textContent).toContain("cd /wt");
 });
 
+// jornada j-20260830-8b: uma sessão que o agentop marcou `lost` NÃO é viva. O
+// quadro tem de mostrá-la em Precisa de você (nunca Trabalhando) E nomeá-la como
+// perdida, para a pessoa saber o que fazer — não some, não mente "trabalhando".
+test("uma sessão lost aparece em Precisa de você e é nomeada 'perdida' (não some, não mente)", () => {
+  const lostSnap = {
+    ok: true,
+    context: { name: "demo", coordinator: "C" },
+    journeys: [{ id: "j-l", dispatches: [
+      { repo: "aipe", specialist: "Zoe", task: "lost-thing", branch: "b", worktree: "/wt", status: "dispatched", mode: "session", sessionId: "s9", liveness: "lost" },
+    ] as unknown[] }],
+  } as RawSnapshot;
+  applySnapshot(lostSnap, 1_700_000_000_000);
+  const { container } = render(<WorkBoard />);
+  const needs = container.querySelector(".bcol-needs-you")!;
+  expect(needs.textContent).toContain("Zoe"); // o card não sumiu
+  expect(needs.textContent).toContain(t("board_lost")); // e é nomeada perdida, distinta de dead-silent
+  // e NÃO aparece em Trabalhando (a mentira "presença == vida" que esta unidade mata)
+  expect(container.querySelector(".bcol-working")?.textContent ?? "").not.toContain("Zoe");
+});
+
 // re-gate B2 follow-up: cache frio não pode afirmar o que não estabeleceu. Um
 // verified com merge-status ainda não conferido (integrationPending) aparece em
 // "ready" MAS com a nota "verificando", não como confirmado-pendente.

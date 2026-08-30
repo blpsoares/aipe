@@ -128,7 +128,7 @@ function waitingItems(l: JourneyLedger, policy: ModelPolicy, live: LiveSessions)
       d.mode === "session" &&
       d.status === "dispatched" &&
       d.sessionId &&
-      dispatchPhase(d, live.ids, live.reliable) === "dead-silent"
+      dispatchPhase(d, live.sessions, live.reliable) === "dead-silent"
     ) {
       out.push({ ...base, kind: "finished-unprocessed", detail: "session ended; delivery not yet recorded" });
     }
