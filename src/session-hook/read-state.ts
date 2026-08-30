@@ -13,6 +13,7 @@ import { resolveStatusPref } from "../status/pref";
 import { DEFAULT_STATUS_PREF, type StatusUpdatesPref } from "../status/types";
 import { loadReport } from "../status/load";
 import { renderStateBlock } from "../status/context-block";
+import { coordinatorAwareness, releaseCoordinatorAwareness } from "./coordinator-awareness";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -219,6 +220,14 @@ export async function runSessionContext(args: string[]): Promise<number> {
     return 0;
   }
   const fields = await readState(workspace);
+  // The SessionEnd path: release this coordinator's registered identity on a
+  // clean close, then emit inert JSON (SessionEnd cannot inject context). Fully
+  // guarded — teardown must never be broken by a release failure.
+  if (args.includes("--release")) {
+    await releaseCoordinatorAwareness(fields).catch(() => {});
+    console.log("{}");
+    return 0;
+  }
   if (fields.root) {
     await ensureRehydrated(fields.root, VERSION).catch(() => {});
   }
@@ -230,8 +239,14 @@ export async function runSessionContext(args: string[]): Promise<number> {
     // Item 8 — the coordinator session also gets a STATE block (where the work
     // is). It must NEVER break session open, so it is fully guarded: any failure
     // degrades to today's context, and it does not shell out to agentop
-    // (`liveness:false`) so the hook stays fast.
-    console.log(renderSessionContext(fields, undefined, undefined, await safeStateBlock(fields)));
+    // (`liveness:false`) so the hook stays fast. The coordinator-identity line
+    // (j-20260829-5q) is prepended: who holds the workspace, and whether a second
+    // coordinator is live — the actionable warning goes right under the awareness,
+    // ahead of the state table.
+    const coordBlock = await coordinatorAwareness(fields).catch(() => "");
+    const stateBlock = await safeStateBlock(fields);
+    const extra = [coordBlock, stateBlock].filter((b) => b && b.length > 0).join("\n\n") || undefined;
+    console.log(renderSessionContext(fields, undefined, undefined, extra));
   }
   return 0;
 }

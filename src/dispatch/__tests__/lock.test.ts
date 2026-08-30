@@ -231,22 +231,39 @@ test("a force authorization for a DIFFERENT unit does not authorize this overrid
   }
 });
 
-test("an AGED orphan (no 'dispatched' dispatch, past the grace) is reconciled/overwritten", async () => {
+test("an AGED lock with a PROVABLY DEAD pid is reconciled/overwritten — crash recovery via a real pid", async () => {
   const dir = await ws();
   try {
-    // j1 claimed embark and never recorded a 'dispatched' entry — a holder that
-    // crashed between claim and record. Stamp its lock BEYOND the freshness grace
-    // (pid 0 = no crash tracking), so it is now a genuine orphan, not a claim
-    // still in flight.
+    // j1 claimed embark with a REAL pid that is now gone (signal-0 says dead) and
+    // never recorded 'dispatched' — a holder that crashed between claim and
+    // record. Aged beyond the grace, it is a genuine, VERIFIABLE orphan.
     const old = new Date(Date.now() - STALE_ORPHAN_GRACE_MS - 60_000).toISOString();
-    const first = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A", pid: 0, now: () => old });
+    const first = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A", pid: 2 ** 30, now: () => old });
     expect(first.ok).toBe(true);
-    // j2 comes along; the incumbent is dispatchless AND aged out → overwritable,
-    // a reconciled takeover rather than a collision, so a crash never wedges a repo.
+    // j2 comes along; the incumbent's pid is provably dead → overwritable, a
+    // reconciled takeover rather than a collision, so a crash never wedges a repo.
     const second = await claimLock(dir, { repo: "embark", journey: "j2", specialist: "B", pid: 0 });
     expect(second.ok).toBe(true);
     if (second.ok) expect(second.reconciled).toBe(true);
     expect((await readLock(lockPath(dir, "embark")))?.journey).toBe("j2");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an AGED lock with an UNVERIFIABLE owner (pid 0) is NOT silently reconciled — it collides (j-20260829-5q)", async () => {
+  const dir = await ws();
+  try {
+    // The defect this journey closes: a pid-0 lock aged past the grace with no
+    // 'dispatched' entry used to read as a dead orphan and get stomped, even when
+    // its owner was a live task. It is now treated ALIVE — a rival collides.
+    const old = new Date(Date.now() - STALE_ORPHAN_GRACE_MS - 60_000).toISOString();
+    const first = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A", pid: 0, now: () => old });
+    expect(first.ok).toBe(true);
+    const second = await claimLock(dir, { repo: "embark", journey: "j2", specialist: "B", pid: 0 });
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.reason).toBe("collision");
+    expect((await readLock(lockPath(dir, "embark")))?.journey).toBe("j1"); // survivor untouched
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -262,18 +279,35 @@ test("an AGED orphan (no 'dispatched' dispatch, past the grace) is reconciled/ov
 test("window: a freshly-claimed lock with NO dispatched entry yet is ACTIVE (not an orphan)", async () => {
   const dir = await ws();
   try {
-    // Real order: claim, and DO NOT record `dispatched`. The lock stands alone.
-    const first = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A", pid: 0 });
+    // Real order: claim with a REAL pid, and DO NOT record `dispatched`. The lock
+    // stands alone; the pid is what carries crash recovery here.
+    const first = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A", pid: process.pid });
     expect(first.ok).toBe(true);
     const lock = await readLock(lockPath(dir, "embark"));
     // Within the grace it reads as live off its own timestamp — so a rival collides.
     expect(await isLockActive(dir, lock)).toBe(true);
-    // Age it past the grace with still no dispatched entry → now a genuine orphan.
+    // Age it past the grace with still no dispatched entry: a REAL pid is neither
+    // provably dead nor unverifiable, so it falls through to a genuine orphan —
+    // the claim→record crash window is still closed for a tracked holder.
     const aged = Date.parse(lock!.timestamp) + STALE_ORPHAN_GRACE_MS + 1;
     expect(await isLockActive(dir, lock, aged)).toBe(false);
     // Record `dispatched` (the step the coordinator runs next): durably live again,
     // grace irrelevant.
     await dispatched(dir, "j1", "embark");
+    expect(await isLockActive(dir, lock, aged)).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("window: an UNVERIFIABLE (pid 0) lock stays ACTIVE past the grace — never a silent orphan (j-20260829-5q)", async () => {
+  const dir = await ws();
+  try {
+    const first = await claimLock(dir, { repo: "embark", journey: "j1", specialist: "A", pid: 0 });
+    expect(first.ok).toBe(true);
+    const lock = await readLock(lockPath(dir, "embark"));
+    const aged = Date.parse(lock!.timestamp) + STALE_ORPHAN_GRACE_MS + 1;
+    // pid 0 = unverifiable = alive, whether fresh or aged: a rival always collides.
     expect(await isLockActive(dir, lock, aged)).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });
