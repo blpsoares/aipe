@@ -5,16 +5,27 @@ type: graph
 argument:
   en: >-
     Session-mode dispatch is non-interactive by construction, so a harness is
-    eligible only if it can be governed by a block-before-execute hook TRUSTED
-    with no human present. Codex and Copilot are both refused — but for
-    genuinely different reasons — and the eligibility law is re-run at the moment
-    a session actually starts, not just as advice.
+    eligible only if a block-before-execute hook can be TRUSTED with no human
+    present. At RUNTIME that question is binary — containmentHook() is null or it
+    is not — and only the four adapter-backed harnesses ever reach dispatch. But
+    the product records a WIDER knowledge in a three-state ledger over the ten
+    harnesses agentop can host: containable-proven, non-containable-proven, and
+    unestablished. The third state exists because "no adapter yet" and "cannot be
+    contained without a human" had collapsed into one misleading "coming soon" —
+    the exact signal the PE flagged for Antigravity. The binding refusal is still
+    re-run at the moment a session actually starts, not just as advice.
   pt: >-
     Dispatch em modo sessão é não-interativo por construção, então um harness só
-    é elegível se puder ser governado por um hook block-before-execute CONFIÁVEL
-    sem humano presente. Codex e Copilot são ambos recusados — mas por motivos
-    genuinamente diferentes — e a lei de elegibilidade é reexecutada no instante
-    em que uma sessão de fato começa, não só como conselho.
+    é elegível se um hook block-before-execute puder ser CONFIÁVEL sem humano
+    presente. No RUNTIME essa pergunta é binária — containmentHook() é null ou
+    não é — e só os quatro harnesses com adapter chegam ao dispatch. Mas o
+    produto registra um conhecimento MAIS AMPLO num ledger de três estados sobre
+    os dez harnesses que o agentop pode hospedar: containable-proven,
+    non-containable-proven e unestablished. O terceiro estado existe porque "sem
+    adapter ainda" e "não pode ser contido sem humano" haviam colapsado num único
+    "coming soon" enganoso — o exato sinal que o PE sinalizou para o Antigravity.
+    A recusa vinculante ainda é reexecutada no instante em que uma sessão de fato
+    começa, não só como conselho.
 nodes:
   - id: rule
     label: { en: "containmentHook() null ⇒ not eligible", pt: "containmentHook() null ⇒ não elegível" }
@@ -45,6 +56,76 @@ nodes:
         o chamador DEVE tratar null como "não pode dispatch em sessão" e nunca
         deixar chegar num argv.
     evidence: "src/harness/types.ts:61"
+  - id: ledger
+    label: { en: "Containment ledger — three states, ten harnesses", pt: "Ledger de contenção — três estados, dez harnesses" }
+    kind: structure
+    note:
+      en: >-
+        Beyond the binary runtime rule, aipe records for EVERY harness agentop
+        can host whether a reliable non-interactive interception hook exists at
+        all. The answer is kept in THREE states, not two — containable-proven,
+        non-containable-proven, unestablished — as a data ledger the rest of aipe
+        reads (containmentFor / harnessesInState). It does NOT change the dispatch
+        union or the eligibility rule; the four adapter-backed rows are locked to
+        isContainable(getAdapter(id)) by compat.test.ts, so this file cannot drift
+        from code behavior. Every proven line cites a PRIMARY source (the tool's
+        own docs) with the date it was read.
+      pt: >-
+        Além da regra binária de runtime, o aipe registra, para CADA harness que
+        o agentop pode hospedar, se existe algum hook de interceptação
+        não-interativo confiável. A resposta é mantida em TRÊS estados, não dois —
+        containable-proven, non-containable-proven, unestablished — como um ledger
+        de dados que o resto do aipe lê (containmentFor / harnessesInState). NÃO
+        muda a união de dispatch nem a regra de elegibilidade; as quatro linhas
+        com adapter são travadas em isContainable(getAdapter(id)) pelo
+        compat.test.ts, então este arquivo não pode derivar do comportamento do
+        código. Toda linha "proven" cita uma fonte PRIMÁRIA (a doc do próprio
+        tool) com a data em que foi lida.
+    evidence: "src/harness/compat.ts:12"
+  - id: states-partition
+    label: { en: "6 containable-proven · 3 non-containable-proven · 1 unestablished", pt: "6 containable-proven · 3 non-containable-proven · 1 unestablished" }
+    kind: structure
+    note:
+      en: >-
+        Current membership, computed from the ledger by harnessesInState — data,
+        not hardcoded, so it moves as harnesses are added or a verdict changes.
+        As read on 2026-08-30: containable-proven = claude-code, gemini,
+        factory-droid, kimi-code, opencode, pi; non-containable-proven = codex,
+        copilot, cursor; unestablished = antigravity. Only four (claude-code,
+        gemini, codex, copilot) have a live adapter wired into dispatch — the rest
+        are documented verdicts with primary-source quotes, ledger-only for now.
+      pt: >-
+        Membership atual, computada do ledger por harnessesInState — dado, não
+        hardcoded, então se move conforme harnesses são adicionados ou um veredito
+        muda. Como lido em 2026-08-30: containable-proven = claude-code, gemini,
+        factory-droid, kimi-code, opencode, pi; non-containable-proven = codex,
+        copilot, cursor; unestablished = antigravity. Só quatro (claude-code,
+        gemini, codex, copilot) têm adapter vivo ligado ao dispatch — o resto são
+        veredictos documentados com citações de fonte primária, por ora só no
+        ledger.
+    evidence: "src/harness/compat.ts:70"
+  - id: unestablished
+    label: { en: "unestablished — the state the old vocabulary lacked", pt: "unestablished — o estado que faltava ao vocabulário antigo" }
+    kind: structure
+    note:
+      en: >-
+        Antigravity is its only member today (membership is data and can change).
+        Its docs show a config-file PreToolUse decision:"deny" hard-block with NO
+        documented trust gate — a genuine adapter candidate — but do NOT confirm
+        the hooks file loads under an unattended headless run. So it is neither
+        proven-containable nor proven-non-containable. This is the answer to the
+        PE's flag: not a "coming soon" lumped in with Codex/Copilot/Cursor, but an
+        honestly-open question the primary docs do not yet resolve.
+      pt: >-
+        Antigravity é seu único membro hoje (membership é dado e pode mudar). Sua
+        doc mostra um hard-block PreToolUse decision:"deny" em arquivo de config
+        SEM gate de confiança documentado — um candidato genuíno a adapter — mas
+        NÃO confirma que o arquivo de hooks carrega num run headless sem humano.
+        Então não é nem contível-provado nem não-contível-provado. Esta é a
+        resposta à sinalização do PE: não um "coming soon" jogado junto com
+        Codex/Copilot/Cursor, mas uma questão honestamente em aberto que a doc
+        primária ainda não resolve.
+    evidence: "src/harness/compat.ts:35"
   - id: claude-code
     label: { en: "Claude Code — containable", pt: "Claude Code — contível" }
     kind: deterministic
@@ -159,6 +240,15 @@ nodes:
         com saída não-zero ANTES de qualquer hook ser escrito ou sessão rodar.
     evidence: "src/session/cli.ts:466"
 edges:
+  - from: rule
+    to: ledger
+    label: { en: "binary at runtime → recorded wider", pt: "binário no runtime → registrado mais amplo" }
+  - from: ledger
+    to: states-partition
+    label: { en: "three states", pt: "três estados" }
+  - from: states-partition
+    to: unestablished
+    label: { en: "the novel third", pt: "o terceiro, novo" }
   - from: rule
     to: claude-code
     label: { en: "real hook → eligible", pt: "hook real → elegível" }
