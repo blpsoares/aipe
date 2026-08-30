@@ -57,6 +57,23 @@ export interface DispatchEvidence {
   artifact?: string; // optional: a PR url, a log path, a screenshot ref
 }
 
+// The single definition of "which of these evidence commands was actually run".
+// A command that is empty or whitespace is not a command run, so it is not proof.
+// Both gates that judge evidence — the ledger WRITE gate (recordDispatchGuarded)
+// and the verify READ gate (hasEvidence) — MUST derive proof from this one helper.
+// Keeping the test in two places is exactly what let the write gate be fixed while
+// the read gate kept clearing empty evidence.
+export function realEvidenceCommands(ev: DispatchEvidence | undefined): string[] {
+  return Array.isArray(ev?.commands) ? ev.commands.filter((c) => !!c?.trim()) : [];
+}
+
+// Evidence is proof only with at least one NON-EMPTY command (not merely a
+// non-empty array) plus a non-blank summary; otherwise `--evidence-cmd ""` dresses
+// a bare self-report as evidence and clears the gate.
+export function hasRealEvidence(ev: DispatchEvidence | undefined): ev is DispatchEvidence {
+  return !!ev && realEvidenceCommands(ev).length > 0 && !!ev.summary?.trim();
+}
+
 export interface JourneyDispatch {
   repo: string;
   package?: string; // the unit within the repo (absent ⇒ implicit whole-repo package)

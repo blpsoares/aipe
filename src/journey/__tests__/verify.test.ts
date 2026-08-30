@@ -51,6 +51,16 @@ test("no-evidence (critical): blank summary is not proof", () => {
   expect(findings.map((f) => f.code)).toContain("no-evidence");
 });
 
+test("no-evidence (critical): commands that are all empty/whitespace are not proof", () => {
+  // The READ gate must mirror the ledger's WRITE gate: a command that is empty or
+  // whitespace is not a command run. A ledger carrying `commands: ["", "  "]` with
+  // a plausible summary is a bare self-report dressed as evidence — verify must
+  // still flag it no-evidence, or a hand-edited/legacy ledger clears the audit.
+  const bad = d({ status: "verified", evidence: { by: "qa", commands: ["", "   "], summary: "fiz tudo, confia" } });
+  const findings = verifyJourney(ledgerOf(bad), []);
+  expect(findings.map((f) => f.code)).toContain("no-evidence");
+});
+
 // Finding A (whole-branch review): `RANK` used to omit `redirected` entirely,
 // so it tied with `removed` (rank 0) when picking a unit's "most advanced"
 // record across specialists — a stale `dispatched` record from another

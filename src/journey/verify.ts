@@ -8,7 +8,7 @@
 import { packageFqid } from "../context-brain/packages";
 import type { RepoReleaseState } from "../release/types";
 import type { PrChecksResolver } from "./checks";
-import type { JourneyDispatch, JourneyLedger } from "./types";
+import { hasRealEvidence, type JourneyDispatch, type JourneyLedger } from "./types";
 
 export type VerifySeverity = "critical" | "warning";
 
@@ -44,10 +44,11 @@ const RANK: Record<string, number> = {
 const DEPENDENCY_EDGE_TYPES = new Set(["consumes", "imports"]);
 
 // A delivered/verified record carries proof only when evidence is attached with
-// at least one command and a non-blank summary (same test as the ledger gate).
+// at least one NON-EMPTY command and a non-blank summary — the SAME test the
+// ledger write gate applies, via the one shared helper so the two can never drift
+// (empty/whitespace commands are not commands run).
 function hasEvidence(d: JourneyDispatch): boolean {
-  const ev = d.evidence;
-  return !!ev && Array.isArray(ev.commands) && ev.commands.length > 0 && !!ev.summary?.trim();
+  return hasRealEvidence(d.evidence);
 }
 
 export function verifyJourney(
