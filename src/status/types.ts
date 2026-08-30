@@ -3,6 +3,7 @@
 // downstream re-derives: the table renderer, the JSON, the delta and the
 // session-context summary all read a `StatusReport`.
 import type { DispatchStatus } from "../journey/types";
+import type { RepoReleaseState, PublishState } from "../release/types";
 import type { UnitPhase } from "../session/types";
 
 export type StatusFormat = "detailed" | "compact";
@@ -37,6 +38,11 @@ export interface UnitRow {
   // to describe, and reporting one would be a lie of a different kind.
   liveness: UnitPhase | null;
   hasEvidence: boolean;
+  // For a `merged` unit: whether it is actually published, derived from its
+  // repo's release state (j-20260830-zd). null on every non-merged unit — the
+  // publication question only exists once a unit has merged. Lets `journey show`
+  // and `status` tell a merged-in-dev unit from a published one without GitHub.
+  publishState: PublishState | null;
 }
 
 export interface JourneyRow {
@@ -86,6 +92,11 @@ export interface StatusReport {
   journeys: JourneyRow[];
   units: UnitRow[];
   waiting: WaitingItem[];
+  // Per-repo release position for the repos in scope (item 2 — the represado
+  // signal). Empty when release resolution was skipped (the SessionStart hot
+  // path). A repo whose state is not `published` is dammed-up work the coordinator
+  // must see without hunting for it — same visibility class as WAITING ON YOU.
+  releases: RepoReleaseState[];
   liveness: LivenessInfo;
   pref: StatusUpdatesPref;
   elision: Elision | null;

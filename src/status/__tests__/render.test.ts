@@ -17,6 +17,7 @@ const unit = (over: Partial<UnitRow> = {}): UnitRow => ({
   sessionId: "s-1",
   liveness: "running",
   hasEvidence: false,
+  publishState: null,
   ...over,
 });
 
@@ -27,6 +28,7 @@ const report = (over: Partial<StatusReport> = {}): StatusReport => ({
   journeys: [{ id: "j-1", specApproved: true, specVersion: 3, open: 1, done: 0, total: 1 }],
   units: [unit()],
   waiting: [],
+  releases: [],
   liveness: { source: "agentop", reliable: true, note: "liveness from agentop's live session list" },
   pref: { auto: false, format: "detailed" },
   elision: null,

@@ -7,6 +7,9 @@ import { readPersonas } from "../hire-specialists/read-personas";
 import { listJourneys } from "../journey/ledger";
 import { readBrain } from "../make-workspace/read";
 import { readPolicy } from "../model/policy";
+import { realReleaseResolver } from "../release/git";
+import { resolveReleaseStates } from "../release/resolve";
+import type { ReleaseResolver, RepoReleaseState } from "../release/types";
 import { realRunner } from "../session/runner";
 import type { AgentopRunner } from "../session/types";
 import { assemble } from "./assemble";
@@ -16,6 +19,7 @@ import { selectJourneys } from "./scope";
 import type { StatusReport, StatusScope } from "./types";
 
 const NO_LIVE: LiveSessions = { source: "none", reliable: false, ids: new Set() };
+const NO_RELEASES = new Map<string, RepoReleaseState>();
 
 export interface LoadOptions {
   scope: StatusScope;
@@ -26,6 +30,11 @@ export interface LoadOptions {
   // fast and must never hang on a probe, so it reports state from the ledger
   // alone and leaves session liveness unresolved.
   liveness?: boolean;
+  // When false, local git is NOT consulted for release state — same reason as
+  // liveness: the hook hot path must not shell out per repo. Release state is then
+  // empty (no represado section, publishState null), never a guessed verdict.
+  release?: boolean;
+  releaseResolver?: ReleaseResolver;
 }
 
 export async function loadReport(workspace: string, opts: LoadOptions): Promise<StatusReport> {
@@ -43,6 +52,17 @@ export async function loadReport(workspace: string, opts: LoadOptions): Promise<
     journeyId: opts.journeyId,
     recentClosed: opts.recentClosed,
   });
+  // Release state, item 2. Resolved only for the repos actually touched by the
+  // selected journeys (never the whole brain), and only when release is on — the
+  // hook hot path (release:false) skips the per-repo git entirely.
+  const reposInScope = new Set<string>();
+  for (const l of selected) for (const d of l.dispatches) reposInScope.add(d.repo);
+  const repos = brain.ok ? brain.brain.repos.filter((r) => reposInScope.has(r.name)) : [];
+  const releaseStates =
+    opts.release === false || repos.length === 0
+      ? NO_RELEASES
+      : await resolveReleaseStates(workspace, repos, opts.releaseResolver ?? realReleaseResolver);
+
   const live = opts.liveness === false ? NO_LIVE : await resolveLiveSessions(opts.runner ?? realRunner);
-  return assemble({ workspace, contextName, scope, ledgers: selected, roster, policy, live, pref, elision });
+  return assemble({ workspace, contextName, scope, ledgers: selected, roster, policy, live, pref, elision, releaseStates });
 }

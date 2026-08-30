@@ -6,6 +6,7 @@
 // waiting on the PE. Pure and offline — no LLM, no network, no fs (the CLI
 // supplies the ledger, the graph edges and the in-context unit set).
 import { packageFqid } from "../context-brain/packages";
+import type { RepoReleaseState } from "../release/types";
 import type { PrChecksResolver } from "./checks";
 import type { JourneyDispatch, JourneyLedger } from "./types";
 
@@ -203,6 +204,44 @@ export function verifyJourney(
   // Critical findings first, then by unit (stable within a bucket).
   const sevRank = (s: VerifySeverity): number => (s === "critical" ? 0 : 1);
   return findings.sort((a, b) => sevRank(a.severity) - sevRank(b.severity) || a.unit.localeCompare(b.unit));
+}
+
+// The release half of verify (j-20260830-zd). Verified-and-merged work that was
+// never published is exactly the invariant this lint exists to expose — but it is
+// a WARNING, never a critical: the code is correct and merged; what is missing is
+// a promotion/release, a PE/coordinator action, not a defect. Blocking the journey
+// (exit 1) on it would be wrong; leaving it invisible is worse. So it reads like
+// escalated-open/blocked-open — surfaced, unfinished, but not broken.
+//
+// Pure: the CLI resolves the per-repo release state from local git and passes the
+// map in, so this stays offline and testable. It fires once per repo that has
+// merged work IN THIS JOURNEY — a repo's release backlog is only this journey's
+// concern insofar as this journey contributed merged units to it. `unknown` is
+// reported too (a distinct code): the house rule is to say "could not establish".
+export function auditReleaseState(
+  ledger: JourneyLedger,
+  releaseStates: Map<string, RepoReleaseState>,
+): VerifyFinding[] {
+  // Repos with a unit whose most-advanced status is `merged` in this ledger.
+  const byUnit = new Map<string, JourneyDispatch[]>();
+  for (const d of ledger.dispatches) {
+    const list = byUnit.get(d.repo) ?? [];
+    list.push(d);
+    byUnit.set(d.repo, list);
+  }
+  const findings: VerifyFinding[] = [];
+  for (const [repo, records] of byUnit) {
+    const top = records.reduce((a, b) => ((RANK[b.status] ?? 0) > (RANK[a.status] ?? 0) ? b : a));
+    if (top.status !== "merged") continue;
+    const rel = releaseStates.get(repo);
+    if (!rel) continue; // resolution unavailable — abstain, never a guessed finding
+    if (rel.state === "merged-unpublished") {
+      findings.push({ severity: "warning", code: "merged-unpublished", unit: repo, detail: `merged but not yet published — ${rel.reason}` });
+    } else if (rel.state === "unknown") {
+      findings.push({ severity: "warning", code: "release-unverifiable", unit: repo, detail: `merged, publication state could not be established — ${rel.reason}` });
+    }
+  }
+  return findings.sort((a, b) => a.unit.localeCompare(b.unit));
 }
 
 // The CI half of verify — kept separate from verifyJourney because it is the one

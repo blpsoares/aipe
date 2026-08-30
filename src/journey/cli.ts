@@ -13,8 +13,12 @@ import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
 import { isValidTaskId } from "../worktree/naming";
 import { DISPATCH_STATUSES } from "./types";
-import type { DispatchEvidence, DispatchStatus, JourneyDispatch } from "./types";
-import { auditPrChecks, verifyJourney } from "./verify";
+import type { DispatchEvidence, DispatchStatus, JourneyDispatch, JourneyLedger } from "./types";
+import { auditPrChecks, auditReleaseState, verifyJourney } from "./verify";
+import { realReleaseResolver } from "../release/git";
+import { resolveReleaseStates } from "../release/resolve";
+import type { ReleaseResolver, RepoReleaseState } from "../release/types";
+import { readBrain } from "../make-workspace/read";
 import { realRunner } from "../session/runner";
 import type { AgentopRunner } from "../session/types";
 import { logStatusDelta } from "../status/delta";
@@ -25,6 +29,25 @@ import { logStatusDelta } from "../status/delta";
 export interface JourneyDeps {
   resolveChecks?: PrChecksResolver;
   sessionRunner?: AgentopRunner;
+  // Local-git release-state resolver (j-20260830-zd); defaults to real git, tests
+  // inject a fake so `show`/`verify` stay offline.
+  resolveRelease?: ReleaseResolver;
+}
+
+// Resolve the release state for the repos a ledger touches, from local git. A
+// missing/unreadable brain simply yields an empty map — `show` stays offline-safe
+// and `verify` abstains rather than inventing a verdict.
+async function releaseStatesForLedger(
+  workspace: string,
+  ledger: JourneyLedger,
+  resolver: ReleaseResolver,
+): Promise<Map<string, RepoReleaseState>> {
+  const brain = await readBrain(workspace);
+  if (!brain.ok) return new Map();
+  const inLedger = new Set(ledger.dispatches.map((d) => d.repo));
+  const repos = brain.brain.repos.filter((r) => inLedger.has(r.name));
+  if (repos.length === 0) return new Map();
+  return resolveReleaseStates(workspace, repos, resolver);
 }
 
 type SessionMode = NonNullable<JourneyDispatch["mode"]>;
@@ -213,7 +236,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   return 0;
 }
 
-async function showCommand(args: string[]): Promise<number> {
+async function showCommand(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const id = getFlag(args, "--journey");
   if (!id) {
@@ -225,13 +248,25 @@ async function showCommand(args: string[]): Promise<number> {
     console.log(`ERROR journey: no ledger for ${id}`);
     return 1;
   }
+  // Publication state per repo (j-20260830-zd), from local git — so a merged-in-dev
+  // unit reads differently from a published one without anyone touching GitHub.
+  // Best-effort: a git failure leaves the map empty and `show` prints as before.
+  const releaseStates = await releaseStatesForLedger(workspace, ledger, deps.resolveRelease ?? realReleaseResolver);
+  const publishTag: Record<string, string> = {
+    published: " [published]",
+    "merged-unpublished": " [merged-in-dev — NOT published]",
+    unknown: " [publication unverifiable]",
+  };
   // "Read the ledger first" (Pilar 3): each unit is tagged so the coordinator
   // sees at a glance what is finished (never re-dispatch) vs. still open.
   for (const d of ledger.dispatches) {
     const unit = `${d.repo}${d.package ? `/${d.package}` : ""}`;
     const done = d.status === "merged" ? "[MERGED — immutable]" : d.status === "verified" ? "[VERIFIED — cleared]" : "";
     const ev = d.evidence ? " +evidence" : d.status === "delivered" || d.status === "verified" ? " !NO-EVIDENCE" : "";
-    console.log(`DISPATCH ${unit} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}${ev}${done ? " " + done : ""}`);
+    // Only merged units carry a publication question; annotate from the derived
+    // repo state (never rewriting the immutable `merged` record itself).
+    const pub = d.status === "merged" ? publishTag[releaseStates.get(d.repo)?.state ?? ""] ?? "" : "";
+    console.log(`DISPATCH ${unit} ${d.specialist} ${d.status} ${d.branch} ${d.pr ?? "-"}${ev}${done ? " " + done : ""}${pub}`);
   }
   const open = ledger.dispatches.filter(
     (d) => d.status === "dispatched" || d.status === "failed" || d.status === "escalated" || d.status === "redirected",
@@ -357,6 +392,10 @@ async function verifyCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   // critical. The CI resolver is injectable (tests) and defaults to real gh.
   const findings = verifyJourney(ledger, edges);
   findings.push(...(await auditPrChecks(ledger, deps.resolveChecks ?? ghPrChecks)));
+  // Release audit (j-20260830-zd): merged work that was never published, from
+  // local git. Warnings only — a promotion/release is owed, not a defect.
+  const releaseStates = await releaseStatesForLedger(workspace, ledger, deps.resolveRelease ?? realReleaseResolver);
+  findings.push(...auditReleaseState(ledger, releaseStates));
   findings.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "critical" ? -1 : 1));
   for (const f of findings) {
     console.log(`FINDING ${f.severity.toUpperCase()} ${f.code} ${f.unit} — ${f.detail}`);
@@ -382,7 +421,7 @@ export async function run(args: string[], deps: JourneyDeps = {}): Promise<numbe
     case "record":
       return recordCommand(rest, deps);
     case "show":
-      return showCommand(rest);
+      return showCommand(rest, deps);
     case "spec":
       return specCommand(rest);
     case "reconcile":
