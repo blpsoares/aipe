@@ -1,76 +1,76 @@
 name: release
 
-# Releases are AUTOMATIC. Every push to `main` computes the next version from the
-# conventional-commit subjects since the last tag, stamps it onto the five files
-# that hardcode it, builds all five standalone targets, tags, and publishes a
-# GitHub Release with the binaries + installers + checksums.
+# Path 4 — the version bump lives on `dev`; `main` is never written to.
 #
-# Nobody pushes a tag by hand any more. `workflow_dispatch` with a `version` is
-# the manual valve for the one case the computation has no answer for: it got the
-# number WRONG and only a human can say what should ship.
+# Two independent jobs, gated by which branch was pushed:
 #
-# The `latest` release the download domain redirects to is whatever GitHub
-# considers newest, so the Cloudflare rules never need touching.
+#   bump    (push to `dev`)   computes the next version from the conventional-
+#                             commit subjects since the last release tag and
+#                             commits the stamped bump to `dev`. `dev` has no
+#                             ruleset, so the bot can push there. This is where
+#                             the version number is decided and where it lives.
 #
-# `dev` is the integration branch and is deliberately NOT in this trigger: work
-# accumulates there (verified continuously by ci.yml) and only ships when a
-# promotion PR merges `dev` into `main`. Pushing to `dev` must never publish —
-# that is the entire point of having it.
+#   release (push to `main`)  publishes. Work reaches `main` only through a
+#                             promotion PR, so by then the manifest already
+#                             carries the version the bump job stamped on `dev`.
+#                             The job reads that number, builds the binaries, and
+#                             creates the tag AND the GitHub Release together,
+#                             from the merge commit. It never commits and never
+#                             pushes a branch: main's protection is therefore
+#                             never in the way — no bypass and no PAT required.
+#
+# Why not push the bump straight to `main`? Because `main` is protected by an
+# active ruleset ("Require PR + green CI on main") and there is no valid way to
+# grant the Actions bot a bypass on this personal repo: a RepositoryRole bypass
+# does not cover GITHUB_TOKEN, and an Integration bypass is refused with 422. A
+# direct push is rejected, and when the old workflow pushed the tag alongside
+# the rejected branch the tag survived — that is exactly how v1.10.3 and v1.11.0
+# became orphan tags. Path 4 removes the direct push entirely, and the tag is
+# now born in the same API call as the release, so a tag can never outlive the
+# release it claims. See RELEASING.md.
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
     inputs:
       version:
-        description: "Release exactly this version (e.g. 1.1.0). Empty = compute it."
+        description: "Publish exactly this version (e.g. 1.1.0). Empty = the manifest version."
         required: false
         type: string
 
 permissions:
   contents: write
 
-concurrency:
-  # Never two releases at once: the second would compute its version from a tag
-  # the first has not pushed yet and try to publish the same number twice.
-  group: release-main
-  cancel-in-progress: false
-
 jobs:
-  release:
+  # ──────────────────────────────────────────────────────────────────────────
+  # dev: decide and commit the next version. Never releases.
+  # ──────────────────────────────────────────────────────────────────────────
+  bump:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
+    concurrency:
+      # Serialise dev bumps: two pushes at once would compute the same number.
+      group: bump-dev
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      # EVERY merge to main releases. This guard exists for exactly one case —
-      # the workflow's OWN bump commit re-triggering itself — and it must never
-      # be able to swallow a human merge.
-      #
-      # Matching the subject alone did exactly that: a squash-merged PR titled
-      # "chore(release): …", or a rebase-merged branch ending in that commit,
-      # looked identical to the bot's own push and was silently skipped. So the
-      # author must ALSO be github-actions[bot], which no human merge can be.
-      #
-      # This is already the third line of defence and should never fire: pushes
-      # made with GITHUB_TOKEN do not trigger workflows at all, and the bump
-      # commit additionally carries [skip ci]. It stays as cheap insurance for
-      # the day someone swaps in a PAT to chain downstream workflows.
-      - name: Skip the workflow's own bump commit
+      # The bump commit carries [skip ci], is authored by the bot, and is pushed
+      # with GITHUB_TOKEN (which does not trigger workflows) — three independent
+      # reasons it cannot re-trigger this job. This guard is the cheap last line
+      # of defence for the day someone swaps in a PAT.
+      - name: Skip the job's own bump commit
         id: guard
         run: |
           SUBJECT="$(git log -1 --pretty=format:%s)"
           AUTHOR="$(git log -1 --pretty=format:%an)"
           echo "head: '$SUBJECT' by '$AUTHOR'"
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            # A forced release is never skipped: it exists because the
-            # automatic answer was wrong, so consulting it again would refuse
-            # the correction.
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          elif [ "$AUTHOR" = "github-actions[bot]" ] && printf '%s' "$SUBJECT" | grep -q '^chore(release): '; then
-            echo "Head is this workflow's own bump commit — nothing to do."
+          if [ "$AUTHOR" = "github-actions[bot]" ] && printf '%s' "$SUBJECT" | grep -q '^chore(release): '; then
+            echo "Head is this job's own bump commit — nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -85,113 +85,192 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         run: bun install --frozen-lockfile
 
-      - name: Version guard (the repo agrees with itself before we touch it)
-        if: steps.guard.outputs.skip != 'true'
-        run: bun run version:check
-
-      - name: Type-check and test
-        if: steps.guard.outputs.skip != 'true'
-        run: |
-          bun run typecheck
-          bun test
-
-      - name: Resolve the next version
+      - name: Compute the next version from the commits since the last release
         if: steps.guard.outputs.skip != 'true'
         id: version
         run: |
           set -eu
 
-          # An explicitly requested version wins outright: a corrective release
-          # exists precisely because the automatic answer was wrong, so
-          # consulting it again would refuse the correction.
-          FORCED="${{ github.event.inputs.version }}"
-          FORCED="${FORCED#v}"
-
           MANIFEST="$(node -p "require('./.claude-plugin/plugin.json').version")"
           LAST_TAG="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -1)"
 
+          if [ -z "$LAST_TAG" ]; then
+            CURRENT="0.0.0"; RANGE="HEAD"
+          else
+            CURRENT="${LAST_TAG#v}"; RANGE="${LAST_TAG}..HEAD"
+          fi
+
+          if [ "$(git log $RANGE --oneline | wc -l | tr -d ' ')" -eq 0 ]; then
+            echo "No new commits since ${LAST_TAG:-the beginning} — nothing to bump."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Conventional commits decide the bump. SCOPES COUNT: `feat:*` does not
+          # match `feat(session):`, and a glob that misses scoped commits ships
+          # every feature in this repo as a patch.
+          #
+          # TFORMAT, NOT FORMAT: `--pretty=format:` omits the trailing newline
+          # after its last LINE, and `while read` returns non-zero on a line with
+          # no terminator — so that line is never seen by this loop. `git log`
+          # prints newest-first, so the line lost is the range's OLDEST commit.
+          # `tformat:` terminates every line, including the last.
+          BUMP="patch"
+          while IFS= read -r subject; do
+            case "$subject" in
+              feat\!:*|fix\!:*|refactor\!:*|chore\!:*|perf\!:*) BUMP="major"; break ;;
+              feat\(*\)\!:*|fix\(*\)\!:*|refactor\(*\)\!:*|chore\(*\)\!:*|perf\(*\)\!:*) BUMP="major"; break ;;
+              feat:*|feat\(*\):*) [ "$BUMP" != "major" ] && BUMP="minor" || true ;;
+            esac
+          done < <(git log "$RANGE" --pretty=tformat:%s)
+          if git log "$RANGE" --pretty=format:%B | grep -q "BREAKING CHANGE"; then BUMP="major"; fi
+
+          MAJOR="${CURRENT%%.*}"; REST="${CURRENT#*.}"
+          MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+          case "$BUMP" in
+            major) NEXT="$((MAJOR+1)).0.0" ;;
+            minor) NEXT="${MAJOR}.$((MINOR+1)).0" ;;
+            patch) NEXT="${MAJOR}.${MINOR}.$((PATCH+1))" ;;
+          esac
+
+          # A deliberate bump committed to the manifest (1.0.0, say) must win over
+          # tag arithmetic that would otherwise walk it back — and it makes the
+          # bump monotonic: once dev is at minor, later patch commits don't undo
+          # it, so the accumulated release keeps the highest bump it earned.
+          HIGHEST="$(printf '%s\n%s\n' "$NEXT" "$MANIFEST" | sort -V | tail -1)"
+          if [ "$HIGHEST" != "$NEXT" ]; then
+            echo "manifest $MANIFEST is ahead of the computed $NEXT — keeping the manifest version"
+            NEXT="$MANIFEST"
+          fi
+
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "▶ next version is v$NEXT (bump $BUMP from ${LAST_TAG:-nothing}, range $RANGE)"
+        shell: bash
+
+      - name: Stamp the version onto every file that hardcodes it
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.changed == 'true'
+        run: bun run scripts/bump-version.ts "${{ steps.version.outputs.next }}"
+
+      - name: Verify the stamp is internally consistent
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.changed == 'true'
+        run: bun run version:check
+
+      - name: Commit the bump to dev — or fail loud if the push is refused
+        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .claude-plugin/plugin.json src/cli.ts bin/aipe bin/aipe.cmd scripts/install.sh
+          # If dev already carries this version there is nothing to commit — the
+          # bump has converged. That is the steady state, not an error.
+          if git diff --cached --quiet; then
+            echo "dev is already at v${{ steps.version.outputs.next }} — nothing to commit."
+            exit 0
+          fi
+          git commit -m "chore(release): v${{ steps.version.outputs.next }} [skip ci]"
+          # `dev` has no ruleset, so GITHUB_TOKEN can push it. If it is EVER
+          # refused, do not finish half-done in silence: the bump was computed and
+          # committed locally but never landed, so the next promotion would ship
+          # the wrong (old) number. Fail the job loudly.
+          if ! git push origin HEAD:dev; then
+            echo "::error::Bump push to dev was REJECTED. dev has no ruleset, so with GITHUB_TOKEN this should not happen — a refusal means the token lost contents:write or dev grew a protection. The computed bump did NOT land; the next promotion would publish the wrong version. This job fails on purpose. See RELEASING.md and OPEN-DECISIONS.md."
+            exit 1
+          fi
+        shell: bash
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # main: publish the release from the merge commit. Never writes to main.
+  # ──────────────────────────────────────────────────────────────────────────
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      # Never two releases at once: the second would try to publish the same
+      # number the first has not tagged yet.
+      group: release-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve the version to publish
+        id: version
+        run: |
+          set -eu
+
+          # A forced version wins outright: the manual valve exists for the one
+          # case the automatic answer was wrong.
+          FORCED="${{ github.event.inputs.version }}"
+          FORCED="${FORCED#v}"
           if [ -n "$FORCED" ]; then
             case "$FORCED" in
               [0-9]*.[0-9]*.[0-9]*) ;;
               *) echo "::error::version must look like 1.1.0, got '$FORCED'"; exit 1 ;;
             esac
-            NEXT="$FORCED"
-            RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"
-            RANGE="${RANGE:-HEAD}"
+            NEXT="$FORCED"; FORCED_FLAG="true"
           else
-            if [ -z "$LAST_TAG" ]; then
-              CURRENT="0.0.0"; RANGE="HEAD"
-            else
-              CURRENT="${LAST_TAG#v}"; RANGE="${LAST_TAG}..HEAD"
-            fi
-
-            if [ "$(git log $RANGE --oneline | wc -l | tr -d ' ')" -eq 0 ]; then
-              echo "No new commits since ${LAST_TAG:-the beginning} — nothing to release."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            # Conventional commits decide the bump. SCOPES COUNT: `feat:*` does
-            # not match `feat(session):`, and a glob that misses scoped commits
-            # ships every feature in this repo as a patch.
-            #
-            # TFORMAT, NOT FORMAT: `--pretty=format:` omits the trailing newline
-            # after its last LINE, and `while read` returns non-zero on a line
-            # with no terminator — so that line is never seen by this loop.
-            # `git log` prints newest-first, so the line lost is the OLDEST
-            # commit of the range. With one commit in the range (what "release
-            # on every merge to main" produces) that is the ONLY commit, and
-            # every such release computes `patch` no matter what it contains.
-            # `tformat:` terminates every line, including the last.
-            BUMP="patch"
-            while IFS= read -r subject; do
-              case "$subject" in
-                feat\!:*|fix\!:*|refactor\!:*|chore\!:*|perf\!:*) BUMP="major"; break ;;
-                feat\(*\)\!:*|fix\(*\)\!:*|refactor\(*\)\!:*|chore\(*\)\!:*|perf\(*\)\!:*) BUMP="major"; break ;;
-                feat:*|feat\(*\):*) [ "$BUMP" != "major" ] && BUMP="minor" || true ;;
-              esac
-            done < <(git log "$RANGE" --pretty=tformat:%s)
-            if git log "$RANGE" --pretty=format:%B | grep -q "BREAKING CHANGE"; then BUMP="major"; fi
-
-            MAJOR="${CURRENT%%.*}"; REST="${CURRENT#*.}"
-            MINOR="${REST%%.*}"; PATCH="${REST#*.}"
-            case "$BUMP" in
-              major) NEXT="$((MAJOR+1)).0.0" ;;
-              minor) NEXT="${MAJOR}.$((MINOR+1)).0" ;;
-              patch) NEXT="${MAJOR}.${MINOR}.$((PATCH+1))" ;;
-            esac
-
-            # A deliberate bump committed to the manifest (1.0.0, say) must win
-            # over tag arithmetic that would otherwise walk it back to 0.3.2.
-            HIGHEST="$(printf '%s\n%s\n' "$NEXT" "$MANIFEST" | sort -V | tail -1)"
-            if [ "$HIGHEST" != "$NEXT" ]; then
-              echo "manifest $MANIFEST is ahead of the computed $NEXT — releasing the manifest version"
-              NEXT="$MANIFEST"
-            fi
-            echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+            # The version arrived on main through the promotion PR; the manifest
+            # is the source of truth. main computes NOTHING — it publishes exactly
+            # what dev already decided and what version:check will confirm.
+            NEXT="$(node -p "require('./.claude-plugin/plugin.json').version")"
+            FORCED_FLAG="false"
           fi
 
+          LAST_TAG="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | head -1)"
+          RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"; RANGE="${RANGE:-HEAD}"
+
+          # A tag for this number means it already shipped — a re-push of main, or
+          # a promotion that carried no version change. Do not publish it twice.
           if git rev-parse -q --verify "refs/tags/v$NEXT" >/dev/null; then
-            echo "::error::v$NEXT already exists"; exit 1
+            echo "v$NEXT already has a tag — already released, nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          echo "next=$NEXT"   >> "$GITHUB_OUTPUT"
-          echo "tag=v$NEXT"   >> "$GITHUB_OUTPUT"
-          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
-          echo "skip=false"   >> "$GITHUB_OUTPUT"
-          echo "▶ releasing v$NEXT (from ${LAST_TAG:-nothing}, range $RANGE)"
+          echo "next=$NEXT"    >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEXT"    >> "$GITHUB_OUTPUT"
+          echo "range=$RANGE"  >> "$GITHUB_OUTPUT"
+          echo "forced=$FORCED_FLAG" >> "$GITHUB_OUTPUT"
+          echo "skip=false"    >> "$GITHUB_OUTPUT"
+          echo "▶ publishing v$NEXT (range $RANGE) from the merge commit $GITHUB_SHA"
         shell: bash
 
-      - name: Stamp the version onto every file that hardcodes it
-        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+      - uses: oven-sh/setup-bun@v2
+        if: steps.version.outputs.skip != 'true'
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        if: steps.version.outputs.skip != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: The repo agrees with itself before we publish
+        if: steps.version.outputs.skip != 'true'
+        run: bun run version:check
+
+      - name: Type-check and test
+        if: steps.version.outputs.skip != 'true'
+        run: |
+          bun run typecheck
+          bun test
+
+      # A forced release exists because the automatic answer was wrong: the
+      # manifest may not equal the number being shipped. Stamp it into the working
+      # tree so the binaries carry the right version — but do NOT commit; the tag
+      # points at the merge commit as-is. This step is a no-op on the normal path.
+      - name: Stamp a forced version into the working tree
+        if: steps.version.outputs.skip != 'true' && steps.version.outputs.forced == 'true'
         run: bun run scripts/bump-version.ts "${{ steps.version.outputs.next }}"
 
       - name: Build all standalone targets
-        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        if: steps.version.outputs.skip != 'true'
         run: bun run scripts/build.ts
 
       - name: Smoke test the host binary
-        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        if: steps.version.outputs.skip != 'true'
         env:
           AIPE_NO_UPDATE_CHECK: "1"
         run: |
@@ -201,19 +280,19 @@ jobs:
           ./dist/aipe-linux-x64 --help >/dev/null
 
       - name: Checksums
-        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        if: steps.version.outputs.skip != 'true'
         working-directory: dist
         run: sha256sum aipe-* > SHA256SUMS.txt
 
       - name: Release notes
-        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        if: steps.version.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.version.outputs.next }}"
           {
             echo "## What's changed in v${VERSION}"
             echo
-            # tformat: for the same reason as the bump loop above — with format:
-            # the range's oldest commit is missing from every release's notes.
+            # tformat: for the same reason as the bump loop — with format: the
+            # range's oldest commit is missing from every release's notes.
             git log "${{ steps.version.outputs.range }}" --pretty=tformat:'%s|%H' | while IFS='|' read -r subject sha; do
               short="${sha:0:7}"
               url="https://github.com/${{ github.repository }}/commit/${sha}"
@@ -245,35 +324,18 @@ jobs:
           cat /tmp/release-notes.md
         shell: bash
 
-      - name: Commit the bump and tag it — atomically, or not at all
-        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .claude-plugin/plugin.json src/cli.ts bin/aipe bin/aipe.cmd scripts/install.sh
-          # A forced re-release of the version already in the manifest has
-          # nothing to commit; the tag still has to be created.
-          git diff --cached --quiet || git commit -m "chore(release): v${{ steps.version.outputs.next }} [skip ci]"
-          git tag "${{ steps.version.outputs.tag }}"
-          # ONE push, --atomic: the branch bump and the tag land together or not
-          # at all. A plain `git push origin HEAD:main <tag>` pushes the two refs
-          # INDEPENDENTLY — and main's ruleset rejects the branch ref while
-          # leaving tag refs untouched, so the tag won and the branch lost. That
-          # is exactly how v1.10.3 and v1.11.0 became orphan tags: a release
-          # number claimed, no release, no bump on main. --atomic makes the
-          # ruleset rejection take the tag down with the branch, so a tag can
-          # never outlive the bump it belongs to.
-          if ! git push --atomic origin HEAD:main "${{ steps.version.outputs.tag }}"; then
-            echo "::error::Bump push to main was REJECTED — nothing was tagged or released (atomic push rolled the tag back with the branch). main's ruleset requires a PR and a green 'check', and the workflow's GITHUB_TOKEN is NOT a ruleset bypass actor on this personal repo. This job fails on purpose; the release did not ship. See RELEASING.md and OPEN-DECISIONS.md."
-            exit 1
-          fi
-
-      - name: Publish the release
-        if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+      # The tag and the release are created TOGETHER, in one API call, from the
+      # merge commit ($GITHUB_SHA). There is no `git tag` + `git push <tag>` that
+      # could strand a tag if the release failed — the orphan-tag class of bug
+      # (v1.10.3, v1.11.0) is structurally impossible here: no tag exists unless
+      # its release exists.
+      - name: Publish the release (creates the tag on the merge commit)
+        if: steps.version.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: v${{ steps.version.outputs.next }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.version.outputs.tag }}
           body_path: /tmp/release-notes.md
           files: |
             dist/aipe-*
