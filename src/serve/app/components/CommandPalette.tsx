@@ -24,7 +24,7 @@ import { Icon } from "./Icon";
 
 const appRoutes = routes as Route[];
 
-// After the redesign the console has only 5 screens (3 primary + 2 footer), so
+// After the redesign the console has 6 screens (4 primary + 2 footer), so
 // the palette derives its goto list straight from routes.generated, order-sorted
 // — it can no longer drift from the sidebar. Every screen is reachable here.
 const GOTO_PATHS = appRoutes.map((r) => r.path);

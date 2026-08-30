@@ -1,4 +1,4 @@
-// The four-column live board (SDD §11) — the collapsible section inside "Agora".
+// The four-column live board (SDD §11) — the body of the Quadro page ("/board").
 // It answers the PE's real question by grouping every live unit of work into the
 // column that says what it needs, with each card carrying task/persona/branch/PR/
 // state TOGETHER (rendered by the component off the Dispatch).

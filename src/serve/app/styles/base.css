@@ -140,6 +140,14 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 /* View area */
 .view { flex: 1; overflow: auto; padding: 24px; }
 .view-in { max-width: 1180px; margin: 0 auto; animation: fadeup .28s ease both; }
+/* .view-wide opts out of the 1180px reading column — the board page (Quadro,
+   j-20260830-sk) uses the full viewport width. Horizontal scroll stays INSIDE
+   .aboard (overflow-x:auto), so a full-width board only scrolls when its columns
+   genuinely overflow, never a narrow container with permanent scroll. */
+.view-in.view-wide { max-width: none; }
+/* On the dedicated board page the columns own most of the viewport height (only
+   a slim header sits above), so they get more room than inside Agora's stack. */
+.view-wide .acol { max-height: calc(100vh - 168px); }
 .row { display: flex; align-items: center; gap: 12px; }
 .between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0 0 2px; }
@@ -536,6 +544,50 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .mt-n.muted { color: var(--ink-3); }
 .mt-k { margin-top: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
 .hist-metrics-note { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; }
+.hist-metrics-link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; }
+.hist-metrics-link:hover { text-decoration: underline; }
+
+/* Relatório — delivery report (reuses .metric-tile*, .langseg, .card) --------- */
+.rep-tile { text-align: left; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rep-tile .mt-n { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rep-q { font-size: 12px; line-height: 1.35; color: var(--ink-3); }
+.rep-deriv { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--amber); background: var(--amber-w); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent); border-radius: 999px; padding: 1px 7px; }
+.rep-tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.rep-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rep-table th, .rep-table td { padding: 8px 12px; text-align: left; border-top: 1px solid var(--line); white-space: nowrap; }
+.rep-table thead th { border-top: 0; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); background: var(--panel-2); }
+.rep-table th.num, .rep-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rep-table tbody tr:hover { background: var(--panel-2); }
+.rep-glabel { font-weight: 650; }
+.rep-hlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rep-hlist li { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.rep-hlist li svg { flex: none; margin-top: 2px; color: var(--ink-3); }
+.rep-export { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rep-export code { font-family: var(--mono); font-size: 11.5px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; }
+/* filters */
+.rep-filters { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.rep-filters .eyebrow { align-self: center; }
+.rep-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rep-field select, .rep-field input { font: inherit; font-size: 13px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--ink); color-scheme: light dark; }
+.rep-clear { align-self: center; padding: 6px 12px; }
+/* activity chart — CSS bars, honest by construction (no interpolation) */
+.rep-chart { display: flex; align-items: flex-end; gap: 6px; height: 168px; overflow-x: auto; padding-bottom: 2px; }
+.rep-bar-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1 0 26px; min-width: 26px; height: 100%; }
+.rep-bar-track { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.rep-bar { width: 60%; min-width: 10px; background: color-mix(in srgb, var(--accent) 26%, transparent); border-radius: 4px 4px 0 0; display: flex; align-items: flex-end; overflow: hidden; }
+.rep-bar-fill { width: 100%; background: linear-gradient(180deg, var(--accent-2), var(--accent)); border-radius: 4px 4px 0 0; }
+.rep-bar-lbl { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); white-space: nowrap; flex: none; }
+.rep-chart-note { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; }
+/* publication */
+.rep-pub-list { display: grid; gap: 2px; }
+.rep-pub-row { gap: 12px; padding: 9px 2px; border-top: 1px solid var(--line); }
+.rep-pub-row:first-child { border-top: 0; }
+.rep-pub-chip { display: inline-flex; align-items: center; gap: 6px; flex: none; font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 999px; padding: 3px 10px; border: 1px solid var(--line); }
+.rep-pub-tag { font-weight: 600; opacity: .8; text-transform: none; }
+.rep-pub-chip.is-pub { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+.rep-pub-chip.is-merged { color: var(--amber); background: var(--amber-w); border-color: color-mix(in srgb, var(--amber) 38%, transparent); }
+.rep-pub-chip.is-unknown { color: var(--ink-3); }
+.rep-pub-chip.is-checking { color: var(--ink-3); border-style: dashed; }
 
 /* Glossário — jargon translation table ------------------------------------- */
 .jargon-tbl { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }

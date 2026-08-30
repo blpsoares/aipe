@@ -68,23 +68,31 @@ function previewStdout(stdout: string): string {
     : stdout;
 }
 
-// Parses `agentop session list --json` into id → liveness. NOT id → present:
-// an entry's `status` is consulted (via sessionLiveness) so a session agentop
-// still LISTS but has marked terminal/lost is not mistaken for one that is
-// working. A hard parse failure (unparseable, wrong shape, unusable id) still
-// throws — the caller's fail-open path takes over — rather than reading as an
-// empty, confidently-nobody-alive result.
-export function parseSessionLiveness(stdout: string): Map<string, Liveness> {
+// One session as AIPe reads it out of `agentop session list --json`: its id,
+// the liveness we judge from its `status`, and the identifying fields a stale-id
+// close leans on — `cwd` (the session's worktree, the unambiguous per-unit key
+// for reconciliation) plus `task`/`label` for context. Each optional field is
+// `null` when absent/empty, never a mispairing empty string.
+export interface RosterEntry {
+  id: string;
+  liveness: Liveness;
+  cwd: string | null;
+  task: string | null;
+  label: string | null;
+}
+
+// The shared shape validation both roster readers depend on: parse the JSON and
+// return agentop's session array, THROWING on every ambiguity (unparseable, a
+// top-level shape that is neither an array nor a `{sessions:[...]}` wrapper).
+// An empty Set/array here would be indistinguishable from a genuinely empty
+// live list and would push every un-recorded unit straight to dead-silent —
+// the dangerous direction for a module whose whole job is not to lose live
+// work. Mirrors the same guard in parseBatchOutput (batch.ts).
+function parseSessionArray(stdout: string): unknown[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
   } catch {
-    // Exit code 0 with unparseable stdout is a contract break, NOT "nobody is
-    // running" — the same distinction `parseBatchOutput` draws in batch.ts.
-    // An empty Set here would be indistinguishable from a genuinely empty
-    // live list and would push every un-recorded unit straight to
-    // dead-silent, which is the dangerous direction for a module whose whole
-    // job is not to lose live work. Surface the break instead of guessing.
     throw new Error(
       `agentop session list printed unparseable JSON on a successful exit: ${previewStdout(stdout)}`,
     );
@@ -93,42 +101,55 @@ export function parseSessionLiveness(stdout: string): Map<string, Liveness> {
   const parsedHasSessionsArray =
     !parsedIsArray && parsed !== null && typeof parsed === "object" && Array.isArray((parsed as any).sessions);
   if (!parsedIsArray && !parsedHasSessionsArray) {
-    // Valid JSON, but a top-level shape we don't recognise (null, {}, an
-    // error object, a bare number/string, a renamed field, ...) is the same
-    // ambiguity the unparseable-JSON throw above exists to eliminate, one
-    // boundary later: silently falling through to `list = []` would make it
-    // indistinguishable from a genuinely empty, well-formed result ([] or
-    // {"sessions":[]}), and pollOnce would trust that empty Set instead of
-    // failing open — pushing every live, un-recorded unit straight to
-    // dead-silent. Mirrors the same guard in parseBatchOutput (batch.ts).
     throw new Error(
       `agentop session list printed valid JSON with an unexpected shape (not an array, and no "sessions" array) on a successful exit: ${previewStdout(stdout)}`,
     );
   }
-  const list = parsedIsArray ? parsed : (parsed as any).sessions;
-  const live = new Map<string, Liveness>();
+  return (parsedIsArray ? parsed : (parsed as any).sessions) as unknown[];
+}
+
+// A single non-empty string field, or null. Used for cwd/task/label so an
+// empty string (as unusable as an absent field for pairing) never poses as a
+// value two bad entries could collide on.
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" && v !== "" ? v : null;
+}
+
+// The richer read: every listed session with its liveness AND its identifying
+// fields. Same per-entry id guard as parseSessionLiveness (an unusable id
+// throws rather than silently vanishing a live session from the roster).
+export function parseSessionRoster(stdout: string): RosterEntry[] {
+  const list = parseSessionArray(stdout);
+  const roster: RosterEntry[] = [];
   for (const entry of list) {
     const record = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : undefined;
     const id = record?.id;
-    // Unlike batch.ts, this parser has no "malformed" counter to report a
-    // per-entry loss through. Dropping an entry with no usable id here would
-    // silently vanish a live session from the returned map, and the caller has
-    // no signal that anything was lost: the same "everyone is dead" ambiguity
-    // as the wrong-shape case above, just one level deeper. So an unusable id
-    // throws instead of being dropped, letting pollOnce's fail-open fallback
-    // take over.
     if (typeof id !== "string" || id === "") {
-      throw new Error(
-        `agentop session list entry has no usable id: ${previewStdout(JSON.stringify(entry))}`,
-      );
+      throw new Error(`agentop session list entry has no usable id: ${previewStdout(JSON.stringify(entry))}`);
     }
-    // The `status` is judged, never trusted-as-present: this is the fix. A
-    // missing/unknown `status` fails open to alive inside sessionLiveness, so an
-    // older agentop with no status field degrades to the prior presence==alive
-    // behaviour rather than to a false dead-silent.
-    live.set(id, sessionLiveness(record?.status));
+    // The `status` is judged, never trusted-as-present: a missing/unknown
+    // `status` fails open to alive inside sessionLiveness, so an older agentop
+    // with no status field degrades to the prior presence==alive behaviour
+    // rather than to a false dead-silent.
+    roster.push({
+      id,
+      liveness: sessionLiveness(record?.status),
+      cwd: strOrNull(record?.cwd),
+      task: strOrNull(record?.task),
+      label: strOrNull(record?.label),
+    });
   }
-  return live;
+  return roster;
+}
+
+// Parses `agentop session list --json` into id → liveness. NOT id → present:
+// an entry's `status` is consulted (via sessionLiveness) so a session agentop
+// still LISTS but has marked terminal/lost is not mistaken for one that is
+// working. Derived from parseSessionRoster so the contract-break guards live in
+// exactly one place; a hard parse failure still throws (the caller's fail-open
+// path takes over) rather than reading as an empty, confidently-nobody-alive result.
+export function parseSessionLiveness(stdout: string): Map<string, Liveness> {
+  return new Map(parseSessionRoster(stdout).map((e) => [e.id, e.liveness]));
 }
 
 // The single honest liveness decision for ONE session-mode dispatch, shared by

@@ -18,6 +18,7 @@ test("hashTarget resolves a known view hash to its path", () => {
   expect(hashTarget("#/team")).toBe("/team");
   expect(hashTarget("#/settings")).toBe("/settings");
   expect(hashTarget("#/guide")).toBe("/guide");
+  expect(hashTarget("#/board")).toBe("/board"); // the board's own page (j-20260830-sk)
 });
 
 test("hashTarget rejects an unknown path (guards against a bogus manual hash)", () => {
@@ -25,18 +26,38 @@ test("hashTarget rejects an unknown path (guards against a bogus manual hash)", 
   expect(hashTarget("#/../etc")).toBeNull();
 });
 
-// j-20260830-r5, aceite #3: the reorg (#44) removed "/activity" as its own
-// screen — that content now lives inside Agora. Anyone who still has that URL
-// (bookmark, old link) must not hit an error or a blank page.
+// j-20260830-sk, brief item 3: the board now has its own page at "/board", and
+// the old "/activity" URL (the board's original home before it was folded into
+// Agora) redirects there. Anyone still holding that URL (bookmark, old link)
+// lands on the board's page — never an error, a blank page, or the wrong screen.
 afterEach(() => {
   navigate("/");
 });
 
-test("the removed '/activity' path is not a known route (its content now lives inside Agora, not on its own screen)", () => {
-  expect(hashTarget("#/activity")).toBeNull();
+test("the old '/activity' hash redirects to the board's own page (not null, not blank)", () => {
+  expect(hashTarget("#/activity")).toBe("/board");
 });
 
-test("navigating to the old '/activity' path lands on Agora, not an error or blank page", () => {
+test("navigating to the old '/activity' path lands on the board page (/board)", () => {
   navigate("/activity");
-  expect(currentPath.value).toBe("/");
+  expect(currentPath.value).toBe("/board");
+});
+
+// Gate blocker (item 3): the two tests above only prove the pure function and a
+// direct navigate() call — they bypass the `hashchange` listener's guard, which
+// is where the redirect actually broke. When the canonical target of a legacy
+// hash equals the current view (already on /board), the guard `p !==
+// currentPath.value` skipped navigate() and the hash was left stranded at
+// '#/activity'. This test drives the REAL event through the registered listener.
+test("a '#/activity' hashchange fired while ALREADY on /board rewrites the URL to '#/board' (no stranded legacy hash)", () => {
+  navigate("/board");
+  expect(currentPath.value).toBe("/board");
+  expect(location.hash).toBe("#/board");
+
+  // Simulate clicking the old '#/activity' link/bookmark while sitting on /board.
+  location.hash = "#/activity";
+  window.dispatchEvent(new Event("hashchange"));
+
+  expect(currentPath.value).toBe("/board");
+  expect(location.hash).toBe("#/board"); // rewritten to canonical, not left at '#/activity'
 });

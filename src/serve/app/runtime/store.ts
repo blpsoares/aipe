@@ -3,6 +3,7 @@ import { dkey, fqidOf } from "./dom";
 import { openJourneyOf, buildDecisionInbox, type JourneyLike, type DecisionItem } from "./floor";
 import type { SessionInfo } from "../../sessions";
 import type { UnitPhase } from "../../../session/types";
+import type { RepoPublication } from "../../../report/compute";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 // These mirror the shapes produced/consumed by src/serve/app.html's setSnap
@@ -130,6 +131,9 @@ export interface RawSnapshot {
   // The coordinator's own open sessions (rooted at the workspace) — a fact about
   // sessions, not multiple coordinators (5.5).
   coordinatorSessions?: SessionInfo[];
+  // Per-repo publication position (merged ≠ published — src/release), folded in
+  // server-side (serve/payload.ts). A repo still resolving is `checking`.
+  publication?: Record<string, RepoPublication>;
   [key: string]: unknown;
 }
 
@@ -159,6 +163,7 @@ export interface Snapshot {
   attention: AttentionItem[];
   sessions: SessionInfo[];
   coordinatorSessions: SessionInfo[];
+  publication: Record<string, RepoPublication>;
 }
 
 type Translator = (k: string) => string;
@@ -299,6 +304,7 @@ const EMPTY_SNAPSHOT: Snapshot = {
   attention: [],
   sessions: [],
   coordinatorSessions: [],
+  publication: {},
 };
 
 export const snapshot: Signal<Snapshot> = signal(EMPTY_SNAPSHOT);
@@ -389,6 +395,7 @@ export function applySnapshot(raw: RawSnapshot, now: number, t: Translator = (k)
     attention: raw.attention || [],
     sessions: raw.sessions || [],
     coordinatorSessions: raw.coordinatorSessions || [],
+    publication: raw.publication || {},
   };
   snapshot.value = next;
 

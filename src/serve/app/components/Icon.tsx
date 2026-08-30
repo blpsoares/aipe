@@ -54,6 +54,13 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
   activity: <path d="M3 12h4l2.5 7 5-14 2.5 7H21" />,
+  board: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M15 4v16" />
+      <path d="M5 8h2M11 8h2M17 8h2" />
+    </>
+  ),
   monitor: (
     <>
       <circle cx="12" cy="12" r="2" />
@@ -78,6 +85,14 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M3 12a9 9 0 1 1 3 6.7" />
       <path d="M3 20v-5h5" />
       <path d="M12 7v5l3.5 2" />
+    </>
+  ),
+  report: (
+    <>
+      <path d="M3 3v18h18" />
+      <rect x="7" y="12" width="3" height="6" rx="0.5" />
+      <rect x="12" y="8" width="3" height="10" rx="0.5" />
+      <rect x="17" y="5" width="3" height="13" rx="0.5" />
     </>
   ),
   "chevron-right": <path d="M9 6l6 6-6 6" />,

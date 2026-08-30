@@ -28,11 +28,27 @@ const STORAGE_KEY = "aipe-view";
 // only ever globs views/*.view.tsx, and no new view files are added mid-task),
 // this list is stable; update it if a views/*.view.tsx path ever changes.
 // Redesign (j-20260827-s9): the primary screens + 2 footer utilities.
-// j-20260829-dp added "/activity" (Atividade) as the fourth primary screen.
-const KNOWN_PATHS = ["/", "/team", "/history", "/guide", "/settings"];
+// j-20260829-c8 added "/report" (Relatório) as a primary screen.
+// j-20260830-sk gave the board its own primary screen at "/board" (Quadro),
+// pulling it out of the Agora section it had lived in.
+const KNOWN_PATHS = ["/", "/board", "/team", "/history", "/report", "/guide", "/settings"];
+
+// Legacy paths that must not 404 for anyone holding an old URL (bookmark, link).
+// "/activity" was the Atividade screen (j-20260829-dp), folded into Agora by the
+// redesign and now the home of the board again — so its old URL lands on the
+// board's own page (j-20260830-sk, brief item 3).
+const REDIRECTS: Record<string, string> = { "/activity": "/board" };
+
+// Map a raw path to its canonical target: follow a legacy redirect if any, then
+// keep it only if it is a known route. Returns null for an unknown path.
+function canonicalPath(p: string | null | undefined): string | null {
+  if (!p) return null;
+  const target = REDIRECTS[p] ?? p;
+  return KNOWN_PATHS.includes(target) ? target : null;
+}
 
 function isValidPath(p: string | null | undefined): p is string {
-  return !!p && KNOWN_PATHS.includes(p);
+  return canonicalPath(p) !== null;
 }
 
 function pathFromHash(): string | null {
@@ -51,7 +67,7 @@ function pathFromHash(): string | null {
 export function hashTarget(rawHash: string): string | null {
   const stripped = (rawHash || "").replace(/^#\/?/, "");
   const p = stripped ? "/" + stripped : "/";
-  return isValidPath(p) ? p : null;
+  return canonicalPath(p);
 }
 
 function pathFromStorage(): string | null {
@@ -64,11 +80,11 @@ function pathFromStorage(): string | null {
 }
 
 function resolveInitialPath(): string {
-  const fromHash = pathFromHash();
-  if (isValidPath(fromHash)) return fromHash;
-  const fromStorage = pathFromStorage();
-  if (isValidPath(fromStorage)) return fromStorage;
-  return "/"; // The Floor is the landing route.
+  const fromHash = canonicalPath(pathFromHash());
+  if (fromHash) return fromHash;
+  const fromStorage = canonicalPath(pathFromStorage());
+  if (fromStorage) return fromStorage;
+  return "/"; // Agora is the landing route.
 }
 
 export const currentPath: Signal<string> = signal(resolveInitialPath());
@@ -78,7 +94,7 @@ export const currentPath: Signal<string> = signal(resolveInitialPath());
 export const focusAnchor: Signal<string | null> = signal(null);
 
 export function navigate(path: string): void {
-  const p = isValidPath(path) ? path : "/"; // Agora is the landing route
+  const p = canonicalPath(path) ?? "/"; // Agora is the landing route (redirects applied)
   currentPath.value = p;
   const bare = p.replace(/^\//, "");
   try {
@@ -93,12 +109,33 @@ export function navigate(path: string): void {
   closeMobile();
 }
 
+// The canonical hash a given path resolves to (what navigate() would write).
+// Kept next to the listener so the redirect-rewrite guard below and navigate()
+// agree byte-for-byte on the target hash.
+function canonicalHash(p: string): string {
+  return "#/" + p.replace(/^\//, "");
+}
+
 // Browser back/forward and manual hash edits route without re-triggering
 // navigate()'s own hash write (app.html:1184's `_routing` guard, simplified:
 // navigate() is idempotent when the hash already matches).
+//
+// The guard fires on EITHER of two conditions, not just a view change:
+//   1. the target view differs from the current one (the ordinary case), or
+//   2. the raw hash is not yet the canonical hash for that target — i.e. it is a
+//      legacy/redirect form (e.g. '#/activity', which resolves to '/board').
+// Condition 2 is load-bearing for brief item 3: clicking an old '#/activity'
+// link while ALREADY on /board leaves the canonical target (/board) equal to
+// currentPath, so condition 1 alone skips navigate() and the hash is stranded at
+// '#/activity' — URL and view disagree on screen. Calling navigate() rewrites
+// the hash to '#/board'. This does not loop: navigate()'s own hash write fires a
+// second hashchange whose raw hash is now already canonical, so both conditions
+// are false and it stops. The guard's original purpose — not re-navigating on a
+// hash that is already canonical AND already the current view — is preserved.
 if (typeof window !== "undefined") {
   window.addEventListener("hashchange", () => {
-    const p = hashTarget(location.hash || "");
-    if (p && p !== currentPath.value) navigate(p);
+    const raw = location.hash || "";
+    const p = hashTarget(raw);
+    if (p && (p !== currentPath.value || raw !== canonicalHash(p))) navigate(p);
   });
 }

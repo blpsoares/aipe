@@ -39,3 +39,16 @@ describe("Atividade board layout invariants (B1)", () => {
     expect(/flex: 0 0 auto|flex-shrink: 0/.test(b)).toBe(true);
   });
 });
+
+// j-20260830-sk item 2: the board page uses the full viewport width. .view-wide
+// opts the container out of .view-in's 1180px reading column. Guarded in source
+// (like B1 above) because happy-dom computes no layout — a view test cannot see
+// that the container is actually wide; the deterministic invariant is the CSS
+// rule that lifts the cap.
+describe("Board page full-width invariant (j-20260830-sk item 2)", () => {
+  test(".view-wide lifts the .view-in max-width cap (full viewport width)", () => {
+    const b = block(".view-in.view-wide");
+    expect(b).not.toBe("");
+    expect(b).toContain("max-width: none");
+  });
+});
