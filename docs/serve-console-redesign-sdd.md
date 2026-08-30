@@ -418,3 +418,58 @@ canônico, não no status cru:
 - O card carrega task, persona, branch, PR e estado juntos — teste de view.
 - Teste de compreensão: um leitor sem vocabulário AIPe entende o que cada coluna
   quer dele (aplicado pelo Mike na Wave 2).
+
+---
+
+## 13. Reconciliação v3 — o quadro da #39 dobrado dentro de "Agora"
+
+Enquanto este redesign estava segurado, a jornada `j-20260829-dp` (PR #39) mesclou
+uma **tela Atividade** própria (`/activity`): um quadro configurável ("tipo Jira")
+com coluna **Integrados por verdade-de-merge** (tri-estado `merged`/`open`/
+`unknown`, "verificando se já integrou…"), **rede fora do render** (refresher
+server-owned com TTL/timeout/no-downgrade; `buildServePayload` nunca chama `gh`),
+**paleta do site** e a regra CSS **load-bearing** `.acol-body .acard { flex:0 0 auto }`.
+
+O mapa aprovado (§4-§5, decisão A) põe o quadro como **seção recolhível dentro de
+"Agora"**, com **três telas primárias** — não uma quarta tela. A v3 da spec decide
+por isso e manda **construir em cima da #39, não re-implementar**. Reconciliação:
+
+- **A maquinaria da #39 é reusada verbatim.** Extraí o corpo da tela Atividade
+  (a `actbar` de controles + `<ActivityBoard>`) para `components/WorkBoard.tsx`; a
+  seção recolhível "O quadro completo" de "Agora" o renderiza. `runtime/activity.ts`,
+  `ActivityBoard`, `ActivityCard`, a coluna Integrados tri-estado, o refresher e a
+  regra load-bearing **não mudaram** — seguem testados e verdes.
+- **A rota/nav `/activity` sai;** a nav volta a 3 primárias (Agora 0 / Equipe 1 /
+  Histórico 2) + Glossário/Ajustes no rodapé. O `Board.tsx` antigo (`.bcol`, órfão
+  do meu #34) é aposentado; `runtime/board.ts` (núcleo que a #39 estendeu com a
+  coluna `integrated`) fica.
+- **Os testes da Atividade ACOMPANHAM o movimento** (não são deletados):
+  `activity.view.test` → `workboard.test`, dirigindo `<WorkBoard/>` direto.
+- **Sobreposição controlada:** a coluna "Precisa de você" do quadro é a visão
+  completa da força de trabalho; a zona "Precisa de você" no topo de "Agora" é o
+  SUBCONJUNTO curado (só o que o PE destrava). São projeções diferentes, não a mesma
+  lista re-emoldurada — o quadro fica recolhido por padrão (divulgação progressiva).
+
+**Ponto duro novo (nesta rodada):** aninhar o quadro fundo dentro de "Agora"
+reintroduziu a armadilha `min-width:auto` — os wrappers novos cresciam até o strip
+de 5 colunas (~1528px) e a `.view` rolava horizontalmente. Corrigido constrangendo a
+cadeia (`min-width:0` em `.board-wrap`/`.aboard-wrap`/`.aboard`; track do WorkBoard
+em `minmax(0,1fr)`; `.actbar-group` quebra linha), então o overflow é absorvido
+DENTRO de `.aboard` (`overflow-x:auto`), nunca na página.
+
+### Evidência colhida (v3, binário compilado, workspace real)
+
+- `version:check` in sync (1.10.2) · `typecheck` limpo · **`bun test` 1627/0** (202
+  arquivos) — nada da #39 regride (refresher/Integrados/`annotateIntegrated`/
+  load-bearing todos verdes).
+- Quadro **dentro de "Agora"** no binário: 5 colunas alimentadas pela mesma lógica —
+  observado **Trabalhando 5 · Precisa de você 14 · Em revisão 1 · Pronto 0 ·
+  Integrados 82** (Integrados por verdade-de-merge). A coluna Integrados (82 cards)
+  **rola internamente** (cap `calc(100vh-268px)`), sem colapsar — a regra
+  load-bearing funciona no novo lugar.
+- **Nenhuma tela rola horizontalmente:** por **iframe de largura fixa** (o
+  `resize_window` do harness trava em 2560), a 1366 e a 320 a `.view` **não** rola
+  H e a página não transborda; o `.aboard` rola em si mesmo.
+- **Ambos os temas na paleta do site:** claro `--bg 247,248,251` / `--brand
+  98,66,224` (violeta); escuro idem. Estado sempre **cor + glifo + rótulo**.
+- PR contra `dev` (fluxo dev→main); CI verde após o rebase sobre `origin/dev`.

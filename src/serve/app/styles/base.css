@@ -479,7 +479,7 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 .board-toggle { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); cursor: pointer; }
 .board-toggle:hover { border-color: var(--line-2); }
 .board-toggle .zone-sub { margin-left: auto; }
-.board-wrap { display: grid; gap: 14px; margin-top: 12px; }
+.board-wrap { display: grid; gap: 14px; margin-top: 12px; min-width: 0; }
 .board-lead { margin: 0; }
 .observations { display: grid; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--line-2); }
 .obs-h { font-size: 13.5px; }
@@ -556,10 +556,12 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 
 /* ── Atividade (j-20260829-dp) — the configurable board with its own home ─────── */
 /* The control bar: build-your-own-board (item 4) — the simple that works. */
-.actbar { padding: 12px 14px; }
-.actbar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.actbar { padding: 12px 14px; min-width: 0; }
+.actbar-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
 .actbar-spacer { flex: 1 1 auto; }
-.actbar-group { display: inline-flex; align-items: center; gap: 8px; }
+/* wrap the segmented group under its label at narrow widths so the controls
+   never force the board section wider than the viewport (320px, no overflow). */
+.actbar-group { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .actbar-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; user-select: none; }
 .actbar-toggle input { accent-color: var(--accent); }
 .actbar-filters.is-on { border-color: var(--accent); color: var(--accent-ink); }
@@ -577,10 +579,15 @@ h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0
 
 /* The board: horizontal scroll lives INSIDE this container (never the page); each
    column has a contained height and its own vertical scroll (item 1). */
-.aboard-wrap { display: flex; flex-direction: column; gap: 8px; }
+/* min-width:0 down the whole chain so the wide board strip scrolls WITHIN
+   .aboard (overflow-x:auto) instead of growing its grid/flex ancestors and
+   spilling into a page/view horizontal scroll — the min-width:auto trap, same
+   fix as the org viewport. Required now that the board nests inside Agora's
+   collapsible section (j-20260827-s9). */
+.aboard-wrap { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .aboard-norm { display: flex; align-items: center; gap: 6px; }
 .aboard-norm code { font-family: var(--mono); font-size: 11px; background: var(--panel-2); padding: 1px 7px; border-radius: 6px; color: var(--ink-2); }
-.aboard { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+.aboard { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; min-width: 0; }
 .acol { flex: 0 0 296px; display: flex; flex-direction: column; min-width: 0; max-height: calc(100vh - 268px); background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
 .acol-head { padding: 10px 12px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .acol-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 13px; }

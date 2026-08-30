@@ -1,13 +1,16 @@
-// "Atividade" — the fourth screen (SDD §2). Where "Agora" is the inbox (what
-// needs YOU, and what runs this second), Atividade answers the other question:
-// how is ALL the work? It is the board, given its own home — read-only, "tipo um
-// Jira": filter, group, build columns, open a detail, copy a command; never an
-// action that writes the ledger (SDD §3). The division is justified in the SDD so
-// the two screens are not two framings of one list.
+// The work board — "the whole board", the collapsible section inside "Agora"
+// (SDD §5/§11, reconciled with j-20260829-dp). Where "Agora" up top is the inbox
+// (what needs YOU, what runs now), THIS is the full board: read-only, "tipo um
+// Jira" — filter, group, build columns, open a detail, copy a command; never an
+// action that writes the ledger.
+//
+// This is the Atividade board (j-20260829-dp) given its home INSIDE Agora rather
+// than a fourth primary screen — the machinery (ActivityBoard, runtime/activity,
+// the merge-truth Integrados column, the server-owned refresher, the load-bearing
+// `.acol-body .acard` rule) is reused verbatim, only its container changed.
 import { useState } from "preact/hooks";
-import { ConnBadge } from "../components/ConnBadge";
-import { Icon } from "../components/Icon";
-import { ActivityBoard } from "../components/ActivityBoard";
+import { Icon } from "./Icon";
+import { ActivityBoard } from "./ActivityBoard";
 import { t } from "../runtime/i18n";
 import { dispatches, sessions } from "../runtime/store";
 import {
@@ -21,7 +24,6 @@ import {
 } from "../runtime/activity";
 import { ACTIVE_COLUMNS } from "../runtime/board";
 import type { BoardColumn } from "../runtime/board";
-import type { Route } from "../route-types";
 
 const GROUP_LABEL: Record<GroupField, string> = {
   state: "act_group_state",
@@ -90,7 +92,8 @@ function ChipRow({
   );
 }
 
-function ActivityView() {
+/** The configurable board body: the build-your-own-board controls + the board. */
+export function WorkBoard() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const cfg = boardConfig.value;
   const ds = dispatches.value;
@@ -110,15 +113,7 @@ function ActivityView() {
     (cfg.filters.waitsOnPE ? 1 : 0);
 
   return (
-    <div class="view-in grid" style={{ gap: "16px" }}>
-      <div class="between">
-        <div>
-          <h1 class="view-h">{t("nav_atividade")}</h1>
-          <div class="sub">{t("atividade_sub")}</div>
-        </div>
-        <ConnBadge />
-      </div>
-
+    <div class="grid" style={{ gap: "12px", minWidth: 0, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {/* Build-your-own-board controls (item 4) — the simple that works. */}
       <div class="actbar card pad">
         <div class="actbar-row">
@@ -177,9 +172,3 @@ function ActivityView() {
     </div>
   );
 }
-
-export const route: Route = {
-  path: "/activity",
-  nav: { label: "nav_atividade", icon: "pipeline", order: 1 },
-  component: ActivityView,
-};

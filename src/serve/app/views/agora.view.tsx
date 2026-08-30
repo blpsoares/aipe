@@ -1,21 +1,22 @@
-// "Agora" — the home screen, now purely the INBOX (SDD §2). It answers one
-// question: what needs a move from YOU, right now. Two urgency zones:
+// "Agora" — the home screen. Answers the governing question first, by urgency
+// (SDD §6.1). Three zones plus the whole board on demand:
 //   1) Precisa de você — decisions only the PE can unblock (empty IS success).
-//   2) Acontecendo agora — the specialists working this moment, with a link to
-//      "Atividade" for the full board.
-// The full four/five-column board no longer lives here: it moved to its own
-// screen, "Atividade" (j-20260829-dp). That removes the overlap the redesign
-// warned about — "Agora" shows the actionable SUBSET (a different projection),
-// never the same list as "Atividade" under another frame. Observations (findings
-// the coordinator/dev/QA handle) stay here, informational and apart.
-import { useEffect } from "preact/hooks";
+//   2) Acontecendo agora — the specialists working this moment.
+//   3) O quadro completo — the full configurable board, COLLAPSED by default
+//      (progressive disclosure). This is the Atividade board (j-20260829-dp)
+//      reused verbatim as a section INSIDE Agora — the approved map (SDD §5,
+//      decision A) keeps the board here, not on a fourth screen. Its "needs-you"
+//      column is the full workforce view; zone 1 above is the curated PE SUBSET
+//      (a different projection), so the two never read as one list re-framed.
+//   Observations (findings the coordinator/dev/QA handle) stay here, apart.
+import { useEffect, useState } from "preact/hooks";
 import { ConnBadge } from "../components/ConnBadge";
 import { Icon } from "../components/Icon";
 import { Avatar } from "../components/Avatar";
 import { ActionRow } from "../components/DecisionInbox";
+import { WorkBoard } from "../components/WorkBoard";
 import { t } from "../runtime/i18n";
 import { fqidOf } from "../runtime/dom";
-import { navigate } from "../runtime/router";
 import { decisions, observations, dispatches, sessions, openWorkerName, pinnedDispatch } from "../runtime/store";
 import { buildBoard } from "../runtime/board";
 import type { Route } from "../route-types";
@@ -59,9 +60,6 @@ function HappeningNow() {
           <h2 class="zone-title">{t("now_happening")}</h2>
           <div class="zone-sub">{t("now_happening_sub")}</div>
         </div>
-        <button type="button" class="zone-link" onClick={() => navigate("/activity")}>
-          {t("now_see_all")} →
-        </button>
       </header>
       {working.length === 0 ? (
         <div class="zone-empty sub">{t("now_happening_empty")}</div>
@@ -107,6 +105,28 @@ function Observations() {
   );
 }
 
+// Zone 3 — the whole board, collapsed by default (progressive disclosure). The
+// full configurable board (with its Integrados merge-truth column) lives here,
+// one click from the inbox above.
+function WholeBoard() {
+  const [open, setOpen] = useState(false);
+  return (
+    <section class="zone zone-board" aria-label={t("board_title")}>
+      <button type="button" class="board-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <Icon name={open ? "chevron-down" : "chevron-right"} size={16} />
+        <span class="zone-title">{t("board_title")}</span>
+        <span class="zone-sub">{open ? t("board_hide") : t("board_show")}</span>
+      </button>
+      {open ? (
+        <div class="board-wrap">
+          <p class="zone-sub board-lead">{t("board_sub")}</p>
+          <WorkBoard />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function AgoraView() {
   // ESC clears the pinned dispatch (the coordinator wizard drill-down).
   useEffect(() => {
@@ -129,6 +149,7 @@ function AgoraView() {
       <NeedsYou />
       <HappeningNow />
       <Observations />
+      <WholeBoard />
     </div>
   );
 }
