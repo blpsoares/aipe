@@ -7,7 +7,7 @@
 // supplies the ledger, the graph edges and the in-context unit set).
 import { packageFqid } from "../context-brain/packages";
 import type { RepoReleaseState } from "../release/types";
-import type { PrChecksResolver } from "./checks";
+import { resolveVerdict, type PrChecksResolver } from "./checks";
 import { hasRealEvidence, type JourneyDispatch, type JourneyLedger } from "./types";
 
 export type VerifySeverity = "critical" | "warning";
@@ -34,6 +34,7 @@ const RANK: Record<string, number> = {
   escalated: 2,
   redirected: 2,
   blocked: 2,
+  abandoned: 2,
   delivered: 3,
   verified: 4,
   merged: 5,
@@ -169,6 +170,18 @@ export function verifyJourney(
         detail: `blocked — waiting on the coordinator${top.blockedReason ? ` (${top.blockedReason})` : ""}`,
       });
     }
+
+    // 8 — abandoned-open (D4, j-20260830-w0): a session ended with no verdict
+    // and nothing has re-dispatched it yet. A warning, like blocked/escalated —
+    // unfinished work needing a fresh dispatch, never a QA rejection.
+    if (status === "abandoned" && !records.some((d) => d.status === "dispatched")) {
+      findings.push({
+        severity: "warning",
+        code: "abandoned-open",
+        unit,
+        detail: `abandoned — session ended with no verdict, not re-dispatched${top.abandonedReason ? ` (${top.abandonedReason})` : ""}`,
+      });
+    }
   }
 
   // Which units actually LANDED in this ledger (verified/merged, most-advanced).
@@ -270,7 +283,7 @@ export async function auditPrChecks(
     if (top.status !== "delivered" && top.status !== "verified") continue;
     if (!top.pr) continue;
     if (records.some((d) => d.ciBypass)) continue; // deliberate no-checks bypass — respected
-    const verdict = await resolve(top.pr);
+    const { verdict } = resolveVerdict(await resolve(top.pr));
     if (verdict === "red") {
       findings.push({ severity: "critical", code: "ci-red", unit, detail: `"${top.status}" but PR checks are failing (red) — a green ledger over a red workflow` });
     } else if (verdict === "pending") {

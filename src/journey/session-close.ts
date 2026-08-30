@@ -38,12 +38,17 @@ import type { DispatchStatus, JourneyDispatch } from "./types";
 //   • escalated — a cross-repo wall the PE must decide; the specialist cannot
 //                proceed within scope, and any continuation is a new session /
 //                journey, so this one has finished too.
+//   • abandoned — (D4, j-20260830-w0) by definition the session that produced
+//                this record is ALREADY gone with no verdict; closing here is
+//                idempotent cleanup of a stale registration, never a kill of
+//                live work.
 // Deliberately EXCLUDED — see KEEP_ALIVE_STATUSES below and the delivered note.
 export const SESSION_CLOSING_STATUSES: ReadonlySet<DispatchStatus> = new Set<DispatchStatus>([
   "verified",
   "merged",
   "failed",
   "escalated",
+  "abandoned",
 ]);
 
 // Statuses whose session is NEVER closed by a unit-scoped close, because the

@@ -1,8 +1,9 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import type { PrChecksResolver } from "./checks";
+import { resolveVerdict, type PrChecksResolver } from "./checks";
 import {
+  CI_GATED_STATUSES,
   EVIDENCE_REQUIRED_STATUSES,
   hasRealEvidence,
   IMMUTABLE_STATUSES,
@@ -262,10 +263,12 @@ export type LedgerGateCode =
   | "redispatch-needs-reason"
   | "redirect-needs-reason"
   | "blocked-needs-reason"
+  | "abandoned-needs-reason"
   | "ci-red"
   | "ci-pending"
   | "ci-none"
-  | "ci-unresolvable";
+  | "ci-unresolvable"
+  | "ci-verified-pre-merge-needs-reason";
 
 export interface GuardedRecordResult {
   ok: boolean;
@@ -285,7 +288,7 @@ function unitStatus(ledger: JourneyLedger, repo: string, pkg: string | null, tas
   // identical table in journey/verify.ts (see its comment): `redirected` ranks
   // with `failed`/`escalated` — a live redirect must outrank a stale
   // `dispatched` record from another specialist on the same task.
-  const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, redirected: 2, blocked: 2, delivered: 3, verified: 4, merged: 5 };
+  const rank: Record<string, number> = { removed: 0, dispatched: 1, failed: 2, escalated: 2, redirected: 2, blocked: 2, abandoned: 2, delivered: 3, verified: 4, merged: 5 };
   return ledger.dispatches
     .filter((d) => d.repo === repo && (d.package ?? null) === pkg && (d.task ?? null) === task)
     .sort((a, b) => (rank[b.status] ?? 0) - (rank[a.status] ?? 0))[0];
@@ -295,7 +298,7 @@ export async function recordDispatchGuarded(
   workspaceDir: string,
   id: string,
   dispatch: JourneyDispatch,
-  opts: { reason?: string; resolveChecks?: PrChecksResolver; ciNone?: boolean } = {},
+  opts: { reason?: string; resolveChecks?: PrChecksResolver; ciNone?: boolean; ciVerifiedPreMerge?: boolean } = {},
 ): Promise<GuardedRecordResult> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
   const pkg = dispatch.package ?? null;
@@ -362,6 +365,17 @@ export async function recordDispatchGuarded(
       message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} is being recorded "blocked" — --reason is required (what you are stuck on and what you need), so the coordinator can act on it without reading your terminal.`,
     };
   }
+  // 4c — D4 (j-20260830-w0): `abandoned` exists ONLY to say "this session ended
+  // with no verdict" — without a reason it is exactly the same silence it was
+  // introduced to replace, so it is refused the same way a reasonless
+  // redirect/blocked is.
+  if (dispatch.status === "abandoned" && !opts.reason?.trim()) {
+    return {
+      ok: false,
+      code: "abandoned-needs-reason",
+      message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} is being recorded "abandoned" — --reason is required (what established there is no verdict, e.g. the session is gone with nothing recorded), so this never reads as a silent, unexplained non-answer.`,
+    };
+  }
 
   // 5 — CI gate: a done-claim (delivered/verified) that names a PR must have a
   // GREEN workflow. Prose in a brief did not hold ("do not ship against red
@@ -372,8 +386,8 @@ export async function recordDispatchGuarded(
   // The resolution is five-way (see CheckVerdict) so "still running" is neither
   // "passed" nor "failed", and an unreachable forge abstains rather than guesses.
   let ciBypass: JourneyDispatch["ciBypass"];
-  if (opts.resolveChecks && dispatch.pr && EVIDENCE_REQUIRED_STATUSES.includes(dispatch.status)) {
-    const verdict = await opts.resolveChecks(dispatch.pr);
+  if (opts.resolveChecks && dispatch.pr && CI_GATED_STATUSES.includes(dispatch.status)) {
+    const { verdict, detail } = resolveVerdict(await opts.resolveChecks(dispatch.pr));
     if (verdict === "red") {
       return {
         ok: false,
@@ -405,11 +419,27 @@ export async function recordDispatchGuarded(
         };
       }
     } else if (verdict === "unknown") {
-      return {
-        ok: false,
-        code: "ci-unresolvable",
-        message: `unit ${unitName} — could not resolve PR checks (gh missing, unauthenticated, offline, or an unqueryable host). The gate abstains rather than guess green; make the checks resolvable and retry. (${dispatch.pr})`,
-      };
+      // D2 (j-20260830-w0) — an honest escape hatch for "checks were verified
+      // green before this PR merged and are no longer queryable" that is NOT
+      // `--ci-none`: that flag makes a specific, different claim ("this repo
+      // has no CI configured"), which is false whenever CI genuinely exists —
+      // the exact misuse the abstention used to push operators toward.
+      if (opts.ciVerifiedPreMerge) {
+        if (!opts.reason?.trim()) {
+          return {
+            ok: false,
+            code: "ci-verified-pre-merge-needs-reason",
+            message: `unit ${unitName} — --ci-verified-pre-merge requires --reason (when/how the checks were seen green before merge), so the claim lands on the ledger for audit, not as a bare assertion.`,
+          };
+        }
+        ciBypass = "verified-pre-merge";
+      } else {
+        return {
+          ok: false,
+          code: "ci-unresolvable",
+          message: `unit ${unitName} — could not resolve PR checks: ${detail ?? "no detail available"}. The gate abstains rather than guess green. If checks were verified green before this PR merged and gh can no longer resolve them (e.g. the branch was deleted), record with --ci-verified-pre-merge --reason "<when/how you saw them green>" instead of --ci-none. (${dispatch.pr})`,
+        };
+      }
     }
     // verdict === "green" → fall through and record.
   }
@@ -430,9 +460,11 @@ export async function recordDispatchGuarded(
       ? { ...dispatch, redirectReason: opts.reason!.trim() }
       : dispatch.status === "blocked"
         ? { ...dispatch, blockedReason: opts.reason!.trim() }
-        : ciBypass
-          ? { ...dispatch, ciBypass }
-          : dispatch;
+        : dispatch.status === "abandoned"
+          ? { ...dispatch, abandonedReason: opts.reason!.trim() }
+          : ciBypass
+            ? { ...dispatch, ciBypass }
+            : dispatch;
 
   const path = await recordDispatch(workspaceDir, id, toWrite);
   return { ok: true, path };

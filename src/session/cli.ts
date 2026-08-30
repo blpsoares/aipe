@@ -5,7 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { packageFqid } from "../context-brain/packages";
 import { repoDir } from "../context-brain/layout";
 import { readBrain } from "../make-workspace/read";
-import { readLedger, recordDispatch } from "../journey/ledger";
+import { readLedger, recordDispatch, setJourneySpec } from "../journey/ledger";
+import { hashOrientationContent } from "../journey/spec";
 import type { JourneyDispatch } from "../journey/types";
 import { getAdapter, hasAdapter, resolveAdapter } from "../harness/registry";
 import { isContainable } from "../harness/types";
@@ -222,6 +223,41 @@ function specSlice(orientation: string, fqid: string): string {
   return lines.slice(start, end < 0 ? undefined : end).join("\n");
 }
 
+// D1 (j-20260830-w0) — the Lawson incident: a redispatch into a unit whose
+// ledger already carries a MERGED task read that record as an answer to the
+// NEW order and never opened the new spec section at all. A specialist has no
+// way to draw that line on its own — the prompt has to draw it, explicitly,
+// as history rather than as a status the current dispatch must reconcile.
+// Scoped to the SAME unit (repo + package) across every OTHER task/specialist
+// — the current dispatch's own row is excluded by identity, never by status,
+// so a fresh `dispatched` row from a genuinely different concurrent task still
+// shows up as history for THIS one.
+function unitHistoryFor(ledger: { dispatches: JourneyDispatch[] }, self: JourneyDispatch): JourneyDispatch[] {
+  const samePkg = (a: string | undefined, b: string | undefined): boolean => (a ?? null) === (b ?? null);
+  return ledger.dispatches.filter(
+    (d) =>
+      d.repo === self.repo &&
+      samePkg(d.package, self.package) &&
+      !(samePkg(d.task, self.task) && d.specialist.toLowerCase() === self.specialist.toLowerCase()),
+  );
+}
+
+function renderUnitHistory(fqid: string, entries: JourneyDispatch[]): string {
+  if (entries.length === 0) return "";
+  const lines = entries.map(
+    (h) => `- ${h.task ?? "(unit-level)"} · ${h.specialist} · ${h.status}${h.pr ? ` · ${h.pr}` : ""}`,
+  );
+  const hasMerged = entries.some((h) => h.status === "merged");
+  const parts = [`# History for ${fqid} — context only, never your order`, "", ...lines];
+  if (hasMerged) {
+    parts.push(
+      "",
+      `There is a MERGED delivery for ${fqid} listed above. It is history — it is NOT your order and does NOT mean this dispatch is redundant. Your order is the spec version and section named in your assignment above; go read it before concluding there is nothing new to build.`,
+    );
+  }
+  return parts.join("\n");
+}
+
 // Wraps a value in POSIX single quotes so it survives shell re-parsing intact
 // — spaces, double quotes, `$`, backticks, everything except the single quote
 // itself, which single quotes cannot represent and must therefore end the
@@ -292,7 +328,7 @@ const FIELD_FLAGS = {
   mode: "--mode",
   intensity: "--intensity",
   harness: "--harness",
-} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason" | "blockedReason" | "ciBypass">, string>;
+} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason" | "blockedReason" | "abandonedReason" | "ciBypass">, string>;
 
 function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: JourneyDispatch, sessionId: string): string {
   const parts = ["aipe journey record", `--journey ${shQuote(journeyId)}`, `--workspace ${shQuote(workspace)}`];
@@ -403,6 +439,36 @@ export async function dispatchCommand(
   if (orientation.trim() === "") {
     lines.push("ERROR spec: orientation.md is empty — write and approve the Orientation Spec first");
     return { code: 1, lines };
+  }
+
+  // D1 (j-20260830-w0) — the version stamped into every prompt below tracks
+  // the FILE's content, not a hand-typed counter: a coordinator who appended a
+  // new section to orientation.md directly (no `journey spec --amend`) and
+  // then re-dispatched — the exact Lawson incident — must not hand out a
+  // prompt still claiming the OLD version. Detect drift the same way `journey
+  // spec` does (spec.ts hashOrientationContent) and bump right here, since
+  // dispatch is the one path this coordinator mistake actually took. A ledger
+  // with no `spec` at all (legacy/test fixture) falls back to version 1 with
+  // nothing to persist.
+  const orientationHash = hashOrientationContent(orientation);
+  let specVersion = ledger.spec?.version ?? 1;
+  if (ledger.spec) {
+    const priorHash = ledger.spec.contentHash;
+    const drifted = priorHash !== undefined && priorHash !== orientationHash;
+    if (drifted) {
+      specVersion = ledger.spec.version + 1;
+      lines.push(
+        `NOTE spec: orientation.md changed since v${ledger.spec.version} was approved — bumping to v${specVersion} (needs re-approval)`,
+      );
+    }
+    if (drifted || priorHash === undefined) {
+      await setJourneySpec(workspace, opts.journeyId, {
+        ...ledger.spec,
+        version: specVersion,
+        approved: drifted ? false : ledger.spec.approved,
+        contentHash: orientationHash,
+      });
+    }
   }
 
   const adapter = await resolveAdapter(workspace);
@@ -525,6 +591,8 @@ export async function dispatchCommand(
       journeyId: opts.journeyId,
       workspace: workspace,
       fqid,
+      specVersion,
+      history: renderUnitHistory(fqid, unitHistoryFor(ledger, d)),
       intensity: d.intensity === "ultracode" ? "ultracode" : "normal",
       ...(d.task ? { task: d.task } : {}),
     });

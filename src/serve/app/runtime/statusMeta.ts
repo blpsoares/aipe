@@ -23,6 +23,10 @@ const META: Record<string, StatusMeta> = {
   // The specialist declared itself stuck and waiting on the coordinator — amber
   // (the same "needs a look" tone as escalated), never slate (which reads idle).
   blocked: { tone: "amber", labelKey: "st_blocked", descKey: "sd_blocked" },
+  // D4 (j-20260830-w0) — slate (like `removed`), never rose: this is "no
+  // verdict was ever formed", not a rejection, and must never visually read
+  // like one.
+  abandoned: { tone: "slate", labelKey: "st_abandoned", descKey: "sd_abandoned" },
   // A human talked to this specialist mid-flight and changed its direction —
   // amber (the same "needs a look" tone as escalated), never `slate`: `slate`
   // reads as idle/off, which is the exact opposite of a specialist whose work

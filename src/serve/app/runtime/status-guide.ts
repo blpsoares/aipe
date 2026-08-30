@@ -27,6 +27,7 @@ const CANONICAL_ORDER: DispatchStatus[] = [
   "failed",
   "escalated",
   "blocked",
+  "abandoned",
   "redirected",
 ];
 
@@ -39,6 +40,11 @@ const CANONICAL: Record<DispatchStatus, Omit<StatusEntry, "key">> = {
   failed: { tone: "rose", meaning: "sg_failed_m", cause: "sg_failed_c", unblock: "sg_failed_u", who: "sg_who_dev", laws: ["sg_law_qa"] },
   escalated: { tone: "amber", meaning: "sg_escalated_m", cause: "sg_escalated_c", unblock: "sg_escalated_u", who: "sg_who_pe", laws: ["sg_law_landing"] },
   blocked: { tone: "amber", meaning: "sg_blocked_m", cause: "sg_blocked_c", unblock: "sg_blocked_u", who: "sg_who_coord", laws: [] },
+  // D4 (j-20260830-w0) — deliberately its OWN tone (slate, like `removed`),
+  // never rose/amber: those read as "something went wrong with the work",
+  // which is exactly the false reading this status exists to correct. This is
+  // "no verdict was ever formed", not a rejection.
+  abandoned: { tone: "slate", meaning: "sg_abandoned_m", cause: "sg_abandoned_c", unblock: "sg_abandoned_u", who: "sg_who_coord", laws: [] },
   redirected: { tone: "amber", meaning: "sg_redirected_m", cause: "sg_redirected_c", unblock: "sg_redirected_u", who: "sg_who_coord", laws: [] },
 };
 

@@ -145,16 +145,27 @@ test("merged on a session-mode unit whose session IS live also closes it", async
   expect(output).toContain("CLOSED session sess-xyz");
 });
 
-test("failed closes the unit's session too — the fix loop opens a NEW session", async () => {
+// D4 (j-20260830-w0) — `failed` now requires evidence exactly like
+// delivered/verified (a real QA verdict names what it checked), so this test
+// supplies it; the session-close behavior itself is unchanged.
+test("failed (WITH evidence) closes the unit's session too — the fix loop opens a NEW session", async () => {
   const dir = await ws();
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session", "--session-id", "sess-fail"]));
   const { runner, kills } = agentop({ live: ["sess-fail"] });
   const { code, output } = await capture(() =>
-    run(dispatchArgs(dir, ["--status", "failed"]), { sessionRunner: runner }),
+    run(dispatchArgs(dir, ["--status", "failed", ...evArgs]), { sessionRunner: runner }),
   );
   expect(code).toBe(0);
   expect(kills).toEqual(["sess-fail"]);
   expect(output).toContain("CLOSED session sess-fail");
+});
+
+test("failed WITHOUT evidence is REJECTED at the CLI — indistinguishable from a session that died with no verdict", async () => {
+  const dir = await ws();
+  await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session", "--session-id", "sess-fail"]));
+  const { code, output } = await capture(() => run(dispatchArgs(dir, ["--status", "failed"])));
+  expect(code).toBe(1);
+  expect(output).toContain("REJECT evidence-required");
 });
 
 test("escalated closes the unit's session too — the PE decides, any continuation is a new session", async () => {

@@ -125,11 +125,31 @@ test("re-dispatching a delivered unit needs a reason; with one it records the re
   }
 });
 
-test("a failed QA verdict needs no evidence gate (it is not a done-claim)", async () => {
+// D4 (j-20260830-w0) — `failed` now requires evidence exactly like
+// delivered/verified: a real QA verdict always names what it checked, or it
+// is indistinguishable from a session that died before forming an opinion
+// (the Tyrus incident — a dead session's ledger row read as a QA rejection).
+test("a failed QA verdict WITHOUT evidence is REJECTED — indistinguishable from a session that died with no verdict", async () => {
   const dir = await ws();
   try {
     await recordDispatchGuarded(dir, "j1", { ...base, status: "delivered", pr: "http://pr/1", evidence });
     const r = await recordDispatchGuarded(dir, "j1", { ...base, status: "failed" });
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("evidence-required");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a failed QA verdict WITH evidence records — and is never CI-gated (rejecting BECAUSE checks are red must stay recordable)", async () => {
+  const dir = await ws();
+  try {
+    await recordDispatchGuarded(dir, "j1", { ...base, status: "delivered", pr: "http://pr/1", evidence });
+    const r = await recordDispatchGuarded(
+      dir, "j1",
+      { ...base, status: "failed", pr: "http://pr/1", evidence: { by: "qa", commands: ["bun test"], summary: "3 tests broke" } },
+      { resolveChecks: async () => "red" },
+    );
     expect(r.ok).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -237,6 +257,42 @@ test("blocked WITH a reason is recorded and stores blockedReason (distinct from 
     const later = (await readLedger(dir, "j1"))!.dispatches[0]!;
     expect(later.status).toBe("delivered");
     expect(later.blockedReason).toBeUndefined();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// D4 (j-20260830-w0) — `abandoned` is the honest name for a session that ended
+// with no verdict at all. It requires NO evidence (there is none to give — the
+// session is gone) but DOES require a reason, same discipline as
+// blocked/redirected: the entire value of the status is saying WHY there is no
+// verdict, so a reasonless one is refused exactly as worthless.
+test("abandoned WITHOUT a reason is rejected — a reasonless 'no verdict' is the same silence it replaces", async () => {
+  const dir = await ws();
+  try {
+    const r = await recordDispatchGuarded(dir, "j1", { ...base, status: "abandoned" });
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("abandoned-needs-reason");
+    expect((await readLedger(dir, "j1"))!.dispatches).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("abandoned WITH a reason records with NO evidence required, and stores abandonedReason distinct from blockedReason/redirectReason", async () => {
+  const dir = await ws();
+  try {
+    const r = await recordDispatchGuarded(
+      dir, "j1", { ...base, status: "abandoned" },
+      { reason: "agentop reports the session gone; no ledger record was ever written" },
+    );
+    expect(r.ok).toBe(true);
+    const rec = (await readLedger(dir, "j1"))!.dispatches[0]!;
+    expect(rec.status).toBe("abandoned");
+    expect(rec.abandonedReason).toBe("agentop reports the session gone; no ledger record was ever written");
+    expect(rec.evidence).toBeUndefined();
+    expect(rec.blockedReason).toBeUndefined();
+    expect(rec.redirectReason).toBeUndefined();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

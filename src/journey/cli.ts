@@ -14,7 +14,7 @@ import { readPersonas } from "../hire-specialists/read-personas";
 import { closeUnitSessions, SESSION_CLOSING_STATUSES } from "./session-close";
 import { executeReap, planReap, type ReapItem } from "./reap";
 import { parseSessionRoster, type RosterEntry } from "../session/poll";
-import { parseOrientationUnits, renderOrientationTemplate, validateOrientation } from "./spec";
+import { hashOrientationContent, parseOrientationUnits, renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
 import { isValidTaskId } from "../worktree/naming";
 import { DISPATCH_STATUSES } from "./types";
@@ -113,10 +113,8 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   const id = getFlag(args, "--journey");
   const repoFlag = getFlag(args, "--repo");
   const specialistFlag = getFlag(args, "--specialist");
-  const branch = getFlag(args, "--branch");
-  const worktree = getFlag(args, "--worktree");
-  if (!id || !repoFlag || !specialistFlag || !branch || !worktree) {
-    console.log("ERROR args: --journey, --repo, --specialist, --branch and --worktree are required");
+  if (!id || !repoFlag || !specialistFlag) {
+    console.log("ERROR args: --journey, --repo and --specialist are required");
     return 1;
   }
   // Write-time identity normalization (j-20260829-dp, item 5): resolve the repo
@@ -136,6 +134,53 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
     console.log(`ERROR task: --task must be slug-safe (lowercase alnum + hyphen), got "${task}"`);
     return 1;
   }
+
+  // D3 (j-20260830-w0) — updating an EXISTING dispatch's status must identify
+  // it by journey + repo + unit + specialist + task, not by redeclaring
+  // --branch/--worktree. Every retype was a chance to record the WRONG one (a
+  // coordinator once recorded `jesse__redesign-build` in place of
+  // `jesse__console-reconcile` and was caught by luck). If a matching record
+  // exists, branch/worktree are inherited from it when omitted; if given AND
+  // they diverge from what is recorded, that is an ERROR — never a silent
+  // upsert that either clobbers the identity or forks a second row.
+  const existingLedger = await readLedger(workspace, id);
+  const existing = existingLedger?.dispatches.find(
+    (d) =>
+      d.repo === repo &&
+      (d.package ?? null) === (pkg ?? null) &&
+      (d.task ?? null) === (task ?? null) &&
+      d.specialist.toLowerCase() === specialist.toLowerCase(),
+  );
+  const unitLabel = `${repo}${pkg ? `/${pkg}` : ""}`;
+  const branchFlag = getFlag(args, "--branch");
+  const worktreeFlag = getFlag(args, "--worktree");
+  let branch = branchFlag;
+  if (existing) {
+    if (branch === undefined) branch = existing.branch;
+    else if (branch !== existing.branch) {
+      console.log(
+        `REJECT branch-mismatch ${unitLabel} — this dispatch is recorded with branch "${existing.branch}", got "${branch}" instead. Drop --branch to reuse the recorded one, or fix the typo; a status update never silently changes identity.`,
+      );
+      return 1;
+    }
+  }
+  let worktree = worktreeFlag;
+  if (existing) {
+    if (worktree === undefined) worktree = existing.worktree;
+    else if (worktree !== existing.worktree) {
+      console.log(
+        `REJECT worktree-mismatch ${unitLabel} — this dispatch is recorded with worktree "${existing.worktree}", got "${worktree}" instead. Drop --worktree to reuse the recorded one, or fix the typo; a status update never silently changes identity.`,
+      );
+      return 1;
+    }
+  }
+  if (!branch || !worktree) {
+    console.log(
+      "ERROR args: --branch and --worktree are required to create a new dispatch (no existing record for this journey+repo+unit+specialist+task to inherit them from)",
+    );
+    return 1;
+  }
+
   const tier = getFlag(args, "--tier");
   const model = getFlag(args, "--model");
   const reason = getFlag(args, "--reason");
@@ -185,6 +230,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   // repo with no checks configured — it only upgrades a resolved "none" (see
   // recordDispatchGuarded), never masks a red/pending/unresolvable verdict.
   const ciNone = args.includes("--ci-none");
+  const ciVerifiedPreMerge = args.includes("--ci-verified-pre-merge");
   const resolveChecks = deps.resolveChecks ?? ghPrChecks;
 
   const result = await recordDispatchGuarded(
@@ -207,7 +253,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ...(evidence ? { evidence } : {}),
       status,
     },
-    { ...(reason ? { reason } : {}), resolveChecks, ciNone },
+    { ...(reason ? { reason } : {}), resolveChecks, ciNone, ciVerifiedPreMerge },
   );
 
   if (!result.ok) {
@@ -419,7 +465,6 @@ async function specCommand(args: string[]): Promise<number> {
   // default: scaffold (never clobbers an edited spec) + record it on the ledger
   const existing = await readLedger(workspace, id);
   const amend = args.includes("--amend");
-  const version = amend ? (existing?.spec?.version ?? 1) + 1 : existing?.spec?.version ?? 1;
   await mkdir(dirname(absPath), { recursive: true });
   let created = true;
   try {
@@ -428,10 +473,28 @@ async function specCommand(args: string[]): Promise<number> {
   } catch {
     // absent → write the template
   }
-  if (created) await writeFile(absPath, renderOrientationTemplate(id, units), "utf8");
-  await setJourneySpec(workspace, id, { path: relPath, version, approved: false });
+  const body = created ? renderOrientationTemplate(id, units) : await readFile(absPath, "utf8");
+  const hash = hashOrientationContent(body);
+  // D1 — a spec's version tracks its CONTENT, not a hand-typed counter: if the
+  // file on disk no longer matches the hash last recorded, the coordinator
+  // edited it directly (no `--amend`) and the version must bump on its own,
+  // exactly as `--amend` would, so nothing downstream can read a stale
+  // version against changed content. A ledger with no prior hash (legacy, or
+  // this is the very first write) has nothing to compare against — backfill
+  // the hash silently, without inventing a change that was never observed.
+  const priorHash = existing?.spec?.contentHash;
+  const drifted = !created && priorHash !== undefined && priorHash !== hash;
+  const version = amend || drifted ? (existing?.spec?.version ?? 1) + 1 : (existing?.spec?.version ?? 1);
+  const approved = amend || drifted ? false : (existing?.spec?.approved ?? false);
+  if (created) await writeFile(absPath, body, "utf8");
+  await setJourneySpec(workspace, id, { path: relPath, version, approved, contentHash: hash });
+  if (drifted) {
+    console.log(
+      `STATE spec drift-detected journey=${id} — orientation.md changed on disk without --amend; version bumped v${existing!.spec!.version} → v${version} (needs re-approval)`,
+    );
+  }
   console.log(`${created ? "OK" : "EXISTS"} ${relPath}`);
-  console.log(`STATE spec journey=${id} v${version} approved=false units=${units.length}`);
+  console.log(`STATE spec journey=${id} v${version} approved=${approved} units=${units.length}`);
   return 0;
 }
 
