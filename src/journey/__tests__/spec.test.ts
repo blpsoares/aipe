@@ -2,13 +2,46 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseOrientationUnits, renderOrientationTemplate, validateOrientation } from "../spec";
+import { findPlaceholders, parseOrientationUnits, renderOrientationTemplate, validateOrientation } from "../spec";
 import { readLedger, setJourneySpec } from "../ledger";
 
-test("the template has every canonical section and a scope per unit", () => {
+test("the raw template has every section and a scope per unit but is NOT ok — its `<...>` slots are unsubstituted", () => {
   const md = renderOrientationTemplate("j1", ["platform/core", "web"]);
   const check = validateOrientation(md, ["platform/core", "web"]);
+  // Structurally complete…
+  expect(check.missingSections).toEqual([]);
+  expect(check.missingUnits).toEqual([]);
+  // …but a template is not a filled spec: the placeholders make it not ok.
+  expect(check.placeholders.length).toBeGreaterThan(0);
+  expect(check.ok).toBe(false);
+});
+
+test("a fully substituted spec passes validateOrientation", () => {
+  const md = [
+    "# Orientation Spec — j1",
+    "## Problem",
+    "Ship the gate.",
+    "## Cross-package contracts",
+    "aipe consumes agentop.",
+    "## Per-package scope",
+    "### aipe",
+    "- **Scope:** close the spec gate",
+    "- **Acceptance:** green tests",
+    "## Sequencing",
+    "- **Wave 1:** aipe",
+    "## Out of scope",
+    "- the site",
+    "",
+  ].join("\n");
+  const check = validateOrientation(md, ["aipe"]);
+  expect(check.placeholders).toEqual([]);
   expect(check.ok).toBe(true);
+});
+
+test("findPlaceholders reports the intact slots but ignores URL autolinks", () => {
+  const md = "## Problem\n<why this matters>\nSee <https://example.com/x> and <mailto:a@b.co>.\n<why this matters>\n";
+  // De-duplicated, order-preserving; the autolinks are NOT placeholders.
+  expect(findPlaceholders(md)).toEqual(["<why this matters>"]);
 });
 
 test("validateOrientation flags missing sections and units", () => {

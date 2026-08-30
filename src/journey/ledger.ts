@@ -191,10 +191,18 @@ export async function recordDispatch(
       d.repo === dispatch.repo &&
       (d.package ?? null) === (dispatch.package ?? null) &&
       (d.task ?? null) === (dispatch.task ?? null) &&
-      d.specialist === dispatch.specialist,
+      // Case-insensitive on the specialist so a case-only difference (`mike`
+      // after `Mike`) UPDATES the one record instead of forking a duplicate
+      // row — the same jane/Jane split dedupeLedger cleans up after the fact,
+      // refused here at write time before it can ever land.
+      d.specialist.toLowerCase() === dispatch.specialist.toLowerCase(),
   );
-  if (idx >= 0) ledger.dispatches[idx] = mergeDispatch(ledger.dispatches[idx], dispatch);
-  else ledger.dispatches.push(dispatch);
+  if (idx >= 0) {
+    const existing = ledger.dispatches[idx]!;
+    // Keep the FIRST record's spelling as canonical: an update must not rewrite
+    // the specialist's name to the incoming caller's casing.
+    ledger.dispatches[idx] = mergeDispatch(existing, { ...dispatch, specialist: existing.specialist });
+  } else ledger.dispatches.push(dispatch);
   return writeLedger(workspaceDir, ledger);
 }
 

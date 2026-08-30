@@ -315,9 +315,14 @@ test("a unit whose harness is not claude-code produces its own agentop harness n
   // forever instead of reaching the original implementation (see the
   // identical note on `realRecordDispatch` elsewhere in this file).
   const realGetAdapter = registryModule.getAdapter;
+  const realHasAdapter = registryModule.hasAdapter;
   mock.module("../../harness/registry", () => ({
     ...registryModule,
     getAdapter: (id: string | null | undefined) => (id === "acme" ? acmeAdapter : realGetAdapter(id)),
+    // dispatchCommand now consults hasAdapter before getAdapter (it refuses a
+    // present-but-unregistered harness). "acme" is a genuinely-registered
+    // adapter in this test's world, so the injection must say so here too.
+    hasAdapter: (id: string) => id === "acme" || realHasAdapter(id),
   }));
   try {
     let capturedArgs: string[] = [];
@@ -340,7 +345,7 @@ test("a unit whose harness is not claude-code produces its own agentop harness n
     // Restore to the real implementation explicitly — `() => registryModule`
     // would be a no-op (same live-binding trap) and leave the mock wired in
     // for every later test in this file.
-    mock.module("../../harness/registry", () => ({ ...registryModule, getAdapter: realGetAdapter }));
+    mock.module("../../harness/registry", () => ({ ...registryModule, getAdapter: realGetAdapter, hasAdapter: realHasAdapter }));
   }
 });
 
