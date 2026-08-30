@@ -140,6 +140,14 @@ button { font: inherit; color: inherit; cursor: pointer; border: none; backgroun
 /* View area */
 .view { flex: 1; overflow: auto; padding: 24px; }
 .view-in { max-width: 1180px; margin: 0 auto; animation: fadeup .28s ease both; }
+/* .view-wide opts out of the 1180px reading column — the board page (Quadro,
+   j-20260830-sk) uses the full viewport width. Horizontal scroll stays INSIDE
+   .aboard (overflow-x:auto), so a full-width board only scrolls when its columns
+   genuinely overflow, never a narrow container with permanent scroll. */
+.view-in.view-wide { max-width: none; }
+/* On the dedicated board page the columns own most of the viewport height (only
+   a slim header sits above), so they get more room than inside Agora's stack. */
+.view-wide .acol { max-height: calc(100vh - 168px); }
 .row { display: flex; align-items: center; gap: 12px; }
 .between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 h1.view-h { font-size: 22px; font-weight: 780; letter-spacing: -.02em; margin: 0 0 2px; }

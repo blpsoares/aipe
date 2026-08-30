@@ -215,6 +215,6 @@ function EquipeView() {
 
 export const route: Route = {
   path: "/team",
-  nav: { label: "nav_team", icon: "team", order: 1 },
+  nav: { label: "nav_team", icon: "team", order: 2 },
   component: EquipeView,
 };

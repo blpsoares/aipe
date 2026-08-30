@@ -5,7 +5,7 @@ import { attentionCount, attentionHasCritical } from "../runtime/store";
 import { currentPath, navigate } from "../runtime/router";
 import { Icon } from "./Icon";
 
-// Mobile tabbar — the 3 primary screens (Agora / Equipe / Histórico). Derived
+// Mobile tabbar — the primary screens (Agora / Quadro / Equipe / Histórico). Derived
 // from `routes` (already order-sorted) so it stays in sync with the view set.
 const items = (routes as Route[]).filter((r) => r.nav.group !== "footer");
 

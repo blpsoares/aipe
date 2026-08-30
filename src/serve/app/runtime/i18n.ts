@@ -135,7 +135,7 @@ export const STR: Record<Lang, Record<string, string>> = {
     // ── Status guide (5.3) ──
     status_nav:"Status guide", status_title:"Status guide", status_sub:"What each state means, what causes it, what unblocks it, and who acts next.",
     // ── Redesign (j-20260827-s9): 3 primary screens + 2 footer ──────────────
-    nav_now:"Now", nav_atividade:"Activity", nav_team:"Team", nav_history:"History", nav_report:"Report", nav_guide:"Glossary",
+    nav_now:"Now", nav_board:"Board", nav_atividade:"Activity", nav_team:"Team", nav_history:"History", nav_report:"Report", nav_guide:"Glossary",
     now_sub:"What your AI team is doing right now — and what needs you.",
     atividade_sub:"All the work, as a board you arrange. View and organise — filter, group, open a card, copy a command; the console never acts for you.",
     act_group_by:"Group by", act_group_state:"State", act_group_repo:"Repo", act_group_persona:"Person", act_group_journey:"Journey",
@@ -367,7 +367,7 @@ export const STR: Record<Lang, Record<string, string>> = {
     // ── Guia de status (5.3) ──
     status_nav:"Guia de status", status_title:"Guia de status", status_sub:"O que cada estado significa, o que o causa, o que o destrava e quem age em seguida.",
     // ── Redesign (j-20260827-s9): 3 telas primárias + 2 no rodapé ────────────
-    nav_now:"Agora", nav_atividade:"Atividade", nav_team:"Equipe", nav_history:"Histórico", nav_report:"Relatório", nav_guide:"Glossário",
+    nav_now:"Agora", nav_board:"Quadro", nav_atividade:"Atividade", nav_team:"Equipe", nav_history:"Histórico", nav_report:"Relatório", nav_guide:"Glossário",
     now_sub:"O que sua equipe de IA está fazendo agora — e o que precisa de você.",
     atividade_sub:"Todo o trabalho, num quadro que você arruma. Ver e organizar — filtrar, agrupar, abrir um card, copiar um comando; a console nunca age por você.",
     act_group_by:"Agrupar por", act_group_state:"Estado", act_group_repo:"Repo", act_group_persona:"Pessoa", act_group_journey:"Jornada",

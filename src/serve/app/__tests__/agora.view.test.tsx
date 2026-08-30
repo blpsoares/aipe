@@ -4,8 +4,7 @@ import { render, cleanup, fireEvent } from "@testing-library/preact";
 import { route } from "../views/agora.view";
 import { snapshot, applySnapshot, openWorkerName } from "../runtime/store";
 import { setLang, t } from "../runtime/i18n";
-import { navigate } from "../runtime/router";
-import { resetAgoraBoardOpen } from "../runtime/ui";
+import { navigate, currentPath } from "../runtime/router";
 import { fixtureSnapshot, loadFixture } from "./fixtures";
 
 const AgoraView = route.component;
@@ -17,7 +16,6 @@ afterEach(() => {
   openWorkerName.value = null;
   setLang("en");
   navigate("/");
-  resetAgoraBoardOpen();
 });
 
 test("route contract: Agora is the landing route (path '/', order 0)", () => {
@@ -61,34 +59,23 @@ test("'Happening now' lists the working specialist (Ana, dispatched)", () => {
   expect(happening.textContent).toContain("Ana");
 });
 
-test("a PE arriving at Agora sees the whole board already on screen — no control to discover (j-20260830-r5)", () => {
+test("the full board is NOT on Agora anymore — it moved to its own page (um contexto por lugar, j-20260830-sk)", () => {
   loadFixture();
   const { container } = render(<AgoraView />);
-  // The consequence that matters: the board's own content (its state columns)
-  // is on screen NOW, not "a toggle exists that would reveal it if clicked".
-  expect(container.querySelector(".aboard")).toBeTruthy();
-  expect(container.querySelector(".acol")).toBeTruthy();
-  const toggle = container.querySelector(".zone-board .board-toggle")! as HTMLButtonElement;
-  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  // No board columns and no board section/toggle live on Agora now.
+  expect(container.querySelector(".aboard")).toBeNull();
+  expect(container.querySelector(".acol")).toBeNull();
+  expect(container.querySelector(".zone-board")).toBeNull();
+  expect(container.querySelector(".board-toggle")).toBeNull();
 });
 
-test("a PE who explicitly collapses the board keeps that choice on the next render, but a fresh PE never gets it hidden", () => {
+test("Agora offers a link to the board's own page (/board)", () => {
   loadFixture();
-  const { container, unmount } = render(<AgoraView />);
-  fireEvent.click(container.querySelector(".zone-board .board-toggle")! as HTMLButtonElement);
-  expect(container.querySelector(".aboard")).toBeNull();
-  unmount();
-
-  // Same (returning) PE, next render — the collapse choice stuck.
-  const again = render(<AgoraView />);
-  expect(again.container.querySelector(".aboard")).toBeNull();
-  expect(again.container.querySelector(".zone-board .board-toggle")!.getAttribute("aria-expanded")).toBe("false");
-  again.unmount();
-
-  // A PE who never chose (storage cleared) always lands on a visible board.
-  resetAgoraBoardOpen();
-  const fresh = render(<AgoraView />);
-  expect(fresh.container.querySelector(".aboard")).toBeTruthy();
+  const { container } = render(<AgoraView />);
+  const link = [...container.querySelectorAll(".zone-link")].find((b) => (b.textContent || "").includes(t("now_see_all")))! as HTMLButtonElement;
+  expect(link).toBeTruthy();
+  fireEvent.click(link);
+  expect(currentPath.value).toBe("/board");
 });
 
 test("clicking a working specialist opens their drawer (openWorkerName)", () => {

@@ -24,16 +24,17 @@ afterEach(() => {
   location.hash = "";
 });
 
-test("routes.generated.ts: the 4 primary screens + 2 footer, order-sorted, Agora first, no terminal", () => {
+test("routes.generated.ts: 5 primary screens + 2 footer, order-sorted, Agora first, no terminal", () => {
   expect(appRoutes.map((r) => r.path)).toEqual([
-    "/", // Agora — the landing (nav.order 0); the board is a section inside it
+    "/", // Agora — the landing (nav.order 0)
+    "/board", // Quadro — the board's own page (j-20260830-sk)
     "/team", // Equipe
     "/history", // Histórico
     "/report", // Relatório (j-20260829-c8) — its own house in the aside
     "/guide", // Glossário (footer)
     "/settings", // Ajustes (footer)
   ]);
-  // The board moved into Agora (approved map) — no separate /activity screen.
+  // "/activity" is a redirect (→ /board), never a route of its own.
   expect(appRoutes.some((r) => r.path === "/activity")).toBe(false);
   expect(appRoutes.some((r) => r.path === "/terminal")).toBe(false);
 });
@@ -86,12 +87,12 @@ test("Sidebar shows the attention badge on Activity only when there is attention
   expect(badge!.classList.contains("crit")).toBe(true);
 });
 
-test("BottomNav lists the 4 primary screens (Agora / Equipe / Histórico / Relatório), in order", () => {
+test("BottomNav lists the 5 primary screens (Agora / Quadro / Equipe / Histórico / Relatório), in order", () => {
   const { container } = render(<BottomNav />);
   const labels = [...container.querySelectorAll("#tabbar button")].map((b) => b.textContent);
   const expected = appRoutes.filter((r) => r.nav.group !== "footer").map((r) => t(r.nav.label));
   expect(labels).toEqual(expected);
-  expect(labels).toEqual([t("nav_now"), t("nav_team"), t("nav_history"), t("nav_report")]);
+  expect(labels).toEqual([t("nav_now"), t("nav_board"), t("nav_team"), t("nav_history"), t("nav_report")]);
 });
 
 test("BottomNav shows the attention dot on Activity only when there is attention", () => {
@@ -166,6 +167,35 @@ test("navigate() persists to localStorage and mirrors into location.hash", () =>
 test("navigate() falls back to Agora (/) for an unknown path", () => {
   navigate("/does-not-exist");
   expect(currentPath.value).toBe("/");
+});
+
+test("<App> clicking the old '#/activity' hash while already on /board keeps the board on screen (no desync to Agora)", () => {
+  // Brief item 3 / gate blocker: the failure was NOT that the redirect function
+  // is missing — hashTarget('#/activity') already returns '/board'. It was that
+  // firing the real `hashchange` EVENT while ALREADY on /board left the URL and
+  // the view disagreeing: the listener's `p !== currentPath.value` guard saw the
+  // canonical target (/board) already equal to currentPath, skipped navigate(),
+  // and the hash was stranded at '#/activity' — an inconsistent state on screen
+  // (URL says activity, view/nav say board). This test exercises the real event,
+  // not the pure hashTarget()/navigate() the router unit tests call directly.
+  act(() => navigate("/board"));
+  const { container } = render(<App />);
+  const view = container.querySelector("#view")!;
+  expect(view.querySelector(".aboard")).toBeTruthy(); // the board is on screen
+  expect(view.querySelector(".zone-needs")).toBeNull(); // Agora is NOT on screen
+
+  // The old link/bookmark is clicked while we are already sitting on /board.
+  act(() => {
+    location.hash = "#/activity";
+    window.dispatchEvent(new Event("hashchange"));
+  });
+
+  // Consequence: the person still sees the board, and the URL was rewritten to
+  // the canonical '#/board' — URL and view agree, no strand at '#/activity'.
+  expect(currentPath.value).toBe("/board");
+  expect(location.hash).toBe("#/board");
+  expect(view.querySelector(".aboard")).toBeTruthy();
+  expect(view.querySelector(".zone-needs")).toBeNull();
 });
 
 test("<App> switches the rendered #view content when navigate() changes the route", () => {

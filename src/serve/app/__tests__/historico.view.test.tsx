@@ -19,9 +19,10 @@ afterEach(() => {
   navigate("/");
 });
 
-test("route contract: Histórico at /history, order 2, no attention badge (retrospective)", () => {
+test("route contract: Histórico at /history, order 3, no attention badge (retrospective)", () => {
   expect(route.path).toBe("/history");
   expect(route.nav.label).toBe("nav_history");
+  expect(route.nav.order).toBe(3);
   expect(route.nav.badge).toBeUndefined();
 });
 

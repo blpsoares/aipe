@@ -1,13 +1,15 @@
-// The work board — "the whole board", the collapsible section inside "Agora"
-// (SDD §5/§11, reconciled with j-20260829-dp). Where "Agora" up top is the inbox
-// (what needs YOU, what runs now), THIS is the full board: read-only, "tipo um
-// Jira" — filter, group, build columns, open a detail, copy a command; never an
-// action that writes the ledger.
+// The work board — "the whole board", the body of the Quadro page
+// (views/quadro.view.tsx, "/board"). Where "Agora" is the urgency inbox (what
+// needs YOU, what runs now), THIS is the full board: read-only, "tipo um Jira" —
+// filter, group, build columns, open a detail, copy a command; never an action
+// that writes the ledger.
 //
-// This is the Atividade board (j-20260829-dp) given its home INSIDE Agora rather
-// than a fourth primary screen — the machinery (ActivityBoard, runtime/activity,
-// the merge-truth Integrados column, the server-owned refresher, the load-bearing
-// `.acol-body .acard` rule) is reused verbatim, only its container changed.
+// This is the Atividade board (j-20260829-dp). It first landed as a section
+// inside Agora (SDD §5, reconciled with s9); j-20260830-sk gave it its own
+// primary screen. The machinery (ActivityBoard, runtime/activity, the merge-truth
+// Integrados column, the server-owned refresher, the load-bearing
+// `.acol-body .acard` rule) is reused verbatim across every move — only its
+// container changed.
 import { useState } from "preact/hooks";
 import { Icon } from "./Icon";
 import { ActivityBoard } from "./ActivityBoard";
