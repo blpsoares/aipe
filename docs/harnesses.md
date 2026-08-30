@@ -50,6 +50,10 @@ Two rules keep the seam honest, and both are enforced by
 
 Listed in the picker but **not** implemented: `antigravity`, `cursor`. They are
 marked `coming-soon`, which means exactly one thing — no adapter exists yet.
+That label is about *implementation*, not *containment*: "no adapter" and
+"cannot be contained" are different facts, and the containment ledger below
+keeps them apart (`antigravity` and `cursor` share the `coming-soon` label but
+land in different containment states).
 
 ### Why three harnesses share `.agents/skills/`
 
@@ -89,6 +93,80 @@ in full at the top of `containmentHook` in
 Note that this is a *unit* question, not a *workspace* question: a
 `claude-code` workspace can still dispatch a unit to `gemini`, because that only
 needs the `gemini` binary present.
+
+### Containment across the ten agentop harnesses — investigated 2026-08-30
+
+`isContainable()` is a *binary* the dispatch law needs at runtime. But the
+product had collapsed a *wider* question into it: for every harness `agentop`
+can host — not just the four with an adapter — **does a reliable
+non-interactive interception hook exist at all?** "No adapter yet" and "cannot
+be contained without a human" were both surfacing as one undifferentiated
+"coming soon". That flattening is the defect the PE flagged for Antigravity.
+
+The eligibility rule is one question, asked of each tool's **own**
+documentation: *is there an interception hook that blocks a command reliably,
+with no human present to trust or approve it?* The answer needs **three**
+states, not two, and each "proven" line cites a primary source (URL + the date
+it was read). Where the docs do not answer, the state is **unestablished** and
+says so — a confident tenth line with no source would just repeat the defect.
+
+The machine-readable ledger lives in
+[`src/harness/compat.ts`](../src/harness/compat.ts) (`HARNESS_CONTAINMENT`,
+`containmentFor`, `harnessesInState`). Its four adapter-backed rows are locked
+to what `isContainable(getAdapter(id))` actually returns by
+[`src/harness/__tests__/compat.test.ts`](../src/harness/__tests__/compat.test.ts),
+so prose and behavior cannot drift apart. It adds **no** id to the dispatch
+union and changes **no** eligibility rule.
+
+| Harness (`agentop` id) | Adapter? | State | Why (one line) |
+|---|---|---|---|
+| `claude-code` | ✅ | **containable-proven** | PreToolUse deny in `settings.json`; user-level hooks run with no trust prompt |
+| `gemini` | ✅ | **containable-proven** | BeforeTool deny; folder trust *disabled by default*, so a fresh worktree loads hooks |
+| `codex` | ✅ | **non-containable-proven** | non-managed hook inert until a human trusts it via `/hooks` (per-hook-hash) |
+| `copilot` | ✅ | **non-containable-proven** | default-on directory trust; repo hooks not stated exempt |
+| `cursor` | — | **non-containable-proven** | `beforeShellExecution` deny exists, but project hooks load only in a *trusted workspace* |
+| `antigravity` | — | **unestablished** *(candidate)* | config-file `decision:"deny"` hard-block, **no** documented trust gate — but headless auto-load unconfirmed |
+| `factory-droid` | — | **containable-proven** | `commandBlocklist` "can never run… holds even under `--skip-permissions-unsafe`" + PreToolUse deny |
+| `kimi-code` | — | **containable-proven** *(fail-open)* | PreToolUse deny in `config.toml`, no trust gate — but only exit-2 blocks; everything else defaults to allow |
+| `opencode` | — | **containable-proven** | `permission:"deny"` for `bash`, still enforced under `--auto`; config/plugins auto-load |
+| `pi` | — | **containable-proven** | `beforeToolCall`/`tool_call` block before execution; user/global/`-e` extensions load with no trust gate |
+
+Read the ledger for the verbatim quotes and the per-harness caveats. Three
+things worth stating plainly here:
+
+- **Antigravity — the PE's question, answered.** The official docs
+  ([antigravity.google/docs/ide/hooks](https://antigravity.google/docs/ide/hooks/),
+  read 2026-08-30) document a config-file `PreToolUse` hook whose
+  `decision:"deny"` "Hard blocks execution immediately", configured in a
+  `hooks.json`, with **no** human-trust precondition anywhere — materially
+  unlike Codex/Copilot/Cursor. What the docs do **not** state is whether that
+  `hooks.json` loads automatically or needs a manual activation step, and
+  whether it runs in a fully headless no-human session. So the honest answer is:
+  *the documentation does not fully resolve it.* Antigravity is a genuine
+  adapter **candidate** — **not** proven non-containable, and not the same as
+  the harnesses it was lumped with under "coming soon". The number was
+  misleading; this ledger is where that stops.
+
+- **Codex and copilot — reconfirmed, unchanged.** Read fresh on 2026-08-30
+  against
+  [learn.chatgpt.com/docs/hooks](https://learn.chatgpt.com/docs/hooks) and
+  [docs.github.com/…/hooks-reference](https://docs.github.com/en/copilot/reference/hooks-reference).
+  Both still require a human trust step AIPe's unattended dispatch cannot clear.
+  One thing to watch on Codex: third-party writeups describe a `codex hooks
+  trust request` programmatic-trust command, but **no such command appears in
+  the official docs** — only a GitHub feature request. If OpenAI ships an
+  official non-interactive trust path, that flips Codex, and the adapter is a
+  small change (the hook is already written to disk, inert).
+
+- **Four harnesses look containable per docs, but are not yet AIPe-verified.**
+  `factory-droid`, `kimi-code`, `opencode`, and `pi` each document a
+  non-interactive deny hook with no trust gate — a real, sourced finding — but
+  none has an adapter, and each carries a documented reservation (fail-open,
+  default-permissive, headless-applicability-not-verbatim, extension-scope).
+  They are candidates, recorded as such; **implementing an adapter is out of
+  scope for this investigation** and is the PE's call. `kimi-code`'s fail-open
+  design in particular should give any future adapter pause: the vendor itself
+  says the hook "should not be used as the sole security barrier."
 
 ### Model tiers
 
