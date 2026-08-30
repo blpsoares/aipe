@@ -37,6 +37,45 @@ export function statusMeta(status: string): StatusMeta {
   return META[status] ?? { tone: "slate", labelKey: `st_${status}`, descKey: `sd_${status}` };
 }
 
+// ── State color: one --st-* token per ledger state (SDD §9) ──────────────────
+// The console adopted the SITE's semantic state tokens. This map — and NOT a
+// per-component choice of --sky/--amber/--slate — is the single place a ledger
+// state becomes a color, so the Board, the chips, the org tree and the legend
+// can never disagree (invariant proven in palette.test.ts).
+//
+// The site ramp has nine hues (dispatched…removed). Console-only concepts the
+// site does not model fold into the nearest hue, documented inline:
+//   • active/running work → running
+//   • blocked → escalated (both are the "needs a look / stuck" orange; there is
+//     no --st-blocked in the site ramp)
+//   • available/idle → removed (the grey "off / not working" hue)
+const STATE_TOKEN: Record<string, string> = {
+  dispatched: "dispatched",
+  active: "running",
+  running: "running",
+  delivered: "delivered",
+  verified: "verified",
+  merged: "merged",
+  failed: "failed",
+  escalated: "escalated",
+  escalate: "escalated",
+  blocked: "escalated",
+  redirected: "redirected",
+  available: "removed",
+  idle: "removed",
+  removed: "removed",
+};
+
+/** The nine state-token keys that MUST exist in tokens.css (site ramp). */
+export const STATE_KEYS = ["dispatched", "running", "delivered", "verified", "failed", "escalated", "merged", "redirected", "removed"] as const;
+
+/** `rgb(var(--st-<state>))` for a status — the ONLY way to color a ledger state.
+ *  Returns a resolved color (the tokens are RGB triples), safe in `style={{…}}`,
+ *  `color-mix()`, SVG fill/stroke and plain CSS declarations alike. */
+export function stateVar(status: string | undefined): string {
+  return `rgb(var(--st-${STATE_TOKEN[status ?? ""] ?? "removed"}))`;
+}
+
 // The lifecycle order for the stage-guide legend (pipeline stages + the two
 // off-track states people most need explained).
 export const STAGE_GUIDE_ORDER = ["dispatched", "redirected", "delivered", "verified", "failed", "escalated", "merged"] as const;

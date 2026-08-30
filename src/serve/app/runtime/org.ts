@@ -7,6 +7,7 @@
 // survive the org view unmounting/remounting (e.g. a snapshot-driven
 // re-render of the whole app), instead of resetting to defaults every time.
 import { signal, type Signal } from "@preact/signals";
+import { stateVar } from "./statusMeta";
 import type { Worker } from "./store";
 
 export const orgQuery: Signal<string> = signal("");
@@ -29,15 +30,12 @@ export interface Size {
 // without reaching into the component — the same reason orgTransform lives here.
 export const orgContent: Signal<Size> = signal<Size>({ width: 0, height: 0 });
 
-// app.html:912
+// State color goes through the single --st-* map (SDD §9) — never a per-callsite
+// choice of generic hue. `stateVar` already folds `redirected` to its own token
+// (so it can't read as idle) and the delivered/verified/merged trio to distinct
+// hues, which the old hand-mapping collapsed to one `--accent`.
 export function orgColor(status: string | undefined): string {
-  if (status === "active") return "var(--sky)";
-  if (status === "delivered" || status === "verified") return "var(--accent)";
-  // `redirected` gets the same "needs a look" amber as escalated/failed — never
-  // the `slate` default, which reads as idle and is the opposite of a
-  // specialist whose work just diverged mid-flight.
-  if (status === "escalated" || status === "failed" || status === "redirected") return "var(--amber)";
-  return "var(--slate)";
+  return stateVar(status);
 }
 
 // app.html:918. `orgQuery` holds the RAW typed value (so the search input can

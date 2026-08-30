@@ -16,12 +16,14 @@ const COL_TITLE: Record<BoardColumn, string> = {
   "needs-you": "board_col_needs_you",
   "in-review": "board_col_in_review",
   ready: "board_col_ready",
+  integrated: "board_col_integrated",
 };
 const COL_SUB: Record<BoardColumn, string> = {
   working: "board_col_working_sub",
   "needs-you": "board_col_needs_you_sub",
   "in-review": "board_col_in_review_sub",
   ready: "board_col_ready_sub",
+  integrated: "board_col_integrated_sub",
 };
 const ACTOR_KEY: Record<BoardActor, string> = { you: "board_actor_you", dev: "board_actor_dev", coord: "board_actor_coord" };
 

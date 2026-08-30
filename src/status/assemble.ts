@@ -66,6 +66,14 @@ function unitRow(journey: string, d: JourneyDispatch, roster: PersonaRegistryEnt
     sessionId: d.sessionId ?? null,
     liveness: d.mode === "session" ? dispatchPhase(d, live.ids, live.reliable) : null,
     hasEvidence: hasEvidence(d),
+    // The envelope + swept fields (v4). `?? null` so a legacy record surfaces
+    // absence honestly instead of an invented value.
+    harness: d.harness ?? null,
+    model: d.model ?? null,
+    tier: d.tier ?? null,
+    intensity: d.intensity ?? null,
+    worktree: d.worktree,
+    ciBypass: d.ciBypass ?? null,
   };
 }
 

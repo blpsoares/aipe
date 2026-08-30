@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { columnOf, boardActor, buildBoard, BOARD_COLUMNS } from "../runtime/board";
+import { columnOf, boardActor, buildBoard, BOARD_COLUMNS, ACTIVE_COLUMNS, isActive } from "../runtime/board";
 import type { Dispatch } from "../runtime/store";
 import type { SessionInfo } from "../../sessions";
 
@@ -12,8 +12,15 @@ const waitingSess: SessionInfo = { id: "s1", status: "running", activity: "waiti
 // ── the four columns, mapped from the canonical UnitPhase (consuming, not
 // re-deriving) — SDD §11.2. ──────────────────────────────────────────────────
 
-test("BOARD_COLUMNS: ordem working → needs-you → in-review → ready", () => {
-  expect(BOARD_COLUMNS).toEqual(["working", "needs-you", "in-review", "ready"]);
+test("BOARD_COLUMNS: ordem working → needs-you → in-review → ready → integrated", () => {
+  expect(BOARD_COLUMNS).toEqual(["working", "needs-you", "in-review", "ready", "integrated"]);
+});
+
+test("ACTIVE_COLUMNS é o vivo (sem integrated), o padrão de fábrica (item 3)", () => {
+  expect(ACTIVE_COLUMNS).toEqual(["working", "needs-you", "in-review", "ready"]);
+  expect(isActive(d({ status: "verified", liveness: "landed" }))).toBe(true);
+  expect(isActive(d({ status: "merged" }))).toBe(false);
+  expect(isActive(d({ status: "verified", liveness: "landed", integrated: true }))).toBe(false);
 });
 
 test("Trabalhando: sessão viva (liveness running) trabalhando", () => {
@@ -24,12 +31,27 @@ test("Em revisão: delivered", () => {
   expect(columnOf(d({ status: "delivered" }))).toBe("in-review");
 });
 
-test("Pronto p/ integrar: verified", () => {
+test("Pronto p/ integrar: verified que ainda NÃO está em main", () => {
   expect(columnOf(d({ status: "verified", liveness: "landed" }))).toBe("ready");
 });
 
-test("Concluído (merged/removed) sai do quadro (null)", () => {
-  expect(columnOf(d({ status: "merged" }))).toBeNull();
+// defeito (2), o mais grave — a coluna que mente. Um `verified` cujo branch JÁ
+// está em main (integrated=true, lido server-side por merge-base) vai para
+// Integrados, não fica em "pronto para integrar" prometendo trabalho que não
+// existe mais. A tela lê a verdade; não pinta por cima.
+test("Integrados: verified com integrated=true sai de 'pronto' e vai para Integrados", () => {
+  expect(columnOf(d({ status: "verified", liveness: "landed", integrated: true }))).toBe("integrated");
+});
+
+test("Integrados: merged é integrado (antes saía do quadro)", () => {
+  expect(columnOf(d({ status: "merged" }))).toBe("integrated");
+});
+
+test("Integrados: delivered já em main também é integrado, não 'em revisão'", () => {
+  expect(columnOf(d({ status: "delivered", integrated: true }))).toBe("integrated");
+});
+
+test("removed (worktree desmontado) sai do quadro (null) — é histórico puro", () => {
   expect(columnOf(d({ status: "removed" }))).toBeNull();
 });
 
@@ -85,21 +107,23 @@ test("boardActor é null para colunas que não são 'precisa de você'", () => {
 
 // ── buildBoard agrupa, na ordem, e mantém task/persona/branch/pr/status juntos ──
 
-test("buildBoard agrupa por coluna na ordem e omite os concluídos", () => {
+test("buildBoard agrupa por coluna na ordem, com Integrados no fim", () => {
   const dispatches = [
     d({ specialist: "A", liveness: "running" }),
     d({ specialist: "B", status: "delivered", pr: "http://pr/1" }),
     d({ specialist: "C", status: "verified", liveness: "landed" }),
     d({ specialist: "D", status: "escalated" }),
-    d({ specialist: "E", status: "merged" }), // fora do quadro
+    d({ specialist: "E", status: "merged" }), // agora em Integrados
+    d({ specialist: "F", status: "verified", liveness: "landed", integrated: true }), // mentia em "pronto"
   ];
   const board = buildBoard(dispatches, [running]);
-  expect(board.map((c) => c.column)).toEqual(["working", "needs-you", "in-review", "ready"]);
+  expect(board.map((c) => c.column)).toEqual(["working", "needs-you", "in-review", "ready", "integrated"]);
   const byCol = Object.fromEntries(board.map((c) => [c.column, c.cards.map((k) => k.dispatch.specialist)]));
   expect(byCol["working"]).toEqual(["A"]);
   expect(byCol["needs-you"]).toEqual(["D"]);
   expect(byCol["in-review"]).toEqual(["B"]);
-  expect(byCol["ready"]).toEqual(["C"]);
+  expect(byCol["ready"]).toEqual(["C"]); // só o que NÃO está em main
+  expect(byCol["integrated"]).toEqual(["E", "F"]);
   // o card carrega o PR junto (task/persona/branch já vêm no dispatch)
   const inReview = board.find((c) => c.column === "in-review")!;
   expect(inReview.cards[0]!.dispatch.pr).toBe("http://pr/1");

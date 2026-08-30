@@ -122,8 +122,22 @@ function who(u: UnitRow): string {
 
 // ── unit projections (shared by the full table and the delta) ────────────────
 
-const UNIT_HEADERS_DETAILED = ["JOURNEY", "WHO", "TASK", "FQID", "BRANCH", "PR", "STATUS", "LIVE"];
+const UNIT_HEADERS_DETAILED = ["JOURNEY", "WHO", "TASK", "FQID", "BRANCH", "PR", "STATUS", "LIVE", "ENV"];
 const UNIT_HEADERS_COMPACT = ["WHO", "FQID", "STATUS", "LIVE"];
+
+// The dispatch envelope, compacted for the terminal (v4). The envelope is nearly
+// constant across a workspace (claude-code + opus + reasoning); a column that
+// shouts the common and hides the different informs less. So: show the model
+// short, and append ONLY the deviations — a non-default harness, or ultracode
+// effort. A legacy record with no envelope reads "-" (absence is not an error).
+function envCell(u: UnitRow): string {
+  const model = u.model ? u.model.replace(/^claude-/, "") : "";
+  const extras: string[] = [];
+  if (u.harness && u.harness !== "claude-code") extras.push(u.harness);
+  if (u.intensity === "ultracode") extras.push("ultra");
+  const suffix = extras.length ? ` ${extras.join("·")}` : "";
+  return (model || "-") + suffix;
+}
 
 function unitCells(u: UnitRow, format: StatusFormat, color: boolean): string[] {
   if (format === "compact") {
@@ -138,6 +152,7 @@ function unitCells(u: UnitRow, format: StatusFormat, color: boolean): string[] {
     shortPr(u.pr),
     u.status,
     liveCell(u.liveness, color),
+    envCell(u),
   ];
 }
 

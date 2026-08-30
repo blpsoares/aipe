@@ -16,11 +16,16 @@ import { sessionFor } from "./floor";
 import type { Dispatch } from "./store";
 import type { SessionInfo } from "../../sessions";
 
-export type BoardColumn = "working" | "needs-you" | "in-review" | "ready";
+export type BoardColumn = "working" | "needs-you" | "in-review" | "ready" | "integrated";
 
 // Left-to-right order: what is moving → what is stuck on a human → what is under
-// review → what is ready to land.
-export const BOARD_COLUMNS: BoardColumn[] = ["working", "needs-you", "in-review", "ready"];
+// review → what is ready to land → what is ALREADY in main. "integrated" is the
+// terminal column that stops "ready" from lying (defect 2, SDD §4).
+export const BOARD_COLUMNS: BoardColumn[] = ["working", "needs-you", "in-review", "ready", "integrated"];
+
+// The live columns — what "active by default" shows (SDD §6, the factory default
+// of item 3). "integrated" is completed work, revealed only by "show completed".
+export const ACTIVE_COLUMNS: BoardColumn[] = ["working", "needs-you", "in-review", "ready"];
 
 export type BoardActor = "you" | "dev" | "coord";
 
@@ -48,10 +53,15 @@ function isWaitingApproval(d: Dispatch, session?: SessionInfo): boolean {
  * removed — that is history, not live work; it lives in Histórico). See §11.2.
  */
 export function columnOf(d: Dispatch, session?: SessionInfo): BoardColumn | null {
+  // Merge truth first (defect 2): anything already in main is Integrados,
+  // whatever the ledger status still says. `merged` is the declared truth;
+  // `d.integrated` is the server-side merge-base cross-check for a record the
+  // ledger never reconciled (a `verified`/`delivered` whose branch landed).
+  if (d.status === "merged") return "integrated";
+  if (d.integrated && d.status !== "removed") return "integrated";
   switch (d.status) {
-    case "merged":
     case "removed":
-      return null;
+      return null; // worktree torn down — pure history, off the live board
     case "verified":
       return "ready";
     case "delivered":
@@ -86,9 +96,17 @@ export function boardActor(d: Dispatch, session?: SessionInfo): BoardActor | nul
 // attention is spent on what only they can unblock (armadilha 1).
 const ACTOR_RANK: Record<BoardActor, number> = { you: 0, dev: 1, coord: 2 };
 
-/** Group all dispatches into the four columns, in order. Off-board units drop out. */
+/** A dispatch is "active" (live work) when it lands in one of the ACTIVE_COLUMNS —
+ *  i.e. not integrated, merged or off-board. This is the factory-default filter
+ *  (item 3): open the board on the living work, history one click away. */
+export function isActive(d: Dispatch, session?: SessionInfo): boolean {
+  const col = columnOf(d, session);
+  return col !== null && (ACTIVE_COLUMNS as BoardColumn[]).includes(col);
+}
+
+/** Group all dispatches into the five columns, in order. Off-board units drop out. */
 export function buildBoard(dispatches: Dispatch[], sessions: SessionInfo[]): BoardGroup[] {
-  const cards: Record<BoardColumn, BoardCard[]> = { working: [], "needs-you": [], "in-review": [], ready: [] };
+  const cards: Record<BoardColumn, BoardCard[]> = { working: [], "needs-you": [], "in-review": [], ready: [], integrated: [] };
   for (const d of dispatches) {
     const session = sessionFor(d, sessions);
     const column = columnOf(d, session);
