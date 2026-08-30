@@ -1,13 +1,18 @@
+// The Atividade board moved into "Agora" as the collapsible section (approved
+// map, SDD §5). These tests follow the move (j-20260827-s9 reconciliation) — the
+// board machinery is unchanged, so they now drive the extracted <WorkBoard/>
+// component directly instead of the removed /activity screen. Nothing about the
+// board's behavior (grouping, filters, Integrados merge-truth, envelope, copy
+// command) regresses.
 import "./setup";
 import { test, expect, afterEach, beforeEach } from "bun:test";
 import { render, cleanup, fireEvent } from "@testing-library/preact";
-import { route } from "../views/activity.view";
+import { WorkBoard } from "../components/WorkBoard";
 import { applySnapshot, snapshot } from "../runtime/store";
 import { resetBoardConfig, BOARD_CONFIG_KEY, boardConfig, readConfig } from "../runtime/activity";
 import { setLang, t } from "../runtime/i18n";
 import type { RawSnapshot } from "../runtime/store";
 
-const ActivityView = route.component;
 const EMPTY = snapshot.value;
 
 // A snapshot with the full spread of states + envelopes + a merge-truth item.
@@ -40,20 +45,8 @@ afterEach(() => {
   setLang("en");
 });
 
-test("route contract: Atividade at /activity, order 1 (the fourth primary screen)", () => {
-  expect(route.path).toBe("/activity");
-  expect(route.nav.label).toBe("nav_atividade");
-  expect(route.nav.order).toBe(1);
-});
-
-test("comprehension: heading + a subtitle that says what this screen answers", () => {
-  const { container } = render(<ActivityView />);
-  expect(container.querySelector(".view-h")!.textContent).toBe(t("nav_atividade"));
-  expect(container.textContent).toContain(t("atividade_sub"));
-});
-
 test("factory default: grouped by state, only the living work (Integrados hidden) — item 3", () => {
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   const titles = [...container.querySelectorAll(".acol-name")].map((n) => n.textContent);
   expect(titles).toEqual([t("board_col_working"), t("board_col_needs_you"), t("board_col_in_review"), t("board_col_ready")]);
   // Eli (integrated) is NOT on the default board — history is one toggle away.
@@ -63,13 +56,13 @@ test("factory default: grouped by state, only the living work (Integrados hidden
 });
 
 test("every column header states its count (item 1 — never silent elision)", () => {
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   const ready = container.querySelector(".bcol-ready")!;
   expect(ready.querySelector(".acol-count")!.textContent).toBe("1");
 });
 
 test("show-completed reveals the Integrados column with the merged-truth item", () => {
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   const toggle = [...container.querySelectorAll(".actbar-toggle input")].find((el) => (el.parentElement!.textContent || "").includes(t("act_show_completed")))! as HTMLInputElement;
   fireEvent.click(toggle);
   expect(container.querySelector(".bcol-integrated")).not.toBeNull();
@@ -77,7 +70,7 @@ test("show-completed reveals the Integrados column with the merged-truth item", 
 });
 
 test("build-your-own-board: grouping by repo pivots the columns, and it persists", () => {
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   const repoBtn = [...container.querySelectorAll(".seg-btn")].find((b) => b.textContent === t("act_group_repo"))! as HTMLButtonElement;
   fireEvent.click(repoBtn);
   const titles = [...container.querySelectorAll(".acol-name")].map((n) => n.textContent);
@@ -87,7 +80,7 @@ test("build-your-own-board: grouping by repo pivots the columns, and it persists
 });
 
 test("reset returns to the factory default and clears the stored config", () => {
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   fireEvent.click([...container.querySelectorAll(".seg-btn")].find((b) => b.textContent === t("act_group_persona"))! as HTMLButtonElement);
   expect(readConfig().groupBy).toBe("persona");
   fireEvent.click([...container.querySelectorAll("button")].find((b) => (b.textContent || "").includes(t("act_reset")))! as HTMLButtonElement);
@@ -97,7 +90,7 @@ test("reset returns to the factory default and clears the stored config", () => 
 });
 
 test("the card carries who + status + title + repo, reading clean without AIPe jargon", () => {
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   const card = container.querySelector(".bcol-needs-you .acard")!; // Carla, escalated
   expect(card.textContent).toContain("Carla");
   expect(card.textContent).toContain("cross repo"); // de-slugged task title
@@ -106,7 +99,7 @@ test("the card carries who + status + title + repo, reading clean without AIPe j
 });
 
 test("the envelope shows the exception and mutes the common (Dora: codex + ultra)", () => {
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   const ready = container.querySelector(".bcol-ready")!; // Dora
   const exc = [...ready.querySelectorAll(".ac-env-i.is-exc")].map((e) => e.textContent);
   expect(exc.join(" ")).toContain("codex"); // non-default harness flagged
@@ -114,7 +107,7 @@ test("the envelope shows the exception and mutes the common (Dora: codex + ultra
 });
 
 test("a needs-you card offers a copyable next-step command (console stays read-only)", () => {
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   const needs = container.querySelector(".bcol-needs-you .acard")!;
   // Carla has no sessionId → the copyable command is `cd <worktree>`
   expect(needs.querySelector(".ic-cmd-text")!.textContent).toContain("cd /wt");
@@ -132,7 +125,7 @@ test("um card com integração pendente diz 'verificando', não afirma pendênci
     ] as unknown[] }],
   } as RawSnapshot;
   applySnapshot(pendSnap, 1_700_000_000_000);
-  const { container } = render(<ActivityView />);
+  const { container } = render(<WorkBoard />);
   const ready = container.querySelector(".bcol-ready")!;
   expect(ready.textContent).toContain("Gwen");
   expect(ready.textContent).toContain(t("ac_checking_merge"));

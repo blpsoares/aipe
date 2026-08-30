@@ -16,11 +16,11 @@ afterEach(() => {
   location.hash = "";
 });
 
-test("commands() palette lists the 6 redesign screens (4 primary + 2 footer), order-sorted", () => {
+test("commands() palette lists the 5 redesign screens (3 primary + 2 footer), order-sorted", () => {
   const list = commands();
   const goto = t("c_goto");
   // The new IA: Agora / Atividade / Equipe / Histórico (primary) + Glossário / Ajustes (footer).
-  const expectedGoto = ["nav_now", "nav_atividade", "nav_team", "nav_history", "nav_guide", "nav_settings"].map(
+  const expectedGoto = ["nav_now", "nav_team", "nav_history", "nav_guide", "nav_settings"].map(
     (k) => `${goto} ${t(k)}`,
   );
   const gotoLabels = list.filter((c) => c.g === t("g_views")).map((c) => c.label);

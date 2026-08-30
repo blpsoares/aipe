@@ -71,6 +71,6 @@ function HistoricoView() {
 
 export const route: Route = {
   path: "/history",
-  nav: { label: "nav_history", icon: "history", order: 3 },
+  nav: { label: "nav_history", icon: "history", order: 2 },
   component: HistoricoView,
 };
