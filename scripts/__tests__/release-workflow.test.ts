@@ -95,6 +95,30 @@ test("both git-log loops that feed a read use tformat", () => {
   expect(notes.run).toContain("--pretty=tformat:");
 });
 
+// ── A tag must never outlive the release it claims ──────────────────────────
+//
+// `git push origin HEAD:main <tag>` pushed two refs NON-atomically. main's
+// ruleset ("Require PR + green CI on main") rejects the branch ref but does not
+// cover tag refs, so the tag landed while the branch bounced — an orphan tag
+// asserting a release that never happened (v1.10.3, v1.11.0). The push must be
+// atomic so the ruleset rejection takes the tag down with the branch.
+
+test("the bump push is atomic — a rejected branch cannot leave an orphan tag", () => {
+  const step = STEPS.find((s) => s.run?.includes("git push") && s.run?.includes("HEAD:main"));
+  expect(step).toBeDefined();
+  expect(step!.run).toContain("--atomic");
+  // and the two refs still go in ONE push, so --atomic actually binds them
+  expect(step!.run).toMatch(/git push --atomic origin HEAD:main/);
+});
+
+test("a rejected bump push fails the job loudly, never in silence", () => {
+  const step = STEPS.find((s) => s.run?.includes("git push --atomic"))!;
+  // an explicit annotation + non-zero exit, not a swallowed failure
+  expect(step.run).toContain("::error::");
+  expect(step.run).toMatch(/exit 1/);
+  expect(step.run).not.toMatch(/git push[^\n]*\|\|\s*true/);
+});
+
 test("REGRESSION: a lone `feat(scope):` in the range computes minor, not patch", async () => {
   const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
