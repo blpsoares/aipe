@@ -1,0 +1,222 @@
+# Diagram spec — NOT rendered here. An external pipeline renders EN + PT from
+# this single source. Every node carries `evidence: file:line`.
+id: demand-to-merge
+type: graph
+argument:
+  en: >-
+    A demand becomes merged PRs through one mandatory path — decompose → dispatch
+    a specialist into an isolated worktree → the specialist opens the PR → an
+    independent QA gate → merge. The coordinator never edits a repo itself: its
+    only actions are decompose, dispatch, read-only investigate, and escalate.
+    Dispatch is gated on a PE-approved spec, and QA judges the diff, not the
+    author's report.
+  pt: >-
+    Uma demanda vira PRs mescladas por um caminho obrigatório — decompor →
+    despachar um especialista para uma worktree isolada → o especialista abre a
+    PR → um gate de QA independente → merge. O coordenador nunca edita um repo:
+    suas únicas ações são decompor, despachar, investigar read-only e escalar. O
+    dispatch é gated numa spec aprovada pelo PE, e o QA julga o diff, não o relato
+    do autor.
+nodes:
+  - id: demand
+    label: { en: "Demand from the PE", pt: "Demanda do PE" }
+    kind: structure
+    note:
+      en: >-
+        A bug, feature, or task spanning one or more repos. Work that changes
+        repos always flows through dispatch — never inline.
+      pt: >-
+        Um bug, feature ou task cobrindo um ou mais repos. Trabalho que muda repos
+        sempre flui por dispatch — nunca inline.
+    evidence: "skills/operate/SKILL.md:26"
+  - id: journey
+    label: { en: "Open a journey (ledger)", pt: "Abre uma jornada (ledger)" }
+    kind: deterministic
+    note:
+      en: >-
+        One demand = one journey; several specialists may run under it. The
+        journey id keys every command and every ledger row.
+      pt: >-
+        Uma demanda = uma jornada; vários especialistas podem rodar sob ela. O id
+        da jornada chaveia todo comando e toda linha do ledger.
+    evidence: "skills/operate/SKILL.md:183"
+  - id: decompose
+    label: { en: "Decompose into per-package tasks", pt: "Decompõe em tasks por pacote" }
+    kind: judgment
+    note:
+      en: >-
+        The unit of work is a package, not the repo: a flat repo is one implicit
+        package (fqid = repo name); a monorepo has one package per service (fqid =
+        repo/package). Distinct packages run in parallel; the law serializes only
+        the SAME package.
+      pt: >-
+        A unidade de trabalho é um pacote, não o repo: um repo flat é um pacote
+        implícito (fqid = nome do repo); um monorepo tem um pacote por serviço
+        (fqid = repo/pacote). Pacotes distintos rodam em paralelo; a lei serializa
+        só o MESMO pacote.
+    evidence: "skills/operate/SKILL.md:190"
+  - id: sequence
+    label: { en: "Sequence with the relations graph", pt: "Sequencia com o grafo de relações" }
+    kind: judgment
+    note:
+      en: >-
+        If repo A's task depends on a contract repo B must change first, B's task
+        goes in an earlier wave. A consumer must not ship before its producer
+        lands — the ledger verify flags exactly this.
+      pt: >-
+        Se a task do repo A depende de um contrato que o repo B deve mudar antes,
+        a task de B vai numa onda anterior. Um consumidor não pode shipar antes do
+        seu produtor pousar — o verify do ledger sinaliza exatamente isso.
+    evidence: "skills/operate/SKILL.md:199"
+  - id: spec-gate
+    label: { en: "Spec approved by PE (approved=true)", pt: "Spec aprovada pelo PE (approved=true)" }
+    kind: gate
+    note:
+      en: >-
+        Dispatch is gated on the PE approving the Orientation Spec. Until
+        approved, the coordinator waits or amends — it does not dispatch. Approval
+        is a recorded flag on the journey spec.
+      pt: >-
+        O dispatch é gated na aprovação da Orientation Spec pelo PE. Até aprovada,
+        o coordenador espera ou emenda — não despacha. A aprovação é uma flag
+        registrada na spec da jornada.
+    evidence: "src/journey/types.ts:138"
+  - id: dispatch
+    label: { en: "Dispatch a specialist (never inline)", pt: "Despacha um especialista (nunca inline)" }
+    kind: deterministic
+    note:
+      en: >-
+        The coordinator NEVER edits a repo. Its only actions are decompose,
+        dispatch, read-only investigate, escalate. A table of non-exceptions
+        forbids "it's simple / urgent / one line / I know the fix" — only an
+        explicit human instruction overrides.
+      pt: >-
+        O coordenador NUNCA edita um repo. Suas únicas ações são decompor,
+        despachar, investigar read-only, escalar. Uma tabela de não-exceções
+        proíbe "é simples / urgente / uma linha / eu sei o fix" — só uma instrução
+        humana explícita sobrepõe.
+    evidence: "skills/operate/SKILL.md:26"
+  - id: worktree
+    label: { en: "Isolated worktree + path claim", pt: "Worktree isolada + claim de path" }
+    kind: deterministic
+    note:
+      en: >-
+        Each specialist works inside its own git worktree, on its own branch,
+        never touching the primary checkout. Two specialists coexist in one repo
+        only when their declared paths are disjoint (see the concurrency-model
+        diagram).
+      pt: >-
+        Cada especialista trabalha na sua própria worktree git, no seu próprio
+        branch, nunca tocando o checkout primário. Dois especialistas coexistem num
+        repo só quando seus paths declarados são disjuntos (veja o diagrama
+        concurrency-model).
+    evidence: "CONTRIBUTING.md:32"
+  - id: dev
+    label: { en: "Specialist works test-first, opens PR", pt: "Especialista trabalha test-first, abre PR" }
+    kind: deterministic
+    note:
+      en: >-
+        The specialist opens the PR — never the coordinator. A behavior change
+        with no test is not reviewable here; the delivery records evidence (the
+        commands run and what the output showed).
+      pt: >-
+        O especialista abre a PR — nunca o coordenador. Uma mudança de
+        comportamento sem teste não é revisável aqui; a entrega registra evidência
+        (os comandos rodados e o que a saída mostrou).
+    evidence: "CONTRIBUTING.md:39"
+  - id: qa-gate
+    label: { en: "Independent QA gate", pt: "Gate de QA independente" }
+    kind: judgment
+    note:
+      en: >-
+        Every delivery is reviewed by an independent QA persona against the diff
+        and the acceptance criteria — not the author's own report. Pass →
+        verified; reject → failed and back to a fix task (see the rework-loop
+        diagram).
+      pt: >-
+        Toda entrega é revisada por uma persona de QA independente contra o diff e
+        os critérios de aceite — não o relato do próprio autor. Aprova →
+        verified; reprova → failed e volta a uma task de conserto (veja o diagrama
+        rework-loop).
+    evidence: "CONTRIBUTING.md:36"
+  - id: escalate
+    label: { en: "Escalate cross-repo to the PE", pt: "Escala cross-repo para o PE" }
+    kind: gate
+    note:
+      en: >-
+        A cross-repo need the specialist must not touch is escalated: the PE
+        decides scope. Distinct from blocked (an answer the coordinator can give).
+      pt: >-
+        Uma necessidade cross-repo que o especialista não deve tocar é escalada: o
+        PE decide o escopo. Distinta de blocked (uma resposta que o coordenador
+        pode dar).
+    evidence: "skills/operate/SKILL.md:156"
+  - id: merge
+    label: { en: "PR merged into dev", pt: "PR mesclada em dev" }
+    kind: deterministic
+    note:
+      en: >-
+        Verified work merges into dev and the unit is recorded merged (immutable).
+        This is integration, NOT production — the merge-to-production diagram
+        shows the two steps beyond it.
+      pt: >-
+        Trabalho verificado mescla em dev e a unidade é registrada merged
+        (imutável). Isto é integração, NÃO produção — o diagrama
+        merge-to-production mostra os dois passos além dele.
+    evidence: "skills/operate/SKILL.md:158"
+  - id: promote
+    label: { en: "Promotion offer (→ merge-to-production)", pt: "Oferta de promoção (→ merge-to-production)" }
+    kind: gate
+    note:
+      en: >-
+        With verified work on dev, the coordinator offers promotion to the PE —
+        never promoting on its own. The continuation is the merge-to-production
+        diagram.
+      pt: >-
+        Com trabalho verificado em dev, o coordenador oferece a promoção ao PE —
+        nunca promovendo por conta própria. A continuação é o diagrama
+        merge-to-production.
+    evidence: "skills/operate/SKILL.md:159"
+edges:
+  - from: demand
+    to: journey
+    label: { en: "one demand = one journey", pt: "uma demanda = uma jornada" }
+  - from: journey
+    to: decompose
+    label: { en: "", pt: "" }
+  - from: decompose
+    to: sequence
+    label: { en: "", pt: "" }
+  - from: sequence
+    to: spec-gate
+    label: { en: "", pt: "" }
+  - from: spec-gate
+    to: dispatch
+    label: { en: "approved", pt: "aprovada" }
+  - from: spec-gate
+    to: spec-gate
+    label: { en: "not approved → wait/amend", pt: "não aprovada → espera/emenda" }
+  - from: dispatch
+    to: worktree
+    label: { en: "", pt: "" }
+  - from: worktree
+    to: dev
+    label: { en: "", pt: "" }
+  - from: dev
+    to: qa-gate
+    label: { en: "delivered", pt: "delivered" }
+  - from: qa-gate
+    to: merge
+    label: { en: "passed → verified", pt: "aprovou → verified" }
+  - from: qa-gate
+    to: dev
+    label: { en: "failed → fix task, re-gate", pt: "reprovou → task de conserto, re-gate" }
+  - from: dev
+    to: escalate
+    label: { en: "cross-repo need", pt: "necessidade cross-repo" }
+  - from: escalate
+    to: dispatch
+    label: { en: "PE decides scope", pt: "PE decide o escopo" }
+  - from: merge
+    to: promote
+    label: { en: "verified work on dev", pt: "trabalho verificado em dev" }

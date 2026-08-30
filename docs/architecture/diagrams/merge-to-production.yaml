@@ -1,0 +1,217 @@
+# Diagram spec — NOT rendered here. An external pipeline renders EN + PT from
+# this single source. Every node carries `evidence: file:line`.
+id: merge-to-production
+type: state-machine
+argument:
+  en: >-
+    `merged` is where the ledger's vocabulary ends, but not where a change
+    reaches users. Two steps live beyond it: a PE-gated promotion of dev into
+    main, and an automatic release cut from the merge — with the version decided
+    on dev, main never written to, and the tag born in the same API call as its
+    release so an orphan tag is structurally impossible.
+  pt: >-
+    `merged` é onde o vocabulário do ledger termina, mas não onde uma mudança
+    chega aos usuários. Dois passos existem além dele: uma promoção de dev para
+    main gated pelo PE, e um release automático cortado do merge — com a versão
+    decidida no dev, main nunca escrito, e a tag nascendo na mesma chamada de API
+    do seu release, tornando uma tag órfã estruturalmente impossível.
+nodes:
+  - id: merged
+    label: { en: "merged into dev (integration, not production)", pt: "merged em dev (integração, não produção)" }
+    kind: deterministic
+    note:
+      en: >-
+        The ledger calls this terminal, but it means the target branch (dev) —
+        nothing more. The demand is integrated, not published. Never tell the PE
+        a change is shipped or in production on the strength of a merged record.
+      pt: >-
+        O ledger chama isto de terminal, mas significa o branch alvo (dev) — nada
+        além disso. A demanda está integrada, não publicada. Nunca diga ao PE que
+        uma mudança foi shipada ou está em produção com base num registro merged.
+    evidence: "skills/operate/SKILL.md:709"
+  - id: accumulate
+    label: { en: "dev accumulates verified work", pt: "dev acumula trabalho verificado" }
+    kind: structure
+    note:
+      en: >-
+        Every push and PR merge to dev runs the same CI gate a PR runs, so what
+        accumulates there stays verified continuously — not just at promotion
+        time. Unreleased work is exactly the commits on dev that main does not yet
+        have (origin/main..origin/dev).
+      pt: >-
+        Todo push e merge de PR em dev roda o mesmo gate de CI que uma PR roda,
+        então o que acumula ali permanece verificado continuamente — não só na
+        hora da promoção. Trabalho não-lançado é exatamente os commits em dev que
+        main ainda não tem (origin/main..origin/dev).
+    evidence: "RELEASING.md:112"
+  - id: bump-on-dev
+    label: { en: "version bump lands on dev", pt: "bump de versão pousa em dev" }
+    kind: deterministic
+    note:
+      en: >-
+        On each push to dev, the bump job computes the next version from the
+        conventional-commit subjects since the last tag (! / BREAKING → major, any
+        feat → minor, else patch), takes the higher of that and the manifest,
+        stamps all five files, and commits it on dev. The version lives on dev and
+        rides into main through the normal promotion PR — main is never written to
+        by the workflow.
+      pt: >-
+        A cada push em dev, o job de bump computa a próxima versão a partir dos
+        assuntos de commit convencionais desde a última tag (! / BREAKING → major,
+        qualquer feat → minor, senão patch), toma o maior entre isso e o
+        manifesto, carimba os cinco arquivos e commita em dev. A versão vive em
+        dev e cavalga para main pela PR de promoção normal — main nunca é escrito
+        pelo workflow.
+    evidence: "RELEASING.md:20"
+  - id: bump-self-check
+    label: { en: "bump commit self-posts its `check`", pt: "commit de bump auto-posta seu `check`" }
+    kind: deterministic
+    note:
+      en: >-
+        The bump commit carries the skip-CI token and is pushed with the Actions
+        token, so no workflow ever runs on it — and main's ruleset requires a
+        `check` status on the promotion PR head. An empty check list reads as
+        "nothing to report", not "nothing ran" (that silence masqueraded two
+        releases). So the bump job re-runs the real gate and posts the `check`
+        status itself; legitimate because the gate genuinely executes and the
+        status carries its real result.
+      pt: >-
+        O commit de bump carrega o token de pular-CI e é empurrado com o token do
+        Actions, então nenhum workflow roda nele — e o ruleset de main exige um
+        status `check` na cabeça da PR de promoção. Uma lista de checks vazia se lê
+        como "nada a reportar", não "nada rodou" (esse silêncio disfarçou dois
+        releases). Então o job de bump reexecuta o gate real e posta o status
+        `check` ele mesmo; legítimo porque o gate de fato executa e o status
+        carrega seu resultado real.
+    evidence: "RELEASING.md:52"
+  - id: promotion-offer
+    label: { en: "Promotion offer — the PE gate", pt: "Oferta de promoção — o gate do PE" }
+    kind: gate
+    note:
+      en: >-
+        Promotion is the PE's decision, never the coordinator's and never silent.
+        Two symmetric failures are forbidden: promoting in silence (forging a
+        decision that is the PE's) and damming in silence (letting verified work
+        pile up unmentioned — the failure that actually happened). The coordinator
+        presents what has accumulated and asks: promote now, or exercise on dev
+        first?
+      pt: >-
+        Promoção é decisão do PE, nunca do coordenador e nunca silenciosa. Duas
+        falhas simétricas são proibidas: promover em silêncio (forjar uma decisão
+        que é do PE) e represar em silêncio (deixar trabalho verificado empilhar
+        sem menção — a falha que de fato aconteceu). O coordenador apresenta o que
+        acumulou e pergunta: promover agora, ou exercitar em dev primeiro?
+    evidence: "skills/operate/SKILL.md:732"
+  - id: batch-not-per-pr
+    label: { en: "Ask by BATCH, never per PR", pt: "Perguntar por LOTE, nunca por PR" }
+    kind: judgment
+    note:
+      en: >-
+        The offer is made once over the accumulated set, not once per merged PR.
+        Promoting on every merge is what produced five releases in a single day
+        for this repo, several of them one feature sliced across patch bumps. A
+        release cuts when a complete feature has landed OR a fix needs urgency;
+        green CI on dev is a precondition, not the trigger.
+      pt: >-
+        A oferta é feita uma vez sobre o conjunto acumulado, não uma vez por PR
+        mesclada. Promover a cada merge é o que produziu cinco releases num único
+        dia neste repo, vários deles uma feature fatiada em bumps de patch. Um
+        release corta quando uma feature completa pousou OU um fix precisa de
+        urgência; CI verde em dev é pré-condição, não gatilho.
+    evidence: "skills/operate/SKILL.md:758"
+  - id: promotion-pr
+    label: { en: "Promotion PR dev → main", pt: "PR de promoção dev → main" }
+    kind: gate
+    note:
+      en: >-
+        Once the PE says promote, the COORDINATOR opens the promotion PR — never a
+        specialist, never automatically. main is protected by an active ruleset
+        (id 21821077): changes must arrive through a PR with the `check` status
+        green; deletion and non-fast-forward are blocked. This is NOT journey-
+        tracked — promotion PRs carry no j- id and appear in no ledger.
+      pt: >-
+        Uma vez que o PE diz promover, o COORDENADOR abre a PR de promoção — nunca
+        um especialista, nunca automaticamente. main é protegido por um ruleset
+        ativo (id 21821077): mudanças devem chegar por uma PR com o status `check`
+        verde; deleção e non-fast-forward são bloqueados. Isto NÃO é rastreado por
+        jornada — PRs de promoção não carregam id j- e não aparecem em ledger
+        nenhum.
+    evidence: "RELEASING.md:138"
+  - id: release-job
+    label: { en: "release job (on merge to main)", pt: "job de release (no merge para main)" }
+    kind: deterministic
+    note:
+      en: >-
+        By the time work reaches main the manifest already carries the version dev
+        stamped; the release job computes nothing — main publishes exactly what
+        dev decided. It stops if that version already has a tag, re-runs the gate,
+        cross-compiles all five targets, and boots the Linux binary to assert
+        --version.
+      pt: >-
+        Quando o trabalho chega em main o manifesto já carrega a versão que dev
+        carimbou; o job de release não computa nada — main publica exatamente o
+        que dev decidiu. Ele para se essa versão já tem tag, reexecuta o gate,
+        cross-compila os cinco alvos e boota o binário Linux para asseverar
+        --version.
+    evidence: "RELEASING.md:88"
+  - id: tag-atomic
+    label: { en: "tag + release in one call (no orphan tag)", pt: "tag + release numa chamada (sem tag órfã)" }
+    kind: deterministic
+    note:
+      en: >-
+        The tag and the GitHub Release are created together, in one API call, from
+        the merge commit — binaries, installers, checksums, notes. There is no
+        `git tag` + `git push` that could strand a tag if publishing failed: no
+        tag exists unless its release exists. This is what makes the orphan-tag
+        bug structurally impossible.
+      pt: >-
+        A tag e o GitHub Release são criados juntos, numa chamada de API, a partir
+        do commit de merge — binários, instaladores, checksums, notas. Não há `git
+        tag` + `git push` que pudesse encalhar uma tag se a publicação falhasse:
+        nenhuma tag existe a menos que seu release exista. É isto que torna o bug
+        de tag órfã estruturalmente impossível.
+    evidence: "RELEASING.md:102"
+  - id: changelog
+    label: { en: "Releases page IS the changelog", pt: "A página de Releases É o changelog" }
+    kind: structure
+    note:
+      en: >-
+        There is no hand-maintained changelog — it would go stale immediately. The
+        published GitHub Release, with generated notes and the platform binaries,
+        is the changelog. The repo's CHANGELOG.md says so and refuses to be one.
+      pt: >-
+        Não há changelog mantido à mão — envelheceria na hora. O GitHub Release
+        publicado, com notas geradas e os binários por plataforma, é o changelog.
+        O CHANGELOG.md do repo diz isso e recusa ser um.
+    evidence: "CHANGELOG.md:1"
+edges:
+  - from: merged
+    to: accumulate
+    label: { en: "lands on dev", pt: "pousa em dev" }
+  - from: accumulate
+    to: bump-on-dev
+    label: { en: "each push", pt: "cada push" }
+  - from: bump-on-dev
+    to: bump-self-check
+    label: { en: "no workflow triggers on the bump", pt: "nenhum workflow dispara no bump" }
+  - from: accumulate
+    to: promotion-offer
+    label: { en: "verified work present", pt: "há trabalho verificado" }
+  - from: promotion-offer
+    to: batch-not-per-pr
+    label: { en: "how to ask", pt: "como perguntar" }
+  - from: promotion-offer
+    to: promotion-pr
+    label: { en: "PE says promote", pt: "PE diz promover" }
+  - from: bump-self-check
+    to: promotion-pr
+    label: { en: "check green on PR head", pt: "check verde na cabeça da PR" }
+  - from: promotion-pr
+    to: release-job
+    label: { en: "merge to main", pt: "merge para main" }
+  - from: release-job
+    to: tag-atomic
+    label: { en: "publish", pt: "publica" }
+  - from: tag-atomic
+    to: changelog
+    label: { en: "release notes", pt: "notas de release" }

@@ -1,0 +1,197 @@
+# Diagram spec — NOT rendered here. An external pipeline renders EN + PT from
+# this single source. Every node carries `evidence: file:line`.
+id: ledger-state-machine
+type: state-machine
+argument:
+  en: >-
+    The journey ledger is the deterministic spine of reliability: a unit's status
+    can only move through transitions the record gate physically accepts — done
+    requires attached evidence AND green CI, reopening finished work requires a
+    reason, and a merged unit is immutable. A drifting coordinator cannot mark
+    work done without proof or clobber finished work.
+  pt: >-
+    O ledger da jornada é a espinha determinística da confiabilidade: o status de
+    uma unidade só se move por transições que o gate de registro aceita
+    fisicamente — concluir exige evidência anexada E CI verde, reabrir trabalho
+    concluído exige um motivo, e uma unidade merged é imutável. Um coordenador à
+    deriva não consegue marcar trabalho como feito sem prova nem sobrescrever o
+    que já terminou.
+nodes:
+  - id: dispatched
+    label: { en: "dispatched", pt: "dispatched" }
+    kind: deterministic
+    note:
+      en: >-
+        A specialist has been dispatched into an isolated worktree for this unit
+        (repo + package + task). The initial recorded state.
+      pt: >-
+        Um especialista foi despachado para uma worktree isolada desta unidade
+        (repo + package + task). Estado inicial registrado.
+    evidence: "src/journey/types.ts:19"
+  - id: delivered
+    label: { en: "delivered (evidence + CI gate)", pt: "delivered (gate de evidência + CI)" }
+    kind: deterministic
+    note:
+      en: >-
+        The dev claims done. The gate refuses the write unless it carries evidence
+        (≥1 command + a non-empty summary) — no self-report without proof — and,
+        when the record names a PR, unless that PR's CI resolves GREEN.
+      pt: >-
+        O dev afirma concluído. O gate recusa a escrita a menos que ela carregue
+        evidência (≥1 comando + resumo não-vazio) — nada de auto-relato sem prova
+        — e, quando o registro nomeia uma PR, a menos que o CI dessa PR resolva
+        VERDE.
+    evidence: "src/journey/ledger.ts:296"
+  - id: verified
+    label: { en: "verified (QA passed)", pt: "verified (QA aprovou)" }
+    kind: judgment
+    note:
+      en: >-
+        An independent QA persona reviewed the diff against the acceptance
+        criteria — not the author's own report — and passed it. The only
+        cleared-for-PE non-merged state. Its evidence is QA's, produced by
+        exercising the change.
+      pt: >-
+        Uma persona de QA independente revisou o diff contra os critérios de
+        aceite — não o relato do próprio autor — e aprovou. O único estado
+        não-merged liberado-para-PE. Sua evidência é a do QA, produzida
+        exercitando a mudança.
+    evidence: "src/journey/types.ts:12"
+  - id: failed
+    label: { en: "failed (QA rejected)", pt: "failed (QA reprovou)" }
+    kind: judgment
+    note:
+      en: >-
+        QA rejected the delivery; the unit is NOT done. Recorded with evidence of
+        the defect. This is the most-travelled edge of the system — see the
+        rework-loop diagram.
+      pt: >-
+        O QA reprovou a entrega; a unidade NÃO está pronta. Registrado com
+        evidência do defeito. É a aresta mais percorrida do sistema — veja o
+        diagrama rework-loop.
+    evidence: "src/journey/types.ts:7"
+  - id: escalated
+    label: { en: "escalated (cross-repo, PE decides)", pt: "escalated (cross-repo, PE decide)" }
+    kind: gate
+    note:
+      en: >-
+        A cross-repo scope decision the specialist must not take. Distinct from
+        blocked (an answer the coordinator can give) — escalated is the PE's to
+        adjudicate.
+      pt: >-
+        Uma decisão de escopo cross-repo que o especialista não deve tomar.
+        Distinta de blocked (uma resposta que o coordenador pode dar) — escalated
+        é do PE para adjudicar.
+    evidence: "src/journey/types.ts:8"
+  - id: blocked
+    label: { en: "blocked (stuck, needs reason)", pt: "blocked (travado, exige motivo)" }
+    kind: deterministic
+    note:
+      en: >-
+        The specialist declared itself stuck and waiting on the coordinator. The
+        gate requires a reason (what it is stuck on and what it needs), so the
+        coordinator can act without reading a terminal — the signal is worthless
+        without it.
+      pt: >-
+        O especialista se declarou travado e esperando o coordenador. O gate exige
+        um motivo (no que está travado e o que precisa), para o coordenador agir
+        sem ler um terminal — o sinal é inútil sem ele.
+    evidence: "src/journey/ledger.ts:341"
+  - id: redirected
+    label: { en: "redirected (PE changed it live, needs reason)", pt: "redirected (PE mudou ao vivo, exige motivo)" }
+    kind: gate
+    note:
+      en: >-
+        The PE redirected the unit's direction live via `agentop session attach`.
+        The gate requires a reason — what the PE asked for — so the coordinator
+        can reconcile the Orientation Spec instead of silently drifting. It must
+        not pass QA against a spec that no longer describes it.
+      pt: >-
+        O PE redirecionou a direção da unidade ao vivo via `agentop session
+        attach`. O gate exige um motivo — o que o PE pediu — para o coordenador
+        reconciliar a Orientation Spec em vez de derivar em silêncio. Não pode
+        passar no QA contra uma spec que não a descreve mais.
+    evidence: "src/journey/ledger.ts:331"
+  - id: merged
+    label: { en: "merged (immutable)", pt: "merged (imutável)" }
+    kind: deterministic
+    note:
+      en: >-
+        The PR merged into the target branch (dev). The gate refuses any further
+        write to this unit — a merged unit is final and never re-recorded. NOTE —
+        merged is NOT production; see the merge-to-production diagram for the two
+        steps that follow.
+      pt: >-
+        A PR mesclou no branch alvo (dev). O gate recusa qualquer escrita
+        posterior nesta unidade — uma unidade merged é final e nunca re-registrada.
+        NOTA — merged NÃO é produção; veja o diagrama merge-to-production para os
+        dois passos seguintes.
+    evidence: "src/journey/types.ts:48"
+  - id: removed
+    label: { en: "removed (worktree torn down)", pt: "removed (worktree desmontada)" }
+    kind: deterministic
+    note:
+      en: >-
+        The worktree was torn down. A terminal bookkeeping state; its recorded
+        path is never rewritten by a layout move.
+      pt: >-
+        A worktree foi desmontada. Estado terminal de bookkeeping; seu path
+        registrado nunca é reescrito por movimento de layout.
+    evidence: "src/journey/types.ts:11"
+  - id: ci-gate
+    label: { en: "CI verdict is five-way", pt: "veredito de CI é de cinco vias" }
+    kind: deterministic
+    note:
+      en: >-
+        The CI gate resolves green | red | pending | none | unknown — never two.
+        pending (still running) is refused, not read as passed; unknown (forge
+        unreachable) abstains rather than guessing green; none requires an
+        explicit, recorded --ci-none to waive. A gate that guesses green is worse
+        than one that abstains loudly.
+      pt: >-
+        O gate de CI resolve green | red | pending | none | unknown — nunca duas
+        vias. pending (ainda rodando) é recusado, não lido como aprovado; unknown
+        (forge inalcançável) se abstém em vez de chutar verde; none exige um
+        --ci-none explícito e registrado para dispensar. Um gate que chuta verde é
+        pior que um que se abstém em alto e bom som.
+    evidence: "src/journey/checks.ts:12"
+edges:
+  - from: dispatched
+    to: delivered
+    label: { en: "dev claims done (+evidence)", pt: "dev afirma concluído (+evidência)" }
+  - from: delivered
+    to: ci-gate
+    label: { en: "PR named → resolve checks", pt: "PR nomeada → resolve checks" }
+  - from: ci-gate
+    to: delivered
+    label: { en: "green → recorded", pt: "verde → registrado" }
+  - from: delivered
+    to: verified
+    label: { en: "QA passed", pt: "QA aprovou" }
+  - from: delivered
+    to: failed
+    label: { en: "QA rejected", pt: "QA reprovou" }
+  - from: failed
+    to: dispatched
+    label: { en: "re-dispatch (needs --reason)", pt: "re-dispatch (exige --reason)" }
+  - from: verified
+    to: merged
+    label: { en: "PR merged into dev", pt: "PR mesclada em dev" }
+  - from: dispatched
+    to: escalated
+    label: { en: "cross-repo need", pt: "necessidade cross-repo" }
+  - from: dispatched
+    to: blocked
+    label: { en: "stuck", pt: "travado" }
+  - from: dispatched
+    to: redirected
+    label: { en: "PE redirects live", pt: "PE redireciona ao vivo" }
+  - from: delivered
+    to: dispatched
+    label: { en: "reopen finished work (needs --reason)", pt: "reabre trabalho pronto (exige --reason)" }
+  - from: merged
+    to: merged
+    label: { en: "immutable — further writes refused", pt: "imutável — escritas posteriores recusadas" }
+  - from: dispatched
+    to: removed
+    label: { en: "worktree torn down", pt: "worktree desmontada" }
