@@ -245,7 +245,7 @@ jobs:
           cat /tmp/release-notes.md
         shell: bash
 
-      - name: Commit the bump and tag it
+      - name: Commit the bump and tag it — atomically, or not at all
         if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         run: |
           git config user.name  "github-actions[bot]"
@@ -255,7 +255,18 @@ jobs:
           # nothing to commit; the tag still has to be created.
           git diff --cached --quiet || git commit -m "chore(release): v${{ steps.version.outputs.next }} [skip ci]"
           git tag "${{ steps.version.outputs.tag }}"
-          git push origin HEAD:main "${{ steps.version.outputs.tag }}"
+          # ONE push, --atomic: the branch bump and the tag land together or not
+          # at all. A plain `git push origin HEAD:main <tag>` pushes the two refs
+          # INDEPENDENTLY — and main's ruleset rejects the branch ref while
+          # leaving tag refs untouched, so the tag won and the branch lost. That
+          # is exactly how v1.10.3 and v1.11.0 became orphan tags: a release
+          # number claimed, no release, no bump on main. --atomic makes the
+          # ruleset rejection take the tag down with the branch, so a tag can
+          # never outlive the bump it belongs to.
+          if ! git push --atomic origin HEAD:main "${{ steps.version.outputs.tag }}"; then
+            echo "::error::Bump push to main was REJECTED — nothing was tagged or released (atomic push rolled the tag back with the branch). main's ruleset requires a PR and a green 'check', and the workflow's GITHUB_TOKEN is NOT a ruleset bypass actor on this personal repo. This job fails on purpose; the release did not ship. See RELEASING.md and OPEN-DECISIONS.md."
+            exit 1
+          fi
 
       - name: Publish the release
         if: steps.guard.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
