@@ -4,7 +4,9 @@ import { parse, stringify } from "yaml";
 import type { PrChecksResolver } from "./checks";
 import {
   EVIDENCE_REQUIRED_STATUSES,
+  hasRealEvidence,
   IMMUTABLE_STATUSES,
+  realEvidenceCommands,
   type JourneyAuthorization,
   type JourneyDispatch,
   type JourneyLedger,
@@ -295,14 +297,14 @@ export async function recordDispatchGuarded(
   // 1 — verify-before-done: claiming done requires attached evidence. A command
   // that is empty or whitespace is not a command run — so proof needs at least
   // one NON-EMPTY command, not merely a non-empty array. Otherwise `--evidence-cmd
-  // ""` dresses a bare self-report as evidence and clears the gate. The empties
-  // are dropped from what gets recorded, so the audit artifact carries only the
-  // commands actually run.
+  // ""` dresses a bare self-report as evidence and clears the gate. Both this WRITE
+  // gate and the verify READ gate judge proof through the SAME shared helper so the
+  // two can never drift. The empties are dropped from what gets recorded, so the
+  // audit artifact carries only the commands actually run.
   if (EVIDENCE_REQUIRED_STATUSES.includes(dispatch.status)) {
     const ev = dispatch.evidence;
-    const realCommands = Array.isArray(ev?.commands) ? ev.commands.filter((c) => !!c?.trim()) : [];
-    const hasProof = !!ev && realCommands.length > 0 && !!ev.summary?.trim();
-    if (!hasProof) {
+    const realCommands = realEvidenceCommands(ev);
+    if (!hasRealEvidence(ev)) {
       return {
         ok: false,
         code: "evidence-required",
