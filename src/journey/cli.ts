@@ -7,11 +7,13 @@ import { dirname, join } from "node:path";
 import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
 import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from "./ledger";
-import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
+import { ghPrState, reconcileAll, reconcileJourney, type PrStateFetcher } from "./reconcile";
 import { normalizeRepo, normalizeSpecialist } from "./normalize";
 import { dedupeAll } from "./dedupe-run";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { closeUnitSessions, SESSION_CLOSING_STATUSES } from "./session-close";
+import { executeReap, planReap, type ReapItem } from "./reap";
+import { parseSessionRoster, type RosterEntry } from "../session/poll";
 import { parseOrientationUnits, renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
 import { isValidTaskId } from "../worktree/naming";
@@ -32,6 +34,9 @@ import { logStatusDelta } from "../status/delta";
 export interface JourneyDeps {
   resolveChecks?: PrChecksResolver;
   sessionRunner?: AgentopRunner;
+  // The reaper's landing fact: is this PR merged on the forge? Injected for
+  // offline tests; defaults to the real gh (the same fetcher reconcile uses).
+  prState?: PrStateFetcher;
   // Local-git release-state resolver (j-20260830-zd); defaults to real git, tests
   // inject a fake so `show`/`verify` stay offline.
   resolveRelease?: ReleaseResolver;
@@ -221,13 +226,17 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   // silent. Idempotent, non-fatal.
   if (SESSION_CLOSING_STATUSES.has(status)) {
     const ledger = await readLedger(workspace, id);
-    // Per task (j-20260826-uv): closing THIS task's delivery must end only THIS
-    // task's session(s) — a sibling task of the same persona on the same unit is
-    // an independent run and must keep running.
+    // Scoped by UNIT (repo + package), across tasks (item 1): a QA gate that
+    // records `verified` under its own task/persona must still end the DEV's
+    // session on the same unit — the "gate approved in another task" leak. The
+    // per-task filter that used to live here would miss it. What protects live
+    // work is the STATUS guard inside closeUnitSessions (dispatched / blocked /
+    // redirected are never closed), NOT a task filter — so an open fix loop's
+    // fresh `dispatched` session and a `blocked` session both survive.
     const unitRecords = (ledger?.dispatches ?? []).filter(
-      (d) => d.repo === repo && (d.package ?? null) === (pkg ?? null) && (d.task ?? null) === (task ?? null),
+      (d) => d.repo === repo && (d.package ?? null) === (pkg ?? null),
     );
-    const lines = await closeUnitSessions(unitRecords, `${repo}${pkg ? `/${pkg}` : ""}`, deps.sessionRunner ?? realRunner);
+    const lines = await closeUnitSessions(unitRecords, `${repo}${pkg ? `/${pkg}` : ""}`, workspace, deps.sessionRunner ?? realRunner);
     for (const l of lines) console.log(l);
   }
 
@@ -511,6 +520,84 @@ async function dedupeCommand(args: string[]): Promise<number> {
   return 0;
 }
 
+// The disposition-to-line renderer for the reap plan, kept beside the command so
+// the dry-run listing and the --close listing print IDENTICALLY (only --close
+// then acts on the would-close set). Every session is accounted for on a line.
+function reapPlanLine(it: ReapItem): string {
+  const who = `${it.unit} · ${it.specialist}`;
+  switch (it.disposition) {
+    case "would-close":
+      return `WOULD-CLOSE session ${it.sessionId} (${who}) — ${it.reason}`;
+    case "protected":
+      return `PROTECTED ${who}${it.sessionId ? ` session ${it.sessionId}` : ""} — ${it.reason}`;
+    case "not-landed":
+      return `SKIP ${who} — ${it.reason}`;
+    case "unresolvable":
+      return `COULD-NOT-ESTABLISH ${who} — ${it.reason}`;
+  }
+}
+
+// `aipe journey reap --journey <id> [--close]` — the explicit, coordinator-run
+// reaper (item 2). It establishes each session's landing by VERIFIABLE FACT (the
+// unit's PR is merged on the forge), reconciles a stale sessionId by worktree
+// (item 3), and NEVER touches a blocked/dispatched/redirected session. It is NOT
+// background: the default LISTS what it would close and closes nothing; only
+// `--close` acts — and it lists the whole plan first, so nothing closes without
+// the coordinator seeing it. Killing a session is a decision, not automation.
+async function reapCommand(args: string[], deps: JourneyDeps = {}): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const id = getFlag(args, "--journey");
+  if (!id) {
+    console.log("ERROR args: --journey <id> is required");
+    return 1;
+  }
+  const ledger = await readLedger(workspace, id);
+  if (!ledger) {
+    console.log(`ERROR journey: no ledger for ${id}`);
+    return 1;
+  }
+  const runner = deps.sessionRunner ?? realRunner;
+
+  // Read the live roster once. An absent/failed/unparseable list is NOT an empty
+  // list — it degrades a merged unit to "could not establish" (planReap), never
+  // to a guessed close.
+  let roster: RosterEntry[] = [];
+  let rosterReliable = false;
+  try {
+    const r = await runner(["session", "list", "--json"]);
+    if (r.code === 0) {
+      roster = parseSessionRoster(r.stdout);
+      rosterReliable = true;
+    }
+  } catch {
+    rosterReliable = false;
+  }
+
+  const plan = await planReap(ledger, workspace, roster, rosterReliable, deps.prState ?? ghPrState);
+  // List the whole plan first — always, in both modes.
+  for (const it of plan) console.log(reapPlanLine(it));
+
+  const would = plan.filter((p) => p.disposition === "would-close").length;
+  const protectedN = plan.filter((p) => p.disposition === "protected").length;
+  const notLanded = plan.filter((p) => p.disposition === "not-landed").length;
+  const unresolvable = plan.filter((p) => p.disposition === "unresolvable").length;
+
+  let closed = 0;
+  if (args.includes("--close")) {
+    const lines = await executeReap(plan, runner);
+    for (const l of lines) {
+      console.log(l.line);
+      if (l.closed) closed++;
+    }
+  }
+
+  const mode = args.includes("--close") ? "close" : "dry-run";
+  console.log(
+    `STATE reap journey=${id} mode=${mode} would-close=${would} protected=${protectedN} not-landed=${notLanded} unresolvable=${unresolvable} closed=${closed}`,
+  );
+  return 0;
+}
+
 export async function run(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -528,9 +615,11 @@ export async function run(args: string[], deps: JourneyDeps = {}): Promise<numbe
       return dedupeCommand(rest);
     case "verify":
       return verifyCommand(rest, deps);
+    case "reap":
+      return reapCommand(rest, deps);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
-      console.log("Usage: aipe journey <start|record|show|spec|reconcile|dedupe|verify> [options]");
+      console.log("Usage: aipe journey <start|record|show|spec|reconcile|dedupe|verify|reap> [options]");
       return 1;
   }
 }

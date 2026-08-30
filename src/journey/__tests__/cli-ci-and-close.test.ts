@@ -171,11 +171,12 @@ test("escalated closes the unit's session too — the PE decides, any continuati
   expect(output).toContain("CLOSED session sess-esc");
 });
 
-test("a close against a non-existent id does NOT claim it was closed — even though agentop's kill exits 0 with 'No session matches'", async () => {
+test("a close against a stale id that reconciles to nothing does NOT claim it was closed, and does not even attempt a guessing kill", async () => {
   const dir = await ws();
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session", "--session-id", "sess-ghost"]));
   // The exact condition that produced today's false success: the live list has
-  // no such session, yet `session kill` exits 0 with agentop's real message.
+  // no such session (and none at the unit's worktree), yet `session kill` would
+  // exit 0 with agentop's real message. Establish-first means we never call it.
   const { runner, kills } = agentop({
     live: [],
     killResult: (id) => ({
@@ -188,7 +189,7 @@ test("a close against a non-existent id does NOT claim it was closed — even th
     run(dispatchArgs(dir, ["--status", "merged"]), { sessionRunner: runner }),
   );
   expect(code).toBe(0); // the record still succeeds
-  expect(kills).toEqual(["sess-ghost"]); // the kill WAS attempted, its exit 0 just isn't trusted
+  expect(kills).toEqual([]); // no live session was established, so nothing is killed by guess
   expect(output).not.toContain("CLOSED session sess-ghost");
   expect(output).toContain("was not running");
 });
@@ -251,6 +252,40 @@ test("a subagent-mode unit closes nothing on a terminal status", async () => {
   expect(kills).toEqual([]);
   expect(output).not.toContain("CLOSED");
   expect(output).not.toContain("no sessionId");
+});
+
+test("a QA verified recorded under ANOTHER task closes the DEV's delivered session on the same unit (close by unit)", async () => {
+  const dir = await ws();
+  // Dev is at DELIVERED (self-report, gate pending) under task "impl", session live.
+  await run([
+    "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Jesse",
+    "--branch", "aipe/j1/jesse", "--worktree", "/wt-impl", "--task", "impl",
+    "--status", "dispatched", "--mode", "session", "--session-id", "sess-dev",
+  ]);
+  await run([
+    "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Jesse",
+    "--branch", "aipe/j1/jesse", "--worktree", "/wt-impl", "--task", "impl",
+    "--status", "delivered", "--pr", "http://pr/impl", ...evArgs,
+  ], { resolveChecks: async () => "green" as CheckVerdict });
+  // QA is dispatched under a DIFFERENT task "gate" — its own session live too.
+  await run([
+    "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Mike",
+    "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "gate",
+    "--status", "dispatched", "--mode", "session", "--session-id", "sess-qa",
+  ]);
+  const { runner, kills } = agentop({ live: ["sess-dev", "sess-qa"] });
+  const { code, output } = await capture(() =>
+    run([
+      "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Mike",
+      "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "gate",
+      "--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs,
+    ], { resolveChecks: async () => "green" as CheckVerdict, sessionRunner: runner }),
+  );
+  expect(code).toBe(0);
+  // The dev's session (delivered, task "impl") is closed even though the gate
+  // landed on task "gate" — the leak the unit scope fixes.
+  expect(kills.sort()).toEqual(["sess-dev", "sess-qa"]);
+  expect(output).toContain("CLOSED session sess-dev");
 });
 
 test("delivered does NOT close the session — it is not terminal (the QA gate is)", async () => {
