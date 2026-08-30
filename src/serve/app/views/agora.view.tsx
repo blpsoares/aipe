@@ -1,15 +1,18 @@
 // "Agora" — the home screen. Answers the governing question first, by urgency
-// (SDD §6.1). Three zones plus the whole board on demand:
+// (SDD §6.1). Three zones plus the whole board:
 //   1) Precisa de você — decisions only the PE can unblock (empty IS success).
 //   2) Acontecendo agora — the specialists working this moment.
-//   3) O quadro completo — the full configurable board, COLLAPSED by default
-//      (progressive disclosure). This is the Atividade board (j-20260829-dp)
-//      reused verbatim as a section INSIDE Agora — the approved map (SDD §5,
-//      decision A) keeps the board here, not on a fourth screen. Its "needs-you"
-//      column is the full workforce view; zone 1 above is the curated PE SUBSET
-//      (a different projection), so the two never read as one list re-framed.
+//   3) O quadro completo — the full configurable board, VISIBLE by default
+//      (j-20260830-r5: a PE landing on Agora must see the board without
+//      discovering a control; a returning PE's explicit collapse choice is
+//      remembered — runtime/ui.ts's agoraBoardOpen). This is the Atividade
+//      board (j-20260829-dp) reused verbatim as a section INSIDE Agora — the
+//      approved map (SDD §5, decision A) keeps the board here, not on a fourth
+//      screen. Its "needs-you" column is the full workforce view; zone 1 above
+//      is the curated PE SUBSET (a different projection), so the two never
+//      read as one list re-framed.
 //   Observations (findings the coordinator/dev/QA handle) stay here, apart.
-import { useEffect, useState } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 import { ConnBadge } from "../components/ConnBadge";
 import { Icon } from "../components/Icon";
 import { Avatar } from "../components/Avatar";
@@ -19,6 +22,7 @@ import { t } from "../runtime/i18n";
 import { fqidOf } from "../runtime/dom";
 import { decisions, observations, dispatches, sessions, openWorkerName, pinnedDispatch } from "../runtime/store";
 import { buildBoard } from "../runtime/board";
+import { agoraBoardOpen, setAgoraBoardOpen } from "../runtime/ui";
 import type { Route } from "../route-types";
 
 function NeedsYou() {
@@ -105,14 +109,16 @@ function Observations() {
   );
 }
 
-// Zone 3 — the whole board, collapsed by default (progressive disclosure). The
-// full configurable board (with its Integrados merge-truth column) lives here,
-// one click from the inbox above.
+// Zone 3 — the whole board. VISIBLE by default (this board is the feature the
+// PE lost when it was folded behind a control — arriving at Agora must show it,
+// not require discovering a toggle). A PE that explicitly collapses it keeps
+// that choice on reload (agoraBoardOpen persists it); anyone who never chose
+// still gets it open.
 function WholeBoard() {
-  const [open, setOpen] = useState(false);
+  const open = agoraBoardOpen.value;
   return (
     <section class="zone zone-board" aria-label={t("board_title")}>
-      <button type="button" class="board-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+      <button type="button" class="board-toggle" aria-expanded={open} onClick={() => setAgoraBoardOpen(!open)}>
         <Icon name={open ? "chevron-down" : "chevron-right"} size={16} />
         <span class="zone-title">{t("board_title")}</span>
         <span class="zone-sub">{open ? t("board_hide") : t("board_show")}</span>
