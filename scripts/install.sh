@@ -10,7 +10,7 @@
 #   AIPE_VERSION        version label (informational; the domain serves latest)
 set -eu
 
-AIPE_VERSION="${AIPE_VERSION:-1.12.1}"
+AIPE_VERSION="${AIPE_VERSION:-1.13.0}"
 AIPE_DOWNLOAD_BASE="${AIPE_DOWNLOAD_BASE:-https://aipe.openvibes.tech/cli}"
 INSTALL_DIR="${AIPE_INSTALL_DIR:-$HOME/.local/bin}"
 
