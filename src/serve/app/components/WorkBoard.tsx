@@ -113,7 +113,7 @@ export function WorkBoard() {
     (cfg.filters.waitsOnPE ? 1 : 0);
 
   return (
-    <div class="grid" style={{ gap: "12px" }}>
+    <div class="grid" style={{ gap: "12px", minWidth: 0, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {/* Build-your-own-board controls (item 4) — the simple that works. */}
       <div class="actbar card pad">
         <div class="actbar-row">
