@@ -64,6 +64,37 @@ test("verified requires QA evidence; empty summary is not proof", async () => {
   }
 });
 
+test("commands that are all empty/whitespace are not proof (gate does not approve empty)", async () => {
+  const dir = await ws();
+  try {
+    // A summary present, but every "command" is empty or whitespace — no real
+    // command was run. This is a bare self-report dressed as evidence.
+    const bad = await recordDispatchGuarded(dir, "j1", {
+      ...base,
+      status: "delivered",
+      pr: "http://pr/1",
+      evidence: { by: "dev", commands: ["", "   "], summary: "fiz tudo, confia" },
+    });
+    expect(bad.ok).toBe(false);
+    expect(bad.code).toBe("evidence-required");
+    expect((await readLedger(dir, "j1"))!.dispatches).toHaveLength(0);
+
+    // One real command among the empties is enough proof — and the empties are
+    // dropped so the recorded artifact carries only the command actually run.
+    const good = await recordDispatchGuarded(dir, "j1", {
+      ...base,
+      status: "delivered",
+      pr: "http://pr/1",
+      evidence: { by: "dev", commands: ["", "bun test", "  "], summary: "42 pass, 0 fail" },
+    });
+    expect(good.ok).toBe(true);
+    const d = (await readLedger(dir, "j1"))!.dispatches[0]!;
+    expect(d.evidence?.commands).toEqual(["bun test"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a merged unit is immutable — never re-recorded", async () => {
   const dir = await ws();
   try {

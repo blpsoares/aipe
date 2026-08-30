@@ -292,10 +292,16 @@ export async function recordDispatchGuarded(
   const current = unitStatus(ledger, dispatch.repo, pkg, dispatch.task ?? null);
   const unitName = `${dispatch.repo}${pkg ? `/${pkg}` : ""}`;
 
-  // 1 — verify-before-done: claiming done requires attached evidence.
+  // 1 — verify-before-done: claiming done requires attached evidence. A command
+  // that is empty or whitespace is not a command run — so proof needs at least
+  // one NON-EMPTY command, not merely a non-empty array. Otherwise `--evidence-cmd
+  // ""` dresses a bare self-report as evidence and clears the gate. The empties
+  // are dropped from what gets recorded, so the audit artifact carries only the
+  // commands actually run.
   if (EVIDENCE_REQUIRED_STATUSES.includes(dispatch.status)) {
     const ev = dispatch.evidence;
-    const hasProof = !!ev && Array.isArray(ev.commands) && ev.commands.length > 0 && !!ev.summary?.trim();
+    const realCommands = Array.isArray(ev?.commands) ? ev.commands.filter((c) => !!c?.trim()) : [];
+    const hasProof = !!ev && realCommands.length > 0 && !!ev.summary?.trim();
     if (!hasProof) {
       return {
         ok: false,
@@ -303,6 +309,7 @@ export async function recordDispatchGuarded(
         message: `status "${dispatch.status}" requires evidence — attach the command(s) run and a summary of what the output showed (never a bare self-report).`,
       };
     }
+    dispatch = { ...dispatch, evidence: { ...ev, commands: realCommands } };
   }
 
   // 2 — immutability: a merged unit is final.
