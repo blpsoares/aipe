@@ -7,7 +7,7 @@
 // fully guarded: the SessionStart hook runs before anything else, so a workspace
 // mid-onboarding or a broken registry must DEGRADE to no line, never crash the
 // session open.
-import { claimCoordinator, renderCoordinatorAwareness } from "../runtime/coordinator";
+import { claimCoordinator, releaseCoordinator, renderCoordinatorAwareness } from "../runtime/coordinator";
 import type { Fields } from "./read-state";
 
 // The agentop session name is what the event-watches address (`--notify`). AIPe
@@ -55,5 +55,33 @@ export async function coordinatorAwareness(
     return renderCoordinatorAwareness(res);
   } catch {
     return ""; // degrade — never break SessionStart
+  }
+}
+
+// The removal half, fired from the SessionEnd hook (`aipe session-context
+// --release`). A clean session close deletes this session's own coordinator
+// entry, so a coordinator that stops in the ordinary way leaves NO ghost behind —
+// the explicit-release path the orphan-reconciliation cannot cover while agentop
+// does not stamp a verifiable session pid (pid 0 = unverifiable = kept). Computes
+// the SAME identity the claim used, so it removes exactly this session's file.
+// Best-effort and fully guarded: session teardown must never be broken by this.
+export async function releaseCoordinatorAwareness(
+  fields: Fields,
+  env: Record<string, string | undefined> = process.env,
+): Promise<void> {
+  const onboarded =
+    fields.brain === "present" &&
+    fields.phaseWorkspace === "done" &&
+    fields.phaseRelationship === "done" &&
+    fields.phaseSpecialists === "done";
+  if (!onboarded || !fields.root || !fields.coordinator) return;
+  try {
+    await releaseCoordinator(fields.root, {
+      name: fields.coordinator,
+      sessionName: pickSessionName(env, fields.coordinator),
+      pid: pickPid(env),
+    });
+  } catch {
+    // degrade — a broken workspace must not break session close
   }
 }

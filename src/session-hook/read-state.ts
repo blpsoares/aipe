@@ -13,7 +13,7 @@ import { resolveStatusPref } from "../status/pref";
 import { DEFAULT_STATUS_PREF, type StatusUpdatesPref } from "../status/types";
 import { loadReport } from "../status/load";
 import { renderStateBlock } from "../status/context-block";
-import { coordinatorAwareness } from "./coordinator-awareness";
+import { coordinatorAwareness, releaseCoordinatorAwareness } from "./coordinator-awareness";
 
 function getFlag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -220,6 +220,14 @@ export async function runSessionContext(args: string[]): Promise<number> {
     return 0;
   }
   const fields = await readState(workspace);
+  // The SessionEnd path: release this coordinator's registered identity on a
+  // clean close, then emit inert JSON (SessionEnd cannot inject context). Fully
+  // guarded — teardown must never be broken by a release failure.
+  if (args.includes("--release")) {
+    await releaseCoordinatorAwareness(fields).catch(() => {});
+    console.log("{}");
+    return 0;
+  }
   if (fields.root) {
     await ensureRehydrated(fields.root, VERSION).catch(() => {});
   }

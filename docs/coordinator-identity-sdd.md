@@ -59,6 +59,39 @@ ilegível → `unknown`, não `finished`.
   removido; `cli.ts` anuncia cada remoção em uma linha `WARN` própria (quem, desde
   quando, sobre quais paths, e o que fazer) em vez da antiga linha-única de rotina.
 
+### (fix v3) Caminho de remoção do registro — `hooks/`, `claude-code.ts`, `coordinator-awareness.ts`
+O gate de QA achou um buraco **bloqueante** na v2: o registro do coordenador era
+**imortal**. `pickPid()` sempre retornava 0 (nenhuma env — `AIPE_SESSION_PID`/
+`AGENTOP_SESSION_PID` — é carimbada; o próprio código já documenta que **o agentop
+não carimba `AGENTOP_SESSION_ID` no ambiente**), e `releaseCoordinator` não estava
+ligado a hook nenhum. Sem sinal de morte real (pid 0 = vivo) **nem release
+explícito**, toda entrada de coordenador vivia para sempre — e o aviso passava a
+listar sessões **mortas** como ativas, mandando dar `attach` em fantasmas que se
+acumulavam a cada troca.
+
+O fix fecha isso por dois lados, sem tocar no agentop:
+
+- **Release explícito no fechamento limpo.** Um hook `SessionEnd` (`aipe
+  session-context --release`) chama `releaseCoordinatorAwareness`, que recomputa a
+  **mesma** identidade do claim e apaga o arquivo desta sessão. Vale nos dois
+  caminhos de instalação: o plugin (`hooks/hooks.json` + `hooks/session-end`) e o
+  project-scoped (`ensureSessionStartHook` grava o par SessionStart+SessionEnd em
+  `.claude/settings.json`, idempotente). Fechou o Claude Code do jeito normal
+  (`/clear`, saída, resume) → sem fantasma. Best-effort e guardado: o teardown
+  nunca quebra por falha de release.
+- **Aviso honesto sobre o resíduo.** No `COLLISION`, cada `other` é anotado por
+  liveness: `pid>0` = `verified alive`; `pid 0` = `liveness UNVERIFIABLE`. Quando
+  há algum não-verificável, o aviso acrescenta que o AIPe **não consegue verificar**
+  que aquele dono ainda está vivo — se o `attach` falhar, a sessão já fechou e pode
+  ser retomada com segurança. O aviso deixa de afirmar "ativo" sobre quem talvez
+  tenha caído.
+
+**Resíduo honesto (escalado):** um crash duro / `SIGKILL` **não** dispara
+`SessionEnd`, então a entrada pid-0 daquele coordenador ainda fica até o próximo
+fechamento limpo do dono. Podar isso automaticamente exige um **sinal de vida
+verificável** — um pid de sessão que só o `agentop` pode carimbar (mesmo limite já
+registrado para `AGENTOP_SESSION_ID`). É cross-repo: **escalado, não improvisado**.
+
 ## Trava crítica
 
 Nada disso pode quebrar o `SessionStart`. Toda a leitura de identidade é
@@ -73,6 +106,12 @@ sessão). O AIPe **registra o nome que usou** e a sessão nova **reivindica** es
 identidade; fechar o loop de re-endereçamento dos watches é matéria do `agentop`
 (cross-repo).
 
+Carimbar um **pid de sessão verificável** no ambiente (`AGENTOP_SESSION_PID`).
+Sem ele, `pickPid()` fica em 0 e a poda automática de um coordenador que **caiu
+sem fechar** (crash/SIGKILL, sem `SessionEnd`) é impossível — o release explícito
+cobre o fechamento limpo, mas o resíduo do crash duro precisa do agentop. Mesma
+fronteira já registrada para `AGENTOP_SESSION_ID`.
+
 ## Aceite (provado)
 
 - 2ª sessão de coordenação **detectada** com quem/desde-quando/`attach` — provado
@@ -82,4 +121,8 @@ identidade; fechar o loop de re-endereçamento dos watches é matéria do `agent
   alto de lock morto; `COLLISION` de lock pid-0 vivo).
 - "Terminou e não processado" visível no `aipe status` — provado e2e com agentop
   vivo (`finished-unprocessed`).
-- `bun test` 1533/0, `tsc` limpo, `build:host` + smoke OK, sem linha binária.
+- **Registro não é mais imortal:** fechamento limpo libera a identidade via
+  `SessionEnd` (`--release`) — provado e2e (sem fantasma após release) e por
+  unidade; o aviso é honesto sobre o dono pid-0 não-verificável (`cannot verify`),
+  e o resíduo do crash duro está documentado/escalado (precisa do pid do agentop).
+- `bun test`, `tsc` limpo, `build:host` + smoke OK, sem linha binária.

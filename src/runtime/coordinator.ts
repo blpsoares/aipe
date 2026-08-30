@@ -262,20 +262,34 @@ export function renderCoordinatorAwareness(res: Pick<ClaimResult, "mine" | "othe
   const nameTag = res.mine.sessionName ? `registered as "${res.mine.sessionName}"` : `"${res.mine.name}"`;
 
   if (res.others.length > 0) {
+    // Per-entry liveness is honest, not asserted: a pid>0 owner was probed with
+    // signal-0 and is verifiably alive; a pid-0 owner is UNVERIFIABLE — it may
+    // have crashed without releasing (the residual the SessionEnd path cannot
+    // catch), so we must not present it as a session you can definitely attach to.
     const list = res.others
       .map((o) => {
         const sn = o.sessionName ? ` (agentop session "${o.sessionName}")` : "";
         const when = o.claimedAt || "an unrecorded time";
-        return `${o.name}${sn}, coordinating since ${when}`;
+        const live = o.pid > 0 ? "verified alive" : "liveness UNVERIFIABLE";
+        return `${o.name}${sn}, coordinating since ${when} [${live}]`;
       })
       .join("; ");
+    // Only warn about unverifiability when it actually applies — a fleet of
+    // verifiable coordinators needs no such caveat.
+    const anyUnverifiable = res.others.some((o) => o.pid <= 0);
+    const caveat = anyUnverifiable
+      ? ` NOTE: AIPe cannot verify a coordinator with no session pid is still alive — if attaching fails, ` +
+        `that session has already closed; its stale entry is pruned on the owner's next clean close (or once ` +
+        `a real session pid is available), and you can safely take over.`
+      : ``;
     return (
       `COORDINATOR COLLISION (not blocking): you are a SECOND coordinator on this workspace. ` +
       `Already active: ${list}. Two coordinators reading one ledger can write conflicting specs, ` +
       `re-activate the same specialist, or record duplicate verdicts — the atomic claim guards the ` +
       `dispatch, not the reasoning. If this is deliberate (a scoped test on one repo), continue — you ` +
       `are now aware. Otherwise attach to the existing session ` +
-      `(\`agentop session attach\`) and let it coordinate, rather than dispatching in parallel from here.`
+      `(\`agentop session attach\`) and let it coordinate, rather than dispatching in parallel from here.` +
+      caveat
     );
   }
 

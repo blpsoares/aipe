@@ -2,7 +2,12 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { coordinatorAwareness, pickPid, pickSessionName } from "../coordinator-awareness";
+import {
+  coordinatorAwareness,
+  pickPid,
+  pickSessionName,
+  releaseCoordinatorAwareness,
+} from "../coordinator-awareness";
 import type { Fields } from "../read-state";
 import { DEFAULT_STATUS_PREF } from "../../status/types";
 
@@ -57,6 +62,28 @@ test("a SECOND coordinator session on the same workspace is warned, actionably",
   expect(txt).toContain("SECOND coordinator");
   expect(txt).toContain("Heisenberg");
   expect(txt.toLowerCase()).toContain("attach");
+});
+
+test("releaseCoordinatorAwareness removes this session's registered entry — a clean close leaves no ghost (the SessionEnd removal path)", async () => {
+  // The real coordinator case: pid 0 (unverifiable). Register, prove a fresh
+  // session sees it live, then release on clean close and prove the ghost is gone.
+  const env = { AGENTOP_SESSION_NAME: "COORDENADOR" };
+  await coordinatorAwareness(onboarded(ws), env);
+  const before = await coordinatorAwareness(onboarded(ws), { AGENTOP_SESSION_NAME: "COORD-2" });
+  expect(before).toContain("SECOND coordinator");
+
+  await releaseCoordinatorAwareness(onboarded(ws), env);
+
+  const after = await coordinatorAwareness(onboarded(ws), { AGENTOP_SESSION_NAME: "COORD-2" });
+  expect(after).not.toContain("SECOND coordinator");
+});
+
+test("releaseCoordinatorAwareness degrades silently — mid-onboarding and a broken workspace never throw", async () => {
+  const mid = onboarded(ws);
+  mid.phaseSpecialists = "pending";
+  await releaseCoordinatorAwareness(mid, {}); // no coordinator to release yet — no-op
+  await releaseCoordinatorAwareness(onboarded("/no/such/path/at/all"), {}); // must not throw
+  expect(true).toBe(true);
 });
 
 test("mid-onboarding there is no coordinator identity to register — awareness is empty (degrade)", async () => {

@@ -122,6 +122,19 @@ test("ensureSessionStartHook is idempotent — calling it twice does not duplica
   }
 });
 
+test("ensureSessionStartHook also installs a SessionEnd release hook, idempotently — so a clean close releases the coordinator identity", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-hook-end-"));
+  try {
+    await ensureSessionStartHook(dir);
+    await ensureSessionStartHook(dir);
+    const settings = JSON.parse(await readFile(join(dir, ".claude", "settings.json"), "utf8"));
+    expect(settings.hooks.SessionEnd).toHaveLength(1);
+    expect(JSON.stringify(settings.hooks.SessionEnd)).toContain("aipe session-context --release");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("ensureSessionStartHook preserves an existing unrelated settings.json entry", async () => {
   const dir = await mkdtemp(join(tmpdir(), "aipe-hook-"));
   try {

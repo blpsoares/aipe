@@ -150,6 +150,29 @@ test("renderCoordinatorAwareness names who else is active, since when, and what 
   expect(txt.toLowerCase()).toContain("attach"); // the actionable "what to do"
 });
 
+test("renderCoordinatorAwareness is HONEST about an unverifiable other (pid 0): flags liveness cannot be verified, never asserts a possibly-dead session is alive", () => {
+  const mine: CoordinatorEntry = { name: "Gus", sessionName: "COORD-2", pid: 0, claimedAt: NOW };
+  const others: CoordinatorEntry[] = [
+    { name: "Heisenberg", sessionName: "COORDENADOR", pid: 0, claimedAt: "2026-08-29T09:00:00.000Z" },
+  ];
+  const txt = renderCoordinatorAwareness({ mine, others, reconnected: false });
+  expect(txt).toContain("Heisenberg"); // who
+  expect(txt).toContain("2026-08-29T09:00:00.000Z"); // since when
+  expect(txt.toLowerCase()).toContain("attach"); // still actionable
+  // The load-bearing honesty: a pid-0 owner may have crashed; the warning must
+  // NOT present it as a confirmed-live session you can attach to.
+  expect(txt.toLowerCase()).toContain("cannot verify");
+});
+
+test("renderCoordinatorAwareness does NOT add the unverifiable caveat when the other is verifiably alive (pid > 0)", () => {
+  const mine: CoordinatorEntry = { name: "Gus", sessionName: "COORD-2", pid: 222, claimedAt: NOW };
+  const others: CoordinatorEntry[] = [
+    { name: "Heisenberg", sessionName: "COORDENADOR", pid: 111, claimedAt: "2026-08-29T09:00:00.000Z" },
+  ];
+  const txt = renderCoordinatorAwareness({ mine, others, reconnected: false });
+  expect(txt.toLowerCase()).not.toContain("cannot verify");
+});
+
 test("renderCoordinatorAwareness on a clean solo claim says you hold the identity and since when", () => {
   const mine: CoordinatorEntry = { name: "Heisenberg", sessionName: "COORDENADOR", pid: 111, claimedAt: NOW };
   const txt = renderCoordinatorAwareness({ mine, others: [], reconnected: false });
