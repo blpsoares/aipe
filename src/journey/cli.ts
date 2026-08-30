@@ -11,7 +11,7 @@ import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
 import { normalizeRepo, normalizeSpecialist } from "./normalize";
 import { dedupeAll } from "./dedupe-run";
 import { readPersonas } from "../hire-specialists/read-personas";
-import { closeSessions, sessionsToClose } from "./session-close";
+import { closeUnitSessions, SESSION_CLOSING_STATUSES } from "./session-close";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
 import { isValidTaskId } from "../worktree/naming";
@@ -190,10 +190,13 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
 
   // Rule 2 — the ledger record above is the important thing and is now durable;
   // closing the session is housekeeping done AFTER it, and must never lose the
-  // record. When this write lands a session-mode unit (verified/merged), end its
+  // record. When this write lands a session-mode unit on a TERMINAL status
+  // (SESSION_CLOSING_STATUSES — verified/merged/failed/escalated), end its
   // session(s) as the coordinator's instrument (an internal agentop spawn that
-  // never passes through the specialist guard) and say so. Idempotent, non-fatal.
-  if (status === "verified" || status === "merged") {
+  // never passes through the specialist guard) and say so — closing only what it
+  // can verify, and surfacing a stale/missing sessionId instead of staying
+  // silent. Idempotent, non-fatal.
+  if (SESSION_CLOSING_STATUSES.has(status)) {
     const ledger = await readLedger(workspace, id);
     // Per task (j-20260826-uv): closing THIS task's delivery must end only THIS
     // task's session(s) — a sibling task of the same persona on the same unit is
@@ -201,11 +204,8 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
     const unitRecords = (ledger?.dispatches ?? []).filter(
       (d) => d.repo === repo && (d.package ?? null) === (pkg ?? null) && (d.task ?? null) === (task ?? null),
     );
-    const ids = sessionsToClose(unitRecords);
-    if (ids.length > 0) {
-      const lines = await closeSessions(ids, `${repo}${pkg ? `/${pkg}` : ""}`, deps.sessionRunner ?? realRunner);
-      for (const l of lines) console.log(l);
-    }
+    const lines = await closeUnitSessions(unitRecords, `${repo}${pkg ? `/${pkg}` : ""}`, deps.sessionRunner ?? realRunner);
+    for (const l of lines) console.log(l);
   }
 
   // Item 9 — a ledger record is a state event: log the delta table (gated on TTY
