@@ -25,6 +25,7 @@ import { run as addRepo } from "./add-repo/cli";
 import { run as workspaceCmd } from "./migrate-layout/cli";
 import { run as dashboard } from "./dashboard/cli";
 import { run as status } from "./status/cli";
+import { run as report } from "./report/cli";
 import { run as serve } from "./serve/cli";
 import { run as detectPackages } from "./detect-packages/cli";
 import { run as validatePersonas } from "./validate-personas/cli";
@@ -53,6 +54,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   dispatch: dispatchCmd,
   journey: journey,
   status: status,
+  report: report,
   session: session,
   rehydrate: rehydrate,
   skill: runSkill,
@@ -92,6 +94,7 @@ const HELP = [
   "  session            Dispatch specialists as real agentop sessions (detached, own context)",
   "  journey            Track dispatches + verify the ledger's reliability invariants",
   "  status             Who is doing what, in which repo, at what status (table or --json)",
+  "  report             Delivery report — metrics, filters, groupings, --json/--csv",
   "  dashboard          Live terminal view of workers, pipeline & worktrees",
   "  serve              Responsive web console (org chart, pipeline, terminal)",
   "  validate-personas  Preflight persona load-order readiness + live-check steps",

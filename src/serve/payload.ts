@@ -11,12 +11,22 @@ import { ghPrState, type PrState, type PrStateFetcher } from "../journey/reconci
 import { listJourneys } from "../journey/ledger";
 import { readLive, type SessionInfo } from "./sessions";
 import { dispatchPhase, type Liveness } from "../session/poll";
+import { resolvePublication } from "../report/publication";
+import type { RepoPublication } from "../report/compute";
 import type { UnitPhase } from "../session/types";
 import type { JourneyDispatch } from "../journey/types";
 import type { JourneyView } from "../dashboard/snapshot";
 
 export type ServePayload = Snapshot & {
   sessions: SessionInfo[];
+  /**
+   * Per-repo publication position (merged ≠ published — src/release). Read
+   * SYNCHRONOUSLY from a cache the server-owned refresher fills off the render
+   * path (same discipline as the PR-merge cache: local git never runs per SSE
+   * frame). A repo not yet resolved is `checking` ("verificando"), NEVER a false
+   * "published" and never a zero.
+   */
+  publication: Record<string, RepoPublication>;
   /**
    * Running agentop sessions rooted at the workspace itself — i.e. the
    * coordinator's own sessions. There is conceptually ONE coordinator; this is a
@@ -280,12 +290,69 @@ export function annotateLiveness(
   }));
 }
 
+// ── Release cache (merged ≠ published): local git is OUT of the render ────────
+// Same discipline as the PR-merge cache above, for the reason too: `resolvePublication`
+// shells out to git per repo, and the build runs per SSE client on every 3s reconcile
+// + fs event — running git there would be the "subprocess storm on the hot path"
+// defect. So the build reads THIS cache synchronously; a single server-owned
+// refresher (startReleaseRefresher) is the only thing that touches git for release.
+// A repo not yet in the cache is `checking` — shown as "verificando", never a false
+// "published" and never a zero (the cold-cache honesty seam, mirrors integrationPending).
+const releaseCache = new Map<string, RepoPublication>();
+
+/** Synchronous cache read used by the build — no git, ever. Cold repo ⇒ `checking`. */
+export function publicationFromCache(repos: string[]): Record<string, RepoPublication> {
+  const out: Record<string, RepoPublication> = {};
+  for (const repo of repos) {
+    out[repo] = releaseCache.get(repo) ?? {
+      state: "checking",
+      latestReleaseTag: null,
+      reason: "verificando o estado de publicação…",
+    };
+  }
+  return out;
+}
+
+/** Test seam: seed/clear the release cache deterministically. */
+export function _seedReleaseCache(repo: string, pub: RepoPublication): void {
+  releaseCache.set(repo, pub);
+}
+export function _clearReleaseCache(): void {
+  releaseCache.clear();
+}
+
+/**
+ * Start the single, server-owned release-state refresher: on a slow timer it
+ * resolves each repo's publication position from LOCAL git (resolvePublication →
+ * src/release) off the render path, into the cache. Returns a stop fn. A failure
+ * keeps the prior entry (never a downgrade to a guessed state).
+ */
+export function startReleaseRefresher(
+  workspace: string,
+  intervalMs = 120_000,
+  resolve: (ws: string) => Promise<Record<string, RepoPublication>> = resolvePublication,
+): () => void {
+  const tick = async (): Promise<void> => {
+    try {
+      const pub = await resolve(workspace);
+      for (const [repo, p] of Object.entries(pub)) releaseCache.set(repo, p);
+    } catch {
+      // best-effort: keep whatever the cache already holds (never a false state)
+    }
+  };
+  void tick(); // warm immediately
+  const timer = setInterval(() => void tick(), intervalMs);
+  timer.unref?.(); // never keep the event loop alive for the poller
+  return () => clearInterval(timer);
+}
+
 export async function buildServePayload(
   workspace: string,
   read: () => Promise<{ sessions: SessionInfo[]; live: Map<string, Liveness>; reliable: boolean }> = readLive,
   worktreeExists: (path: string) => boolean = existsSync,
   isAncestor: (repoDir: string, branch: string) => boolean = gitIsAncestor,
   prState: (prUrl: string) => PrMergeState = prStateFromCache,
+  pubFromCache: (repos: string[]) => Record<string, RepoPublication> = publicationFromCache,
 ): Promise<ServePayload> {
   const snapshot = await buildSnapshot(workspace);
   // One agentop read covers the per-dispatch activity, the coordinator's own
@@ -301,5 +368,6 @@ export async function buildServePayload(
   const journeys = annotateIntegrated(annotateLiveness(snapshot.journeys, live, reliable, worktreeExists), isAncestor, prState);
   const sessions = relevantSessions(all, snapshot.journeys);
   const coordinatorSessions = coordinatorSessionsOf(all, workspace);
-  return { ...snapshot, journeys, sessions, coordinatorSessions };
+  const publication = pubFromCache(snapshot.repos);
+  return { ...snapshot, journeys, sessions, coordinatorSessions, publication };
 }

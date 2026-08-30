@@ -80,6 +80,14 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M12 7v5l3.5 2" />
     </>
   ),
+  report: (
+    <>
+      <path d="M3 3v18h18" />
+      <rect x="7" y="12" width="3" height="6" rx="0.5" />
+      <rect x="12" y="8" width="3" height="10" rx="0.5" />
+      <rect x="17" y="5" width="3" height="13" rx="0.5" />
+    </>
+  ),
   "chevron-right": <path d="M9 6l6 6-6 6" />,
   "chevron-down": <path d="M6 9l6 6 6-6" />,
   // ── ui ──

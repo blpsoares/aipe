@@ -11,8 +11,13 @@ import {
   _seedPrCache,
   _clearPrCache,
   PR_TTL_MS,
+  publicationFromCache,
+  startReleaseRefresher,
+  _seedReleaseCache,
+  _clearReleaseCache,
   type PrMergeState,
 } from "../payload";
+import type { RepoPublication } from "../../report/compute";
 import type { SessionInfo } from "../sessions";
 import type { JourneyView } from "../../dashboard/snapshot";
 import type { PrState } from "../../journey/reconcile";
@@ -234,4 +239,45 @@ test("refreshPrMergeCache: entrada fresca não é re-consultada dentro do TTL", 
   expect(calls).toBe(1);
   await refreshPrMergeCache([url], fetch, now + PR_TTL_MS + 1); // expirou → re-consulta
   expect(calls).toBe(2);
+});
+
+// ── Release cache (merged ≠ published), mirrors the PR cache discipline ────────
+
+test("publicationFromCache: repo ainda não resolvido aparece como 'checking' (verificando), nunca zero nem 'published'", () => {
+  _clearReleaseCache();
+  const pub = publicationFromCache(["aipe", "core"]);
+  expect(pub.aipe!.state).toBe("checking");
+  expect(pub.core!.state).toBe("checking");
+});
+
+test("publicationFromCache: um repo semeado passa pelo cache; o não-semeado continua 'checking'", () => {
+  _clearReleaseCache();
+  _seedReleaseCache("aipe", { state: "published", latestReleaseTag: "v1.12.1", reason: "at latest tag" });
+  const pub = publicationFromCache(["aipe", "core"]);
+  expect(pub.aipe!.state).toBe("published");
+  expect(pub.aipe!.latestReleaseTag).toBe("v1.12.1");
+  expect(pub.core!.state).toBe("checking"); // cold, honestly
+});
+
+test("startReleaseRefresher: o tick warm popula o cache a partir do resolver injetado", async () => {
+  _clearReleaseCache();
+  const states: Record<string, RepoPublication> = {
+    aipe: { state: "published", latestReleaseTag: "v1", reason: "ok" },
+    embark: { state: "merged-unpublished", latestReleaseTag: "v1.5.0", reason: "6 além" },
+  };
+  const stop = startReleaseRefresher("/ws", 60_000, async () => states);
+  await new Promise((r) => setTimeout(r, 5)); // deixa o tick warm rodar
+  stop();
+  const pub = publicationFromCache(["aipe", "embark"]);
+  expect(pub.aipe!.state).toBe("published");
+  expect(pub.embark!.state).toBe("merged-unpublished");
+});
+
+test("startReleaseRefresher: um resolver que lança mantém o cache anterior (nunca rebaixa a um estado inventado)", async () => {
+  _clearReleaseCache();
+  _seedReleaseCache("aipe", { state: "published", latestReleaseTag: "v1", reason: "ok" });
+  const stop = startReleaseRefresher("/ws", 60_000, async () => { throw new Error("git falhou"); });
+  await new Promise((r) => setTimeout(r, 5));
+  stop();
+  expect(publicationFromCache(["aipe"]).aipe!.state).toBe("published"); // intacto
 });
