@@ -1,28 +1,24 @@
 // "Agora" — the home screen. Answers the governing question first, by urgency
-// (SDD §6.1). Three zones plus the whole board:
+// (SDD §6.1). The urgency-first inbox, in three zones:
 //   1) Precisa de você — decisions only the PE can unblock (empty IS success).
 //   2) Acontecendo agora — the specialists working this moment.
-//   3) O quadro completo — the full configurable board, VISIBLE by default
-//      (j-20260830-r5: a PE landing on Agora must see the board without
-//      discovering a control; a returning PE's explicit collapse choice is
-//      remembered — runtime/ui.ts's agoraBoardOpen). This is the Atividade
-//      board (j-20260829-dp) reused verbatim as a section INSIDE Agora — the
-//      approved map (SDD §5, decision A) keeps the board here, not on a fourth
-//      screen. Its "needs-you" column is the full workforce view; zone 1 above
-//      is the curated PE SUBSET (a different projection), so the two never
-//      read as one list re-framed.
-//   Observations (findings the coordinator/dev/QA handle) stay here, apart.
+//   3) Observations — findings the coordinator/dev/QA handle, apart.
+// The full board is NO LONGER a section here: j-20260830-sk gave it its own
+// primary screen (views/quadro.view.tsx, "/board"). "Um contexto por lugar" — the
+// board lives in one place, its own page, not duplicated as an Agora section.
+// Zone 1's "needs you" is the curated PE subset; the board's needs-you column is
+// the full workforce view (a different projection), so the two never read as one
+// list re-framed even now that they live on different screens.
 import { useEffect } from "preact/hooks";
 import { ConnBadge } from "../components/ConnBadge";
 import { Icon } from "../components/Icon";
 import { Avatar } from "../components/Avatar";
 import { ActionRow } from "../components/DecisionInbox";
-import { WorkBoard } from "../components/WorkBoard";
 import { t } from "../runtime/i18n";
 import { fqidOf } from "../runtime/dom";
 import { decisions, observations, dispatches, sessions, openWorkerName, pinnedDispatch } from "../runtime/store";
 import { buildBoard } from "../runtime/board";
-import { agoraBoardOpen, setAgoraBoardOpen } from "../runtime/ui";
+import { navigate } from "../runtime/router";
 import type { Route } from "../route-types";
 
 function NeedsYou() {
@@ -109,30 +105,6 @@ function Observations() {
   );
 }
 
-// Zone 3 — the whole board. VISIBLE by default (this board is the feature the
-// PE lost when it was folded behind a control — arriving at Agora must show it,
-// not require discovering a toggle). A PE that explicitly collapses it keeps
-// that choice on reload (agoraBoardOpen persists it); anyone who never chose
-// still gets it open.
-function WholeBoard() {
-  const open = agoraBoardOpen.value;
-  return (
-    <section class="zone zone-board" aria-label={t("board_title")}>
-      <button type="button" class="board-toggle" aria-expanded={open} onClick={() => setAgoraBoardOpen(!open)}>
-        <Icon name={open ? "chevron-down" : "chevron-right"} size={16} />
-        <span class="zone-title">{t("board_title")}</span>
-        <span class="zone-sub">{open ? t("board_hide") : t("board_show")}</span>
-      </button>
-      {open ? (
-        <div class="board-wrap">
-          <p class="zone-sub board-lead">{t("board_sub")}</p>
-          <WorkBoard />
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 function AgoraView() {
   // ESC clears the pinned dispatch (the coordinator wizard drill-down).
   useEffect(() => {
@@ -155,7 +127,13 @@ function AgoraView() {
       <NeedsYou />
       <HappeningNow />
       <Observations />
-      <WholeBoard />
+      {/* The full board is its own page now (j-20260830-sk); a plain link there,
+          not a folded-in section. */}
+      <div>
+        <button type="button" class="zone-link" onClick={() => navigate("/board")}>
+          {t("now_see_all")} →
+        </button>
+      </div>
     </div>
   );
 }

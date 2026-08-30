@@ -24,16 +24,17 @@ afterEach(() => {
   location.hash = "";
 });
 
-test("routes.generated.ts: the 4 primary screens + 2 footer, order-sorted, Agora first, no terminal", () => {
+test("routes.generated.ts: 5 primary screens + 2 footer, order-sorted, Agora first, no terminal", () => {
   expect(appRoutes.map((r) => r.path)).toEqual([
-    "/", // Agora — the landing (nav.order 0); the board is a section inside it
+    "/", // Agora — the landing (nav.order 0)
+    "/board", // Quadro — the board's own page (j-20260830-sk)
     "/team", // Equipe
     "/history", // Histórico
     "/report", // Relatório (j-20260829-c8) — its own house in the aside
     "/guide", // Glossário (footer)
     "/settings", // Ajustes (footer)
   ]);
-  // The board moved into Agora (approved map) — no separate /activity screen.
+  // "/activity" is a redirect (→ /board), never a route of its own.
   expect(appRoutes.some((r) => r.path === "/activity")).toBe(false);
   expect(appRoutes.some((r) => r.path === "/terminal")).toBe(false);
 });
@@ -86,12 +87,12 @@ test("Sidebar shows the attention badge on Activity only when there is attention
   expect(badge!.classList.contains("crit")).toBe(true);
 });
 
-test("BottomNav lists the 4 primary screens (Agora / Equipe / Histórico / Relatório), in order", () => {
+test("BottomNav lists the 5 primary screens (Agora / Quadro / Equipe / Histórico / Relatório), in order", () => {
   const { container } = render(<BottomNav />);
   const labels = [...container.querySelectorAll("#tabbar button")].map((b) => b.textContent);
   const expected = appRoutes.filter((r) => r.nav.group !== "footer").map((r) => t(r.nav.label));
   expect(labels).toEqual(expected);
-  expect(labels).toEqual([t("nav_now"), t("nav_team"), t("nav_history"), t("nav_report")]);
+  expect(labels).toEqual([t("nav_now"), t("nav_board"), t("nav_team"), t("nav_history"), t("nav_report")]);
 });
 
 test("BottomNav shows the attention dot on Activity only when there is attention", () => {

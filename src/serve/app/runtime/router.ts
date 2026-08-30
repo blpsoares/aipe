@@ -28,12 +28,27 @@ const STORAGE_KEY = "aipe-view";
 // only ever globs views/*.view.tsx, and no new view files are added mid-task),
 // this list is stable; update it if a views/*.view.tsx path ever changes.
 // Redesign (j-20260827-s9): the primary screens + 2 footer utilities.
-// j-20260829-dp added "/activity" (Atividade) as the fourth primary screen.
 // j-20260829-c8 added "/report" (Relatório) as a primary screen.
-const KNOWN_PATHS = ["/", "/team", "/history", "/report", "/guide", "/settings"];
+// j-20260830-sk gave the board its own primary screen at "/board" (Quadro),
+// pulling it out of the Agora section it had lived in.
+const KNOWN_PATHS = ["/", "/board", "/team", "/history", "/report", "/guide", "/settings"];
+
+// Legacy paths that must not 404 for anyone holding an old URL (bookmark, link).
+// "/activity" was the Atividade screen (j-20260829-dp), folded into Agora by the
+// redesign and now the home of the board again — so its old URL lands on the
+// board's own page (j-20260830-sk, brief item 3).
+const REDIRECTS: Record<string, string> = { "/activity": "/board" };
+
+// Map a raw path to its canonical target: follow a legacy redirect if any, then
+// keep it only if it is a known route. Returns null for an unknown path.
+function canonicalPath(p: string | null | undefined): string | null {
+  if (!p) return null;
+  const target = REDIRECTS[p] ?? p;
+  return KNOWN_PATHS.includes(target) ? target : null;
+}
 
 function isValidPath(p: string | null | undefined): p is string {
-  return !!p && KNOWN_PATHS.includes(p);
+  return canonicalPath(p) !== null;
 }
 
 function pathFromHash(): string | null {
@@ -52,7 +67,7 @@ function pathFromHash(): string | null {
 export function hashTarget(rawHash: string): string | null {
   const stripped = (rawHash || "").replace(/^#\/?/, "");
   const p = stripped ? "/" + stripped : "/";
-  return isValidPath(p) ? p : null;
+  return canonicalPath(p);
 }
 
 function pathFromStorage(): string | null {
@@ -65,11 +80,11 @@ function pathFromStorage(): string | null {
 }
 
 function resolveInitialPath(): string {
-  const fromHash = pathFromHash();
-  if (isValidPath(fromHash)) return fromHash;
-  const fromStorage = pathFromStorage();
-  if (isValidPath(fromStorage)) return fromStorage;
-  return "/"; // The Floor is the landing route.
+  const fromHash = canonicalPath(pathFromHash());
+  if (fromHash) return fromHash;
+  const fromStorage = canonicalPath(pathFromStorage());
+  if (fromStorage) return fromStorage;
+  return "/"; // Agora is the landing route.
 }
 
 export const currentPath: Signal<string> = signal(resolveInitialPath());
@@ -79,7 +94,7 @@ export const currentPath: Signal<string> = signal(resolveInitialPath());
 export const focusAnchor: Signal<string | null> = signal(null);
 
 export function navigate(path: string): void {
-  const p = isValidPath(path) ? path : "/"; // Agora is the landing route
+  const p = canonicalPath(path) ?? "/"; // Agora is the landing route (redirects applied)
   currentPath.value = p;
   const bare = p.replace(/^\//, "");
   try {
