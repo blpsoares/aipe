@@ -226,8 +226,15 @@ digraph operate {
 
    **Per-unit dispatch envelope (the PE approves this too).**
 
-   **Propose the envelope — do not hand the PE a blank one.** Before writing
-   this section, run:
+   **The envelope gate (MUST — run `propose`, never choose from memory).** You
+   **MUST** run `aipe execution propose` for this journey and pick each unit's
+   envelope from the list it prints — **NEVER** write an envelope from memory or
+   habit, because that is the exact failure this discipline exists to end: with
+   no priced list of alternatives in front of you, `reasoning` becomes the
+   comfortable default and the whole journey drifts to "always Opus" — every unit
+   defensible alone, the sum indefensible. **Proof the gate held:** `propose` was
+   run for this journey and each unit's written envelope is a line **from its
+   output**. Before writing this section, run:
 
    ```bash
    aipe execution propose --journey <id> --workspace <workspace>
@@ -241,6 +248,16 @@ digraph operate {
    envelopes actually viable **on this machine**, each with a `cost-index` and
    marked `GATED` where policy requires the PE's signature. It **enumerates
    and prices; it does not choose.** Choosing is yours.
+
+   **Skipping `propose` is a violation, not a shortcut — the excuses, ruled out.
+   Every thought on the left means STOP: you are about to drift the tier.**
+
+   | The coordinator thinks… | Ruling |
+   | --- | --- |
+   | "I already know this unit needs `reasoning` — no need to run `propose`" | That certainty IS the drift. MUST run `propose` and choose from the priced list, not from habit |
+   | "the last journey used `reasoning` here, reuse it" | Each unit is priced fresh. A prior choice is not this unit's evidence |
+   | "the PE is waiting — skip the list, write the envelope" | A fast wrong envelope is exactly what produced "always Opus". MUST price before you choose |
+   | "every unit obviously wants the same tier" | Then reading the list costs nothing — and if it does not, you just caught a needless upgrade. Run it |
 
    For each unit, write the envelope you chose **and why**, plus the
    alternatives you discarded. The reasoning is not decoration — without it
@@ -268,7 +285,7 @@ digraph operate {
    policy ceiling. Say which to the PE, and fall back to subagent mode. Never
    dispatch on a guess about what this machine can run.
 
-   Each unit's scope section then carries three fields:
+   Each unit's scope section then carries four fields:
 
    - `mode: subagent | session` — `subagent` (default) is in-process and returns
      its evidence directly. `session` is a real detached session with its own
@@ -285,12 +302,67 @@ digraph operate {
    - `intensity: normal | ultracode` — `ultracode` makes the specialist
      orchestrate multi-agent workflows. It multiplies token spend, so it is the
      PE's call, never yours.
-   - `harness: claude-code` (default) or `gemini` — the only two containable
-     harnesses today. `codex` and `copilot` work as workspace hosts but both
-     require an interactive trust step AIPe's non-interactive dispatch can
-     never perform, so their containment hook is `null` and `aipe dispatch
-     validate` **REJECTs** them from session mode with
-     `harness-not-containable <id>`.
+   - `harness` — which harness hosts the session. **The dispatch decision is
+     binary, and it is NOT the ledger below:** `aipe dispatch validate` admits a
+     harness into session mode only when `isContainable(getAdapter(id))` is true
+     — the harness's adapter returns a non-null containment hook that hard-denies
+     tool calls under a fully headless, non-interactive run — and **REJECTs**
+     every other with `harness-not-containable <id>`, because a harness AIPe
+     cannot contain can take an unapproved action inside the worktree. Two ship
+     such an adapter today: `claude-code` (default) and `gemini`; `codex` and
+     `copilot` ship adapters whose hook is `null`, so they are refused.
+
+     **The world those adapters are drawn from has three states, not two** — a
+     compatibility ledger (`src/harness/compat.ts`, each line sourced from the
+     tool's own docs by the #57 investigation, queried with
+     `harnessesInState(state)`). Read it as **data that moves**, never a fixed
+     list — a state flips the day a new investigation or a new adapter lands:
+     - **`containable-proven`** — proven to hard-block a headless run.
+       `claude-code` and `gemini` carry AIPe adapters and are dispatchable today;
+       `factory-droid`, `kimi-code`, `opencode`, `pi` are proven but have **no
+       adapter yet**, so they are not dispatchable until one lands.
+     - **`non-containable-proven`** — proven to need an interactive trust step
+       AIPe's non-interactive dispatch can never perform: `codex`, `copilot`,
+       `cursor`. Usable as workspace hosts, never as session mode.
+     - **`unestablished`** — a genuine candidate whose headless containment the
+       docs do not resolve: `antigravity`. Treated as non-containable until
+       proven, so **not** admitted — but not lumped in with the proven-negative
+       set either; erasing that distinction was the defect #57 fixed.
+
+     **Do not conflate the two layers: the binary rule (`isContainable`) governs
+     what you MAY dispatch; the three-state ledger only describes the world and
+     what could change.** Querying the ledger never widens what dispatch admits —
+     only an adapter whose hook is non-null does.
+
+     **This context's decision (PE, 2026-08-30): this workspace runs
+     `claude-code` only.** Harness is therefore not a live choice here — record
+     `claude-code` and move on. The multi-harness machinery above stays because
+     it is a real framework capability other contexts use; do **not** delete it
+     to "simplify" this one.
+
+   - `tier: fast | standard | reasoning` — the model the specialist runs on
+     (`fast`→Haiku 4.5, `standard`→Sonnet 5, `reasoning`→Opus 4.8). Choose by
+     **what it costs to be wrong**, not by what it costs to run:
+     - **`reasoning`** where a wrong answer does **silent** damage — work whose
+       deliverable *is* judgement: weighing *why* and the discarded alternatives
+       (architecture docs); a "fix-too-much" hazard where disabling a check makes
+       the tests pass and breaks the thing in silence (the version scanner);
+       modelling state; deciding policy.
+     - **`standard`** for mechanical work against an **explicit** criterion the
+       judgement is already spent on: verifying a checklist the dev enumerated,
+       translation, moving a file.
+     - **`fast`** for the literally trivial: a one-line change, a single metadata
+       field.
+
+     **The guardrail — do NOT misread this as "spend less".** This discipline
+     exists because the coordinator drifted to `reasoning` as a comfortable
+     default, and the audited error was toward **MORE** tier than a minority of
+     units needed — **never** toward too little, and no quality was lost.
+     **`reasoning` stays the correct choice wherever judgement lives.**
+     Downgrading tier where judgement lives trades a **silent quality loss** for
+     a token saving, and that trade is worse than the spend. A reader who leaves
+     this with "use the cheaper tier" read it wrong; when two tiers are in play on
+     a unit that carries judgement, the tier is the higher one.
 
    Never raise `mode` or `intensity` on your own judgement after approval. If a
    unit turns out heavier than the spec assumed, go back to the PE.
@@ -626,16 +698,22 @@ digraph operate {
 
    **Cross-model QA (recommended for high-risk units, session mode only).** A QA
    persona dispatched in session mode may run on a *different harness* from the
-   dev: today that means `gemini` reviewing a `claude-code` delivery (or the
-   reverse) — those are the only two harnesses the law admits into session
-   mode. A reviewer on a different model does not inherit the dev's blind
-   spots, which is what "independent skeptic" was always supposed to mean.
-   `codex` and `copilot` are usable as workspace hosts but not as session-mode
-   QA: both require an interactive trust step AIPe's non-interactive dispatch
-   can never perform, so their containment hook is `null` and the law
-   **REJECTs** them with `harness-not-containable <id>`. Set the QA unit's
-   `harness` in the Orientation Spec; the PE approves it with the rest of the
-   envelope.
+   dev — `gemini` reviewing a `claude-code` delivery, or the reverse — so the
+   reviewer does not inherit the dev's blind spots, which is what "independent
+   skeptic" was always supposed to mean. Which harnesses are eligible is the same
+   binary rule as any session dispatch (the `harness` field above): a
+   `containable-proven` state **with an adapter**. The three-state ledger in
+   `src/harness/compat.ts` describes the wider world but does not widen what QA
+   can run on. `codex`, `copilot` and `cursor` are usable as workspace hosts but
+   not as session-mode QA: they need an interactive trust step AIPe's
+   non-interactive dispatch can never perform. Set the QA unit's `harness` in the
+   Orientation Spec; the PE approves it with the rest of the envelope.
+
+   **In THIS context (`claude-code` only), cross-model QA does not apply** — and
+   that removes nothing from the gate. The QA's independence here comes from a
+   **separate persona in a separate worktree** reviewing against the diff and the
+   acceptance criteria, not from a different model. That is a full QA gate; never
+   read "no cross-model here" as "no independent review".
 
    Provision + record the QA exactly like a dev dispatch:
    ```bash
