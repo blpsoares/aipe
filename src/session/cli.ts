@@ -7,7 +7,7 @@ import { repoDir } from "../context-brain/layout";
 import { readBrain } from "../make-workspace/read";
 import { readLedger, recordDispatch } from "../journey/ledger";
 import type { JourneyDispatch } from "../journey/types";
-import { getAdapter, resolveAdapter } from "../harness/registry";
+import { getAdapter, hasAdapter, resolveAdapter } from "../harness/registry";
 import { isContainable } from "../harness/types";
 import type { HarnessAdapter } from "../harness/types";
 import { personaSlug } from "../hire-specialists/render";
@@ -441,6 +441,19 @@ export async function dispatchCommand(
     // from silently starting a session on another. `getAdapter` falls back
     // to the default (claude-code) for an absent/legacy `d.harness`, same as
     // every other reader of this field.
+    //
+    // That legacy fallback is only safe for an ABSENT harness. A harness that
+    // is PRESENT but unregistered (`--harness factory-droid` — real name, no
+    // adapter) would ALSO fall back to claude-code and start there silently,
+    // defeating the very invariant this block protects. `--harness` on `journey
+    // record` is unvalidated and `dispatch validate` is advisory, so guard the
+    // caller here (never getAdapter's documented fallback): refuse a present-
+    // but-unknown id before anything is written or started. Same guard propose.ts
+    // and execution/cli.ts's checkEligibility already apply.
+    if (d.harness !== undefined && !hasAdapter(d.harness)) {
+      lines.push(`ERROR harness: ${fqid} uses "${d.harness}", which has no adapter registered — not session-dispatchable`);
+      return { code: 1, lines };
+    }
     const unitAdapter = getAdapter(d.harness);
     const agentopHarness = unitAdapter.agentopHarness;
     // null means agentop has no equivalent for this harness — not

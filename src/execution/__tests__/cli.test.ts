@@ -638,3 +638,32 @@ test("run() shows help for no subcommand, and refuses an unknown one", async () 
     console.log = originalLog;
   }
 });
+
+// Part 2 — execution refuses a harness with no registered adapter. `factory-droid`
+// is a real-world harness name AIPe has no adapter for; getAdapter would fall
+// back to the (containable) claude-code adapter, so WITHOUT the hasAdapter guard
+// in checkEligibility a subagent factory-droid unit would sail into a wave. The
+// guard excludes it. (Reverting the guard makes this unit plan → this test fails.)
+test("plan excludes a factory-droid unit — no adapter registered, even though it is present in caps", async () => {
+  const dir = await newWorkspace();
+  await startJourney(dir, "j1");
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "b", worktree: "w", status: "dispatched",
+    mode: "subagent", harness: "factory-droid", tier: "fast", intensity: "normal",
+  });
+  const capsWithDroid: Capabilities = {
+    confirmed: true,
+    harnesses: [
+      { id: "claude-code", bin: "claude", present: true, version: "1", source: "pe-confirmed", checkedAt: NOW },
+      { id: "factory-droid", bin: "droid", present: true, version: "1", source: "pe-confirmed", checkedAt: NOW },
+    ],
+  };
+  await writeCapabilities(dir, capsWithDroid);
+
+  const r = await planCommand({ workspace: dir, journeyId: "j1" });
+  expect(r.code).toBe(1);
+  expect(r.lines).toContain(
+    "NOTE unit embark@Joaquim: harness factory-droid excluded — unknown harness — no adapter registered for this id",
+  );
+  expect(r.lines.some((l) => l.includes("no unit in j1 is eligible for planning"))).toBe(true);
+});
