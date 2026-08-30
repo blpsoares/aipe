@@ -14,6 +14,7 @@ import { readPersonas } from "../hire-specialists/read-personas";
 import { closeUnitSessions, SESSION_CLOSING_STATUSES } from "./session-close";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
+import { resolveLedgerWorkspace } from "./workspace";
 import { isValidTaskId } from "../worktree/naming";
 import { DISPATCH_STATUSES } from "./types";
 import type { DispatchEvidence, DispatchStatus, JourneyDispatch } from "./types";
@@ -187,6 +188,10 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
     return 1;
   }
   console.log(`OK ${repo}${pkg ? `/${pkg}` : ""} ${specialist} ${status}`);
+  // Point 3 — this write changed state; name the workspace it landed in (the
+  // real one classifyRecordTarget resolved, which may differ from the arg when a
+  // worktree was redirected above) so the operator sees the target at a glance.
+  console.log(`WORKSPACE ${workspace}`);
 
   // Rule 2 — the ledger record above is the important thing and is now durable;
   // closing the session is housekeeping done AFTER it, and must never lose the
@@ -392,7 +397,18 @@ async function verifyCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
 // one, keep merged units immutable (j-20260829-dp §10). --dry-run reports without
 // writing.
 async function dedupeCommand(args: string[]): Promise<number> {
-  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  // "Nothing found" ≠ "nothing searched": if the resolved directory is not a
+  // workspace (no .aipe/), enumerating journeys would print a clean zero the
+  // operator could read as "nothing to do". Refuse loudly instead — a
+  // maintenance command that never found its target must not look like success.
+  const resolved = resolveLedgerWorkspace(getFlag(args, "--workspace") ?? process.cwd());
+  if (!resolved.ok) {
+    console.log(
+      `ERROR workspace: ${resolved.reason} — nothing was searched (this is NOT "nothing to do"). Run from an AIPe workspace or pass --workspace <dir>.`,
+    );
+    return 1;
+  }
+  const workspace = resolved.workspace;
   const dryRun = args.includes("--dry-run");
   const results = await dedupeAll(workspace, { dryRun });
   let collapsed = 0;
@@ -404,7 +420,10 @@ async function dedupeCommand(args: string[]): Promise<number> {
     }
     normalized += r.normalized;
   }
-  console.log(`STATE dedupe journeys-changed=${results.length} duplicates-collapsed=${collapsed} normalized=${normalized}${dryRun ? " (dry-run)" : ""}`);
+  // Point 3 — a state-changing op names the workspace it acted on, so a wrong
+  // target is caught by eye. Included on --dry-run too: it is one field, and
+  // seeing WHERE it looked is exactly the point of running the dry pass.
+  console.log(`STATE dedupe workspace=${workspace} journeys-changed=${results.length} duplicates-collapsed=${collapsed} normalized=${normalized}${dryRun ? " (dry-run)" : ""}`);
   return 0;
 }
 

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
@@ -142,4 +142,48 @@ test("journey dedupe collapses an on-disk duplicate stuck behind a merged unit",
   ledger = parse(await readFile(join(dir, ".aipe", "journeys", "j1.yaml"), "utf8")) as { dispatches: { specialist: string; status: string }[] };
   expect(ledger.dispatches.length).toBe(1);
   expect(ledger.dispatches[0]!.status).toBe("merged"); // the merged unit survived, immutable
+});
+
+// "nothing searched" ≠ "nothing found": run from a directory that is not a
+// workspace (no .aipe/). dedupe must NOT print a zero-count success line the
+// operator could read as "all clean" — it must say it found nowhere to look
+// and fail visibly. Reverting the guard makes this exit 0 with journeys-changed=0.
+test("journey dedupe outside a workspace refuses loudly instead of a false zero", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-not-a-workspace-")); // bare dir, no .aipe/
+  const { code, output } = await capture(() => run(["dedupe", "--workspace", dir]));
+  expect(code).toBe(1);
+  // Must never be mistakable for "nothing to do":
+  expect(output).not.toContain("journeys-changed");
+  expect(output).not.toContain("STATE dedupe");
+  // Must name what it could not resolve:
+  expect(output).toContain("ERROR workspace");
+  expect(output).toContain(dir);
+});
+
+// The guard must not over-trip: a real workspace (.aipe/ present) that simply
+// has no journeys yet is a legitimate "nothing found" — exit 0, zero count,
+// and it names the workspace it acted on.
+test("journey dedupe in a workspace with no journeys is a legitimate zero (exit 0)", async () => {
+  const dir = await ws();
+  await mkdir(join(dir, ".aipe"), { recursive: true });
+  const { code, output } = await capture(() => run(["dedupe", "--workspace", dir]));
+  expect(code).toBe(0);
+  expect(output).toContain("journeys-changed=0");
+  expect(output).toContain(`workspace=${dir}`);
+});
+
+// Point 3 — a state-changing operation says which workspace it acted on, so a
+// wrong target is caught by eye at the moment of the write.
+test("journey record names the workspace it wrote to", async () => {
+  const dir = await ws();
+  await run(["start", "--workspace", dir, "--id", "j1"]);
+  const { code, output } = await capture(() =>
+    run([
+      "record", "--workspace", dir, "--journey", "j1",
+      "--repo", "aipe", "--specialist", "Jesse", "--branch", "b", "--worktree", "w",
+    ]),
+  );
+  expect(code).toBe(0);
+  expect(output).toContain("OK aipe Jesse dispatched");
+  expect(output).toContain(`WORKSPACE ${dir}`);
 });
