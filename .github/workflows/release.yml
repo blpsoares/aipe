@@ -41,6 +41,10 @@ on:
 
 permissions:
   contents: write
+  # The bump job posts the `check` commit status on its own bump commit (see the
+  # "Publish the check status" step and RELEASING.md): a GITHUB_TOKEN push does
+  # not trigger a workflow, so nothing else ever reports a status on that commit.
+  statuses: write
 
 jobs:
   # ──────────────────────────────────────────────────────────────────────────
@@ -157,6 +161,7 @@ jobs:
         run: bun run version:check
 
       - name: Commit the bump to dev — or fail loud if the push is refused
+        id: commit
         if: steps.guard.outputs.skip != 'true' && steps.version.outputs.changed == 'true'
         run: |
           git config user.name  "github-actions[bot]"
@@ -166,6 +171,7 @@ jobs:
           # bump has converged. That is the steady state, not an error.
           if git diff --cached --quiet; then
             echo "dev is already at v${{ steps.version.outputs.next }} — nothing to commit."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git commit -m "chore(release): v${{ steps.version.outputs.next }} [skip ci]"
@@ -177,6 +183,66 @@ jobs:
             echo "::error::Bump push to dev was REJECTED. dev has no ruleset, so with GITHUB_TOKEN this should not happen — a refusal means the token lost contents:write or dev grew a protection. The computed bump did NOT land; the next promotion would publish the wrong version. This job fails on purpose. See RELEASING.md and OPEN-DECISIONS.md."
             exit 1
           fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      # ── Why the bump commit must carry its own `check` status ────────────────
+      #
+      # The bump commit just became the head of `dev`, and therefore the head of
+      # the promotion PR into protected `main`. `main`'s ruleset requires the
+      # `check` status. But nothing will ever post it on this commit: the push
+      # above used GITHUB_TOKEN (which never triggers a workflow) and the message
+      # carries `[skip ci]` — the very properties that (correctly) stop the bump
+      # from re-triggering this workflow ALSO stop ci.yml from running on it. Left
+      # alone, the promotion PR is BLOCKED forever with an EMPTY check list — and
+      # an empty list reads as "nothing to report", not "nothing ran". That
+      # silence is exactly the class of bug this journey keeps hitting.
+      #
+      # So the bump job runs the same gate ci.yml runs, on the exact commit it
+      # just pushed, and posts the `check` status itself. The gate genuinely runs;
+      # the status reflects its real result. This is NOT a ruleset bypass — the
+      # ruleset's `check` is left fully in force; it is CI actually executing and
+      # reporting on a commit the platform refuses to trigger a workflow for.
+      - name: Gate the bump commit exactly as ci.yml does
+        id: gate
+        if: steps.guard.outputs.skip != 'true' && steps.commit.outputs.pushed == 'true'
+        env:
+          AIPE_NO_UPDATE_CHECK: "1"
+        run: |
+          set -eu
+          bun run version:check
+          bun run typecheck
+          bun test
+          bun run build:host
+          V="$(./dist/aipe-linux-x64 --version)"
+          test -n "$V" && echo "booted aipe $V"
+          ./dist/aipe-linux-x64 --help >/dev/null
+        shell: bash
+
+      # Posted with `always()` so the status is written whether the gate passed OR
+      # failed: a failed gate posts a RED `check` (visible on the PR) and fails the
+      # job loud, instead of leaving the promotion silently checkless. Posting a
+      # commit status does not trigger any workflow (nothing here listens on the
+      # `status` event), so this cannot reintroduce the bump loop.
+      - name: Publish the check status on the bump commit — visible, never empty
+        if: always() && steps.guard.outputs.skip != 'true' && steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          STATE=success
+          [ "${{ steps.gate.outcome }}" = "success" ] || STATE=failure
+          gh api -X POST "repos/${{ github.repository }}/statuses/${{ steps.commit.outputs.sha }}" \
+            -f state="$STATE" \
+            -f context=check \
+            -f description="ci gate ${{ steps.gate.outcome }} in the bump job" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ "$STATE" != "success" ]; then
+            echo "::error::The bump commit v${{ steps.version.outputs.next }} FAILED the ci gate. A red 'check' status was posted on it so the promotion PR shows the failure instead of an empty (silent) check list. Fix it on dev before promoting. This job fails on purpose."
+            exit 1
+          fi
+          echo "Posted check=success on ${{ steps.commit.outputs.sha }} — the promotion PR can merge."
         shell: bash
 
   # ──────────────────────────────────────────────────────────────────────────
