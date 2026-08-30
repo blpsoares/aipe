@@ -90,13 +90,20 @@ in [`RELEASING.md`](RELEASING.md); the runtime half (`aipe upgrade`) is in
 
 ---
 
-## DECISION NEEDED — how the release bump reaches protected `main`
+## DECISION — how the release bump reaches protected `main` — RESOLVED (path 4)
 
-**Status:** blocking automatic publishing. Merging to `main` no longer cuts a
-release. Everything that does **not** depend on your choice is already done and
-tested (loud failure + no orphan tag + the two orphan tags cleaned + the docs
-now tell the truth). What is left is this one policy fork — I stopped here on
-purpose because three of the four paths change `main`'s protection permanently.
+**Status:** RESOLVED and implemented. The PE chose **path 4**. The workflow no
+longer writes to `main` at all: the version bump lives on `dev`, rides into
+`main` through the normal promotion PR, and the `release` job on `main` only
+tags the merge commit and publishes. `main`'s ruleset stays exactly as it was —
+no bypass, no PAT, no per-release PR. The full flow is in
+[`RELEASING.md`](RELEASING.md); the analysis that led here is kept below for the
+record so the next person does not reinvent path 1.
+
+The record: everything that did **not** depend on the choice was done first
+(loud failure + no orphan tag + the two orphan tags cleaned + honest docs);
+then, once the PE picked path 4, the direct push to `main` was removed and the
+dev-side bump added.
 
 ### Why the push fails today (demonstrated, not guessed)
 

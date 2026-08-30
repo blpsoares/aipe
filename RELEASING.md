@@ -1,61 +1,79 @@
 # Releasing AIPe
 
-> **⚠️ Automatic publishing is BLOCKED right now — pending one PE decision.**
-> `main` is protected by an active ruleset ("Require PR + green CI on main")
-> that the release workflow's direct push cannot satisfy, so a merge to `main`
-> no longer cuts a release. The workflow now **fails loud and leaves no orphan
-> tag** when the push is rejected (see below), but it will not publish again
-> until the PE picks how the bump reaches `main`. The recommendation and the
-> discarded alternatives live in [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md).
-> Everything past this banner describes the flow **as designed**; the one step
-> that is currently blocked is called out inline.
+**Releases are automatic, and `main` is never written to.** The version number
+is decided and committed on `dev`; merging `dev` into `main` cuts the release.
+Nobody bumps a version by hand and nobody pushes a tag — the two jobs in
+`.github/workflows/release.yml` do it.
 
-**Releases are meant to be automatic.** Merging to `main` cuts one — `dev` never
-does. Nobody bumps a version by hand and nobody pushes a tag — the two steps
-that used to need the PE (and tag-push permission a session does not have) are
-the workflow's job.
+This is **path 4** (the PE's decision; the discarded alternatives are in
+[`OPEN-DECISIONS.md`](OPEN-DECISIONS.md)). It exists because `main` is protected
+by a ruleset the release bot cannot bypass on this personal repo, so the old
+design — a direct push of the bump commit to `main` — was rejected every time
+and left orphan tags. Path 4 removes the push to `main` entirely: the bump lives
+on `dev`, and the release job on `main` only tags the merge commit and publishes.
 
 The download domain is **`openvibes.tech`** (the open-source umbrella),
 overridable at runtime via `AIPE_DOWNLOAD_BASE`.
 
-## What happens on a merge to `main`
+## Two jobs, split by branch
 
-`.github/workflows/release.yml` runs and:
+### `bump` — on every push to `dev`
 
-1. **Skips its own bump commit.** The workflow commits `chore(release): vX.Y.Z`
-   to `main`; without this guard that push would trigger it again, forever.
-2. Runs `bun run version:check`, `bun run typecheck`, `bun test`.
-3. **Computes the next version** from the conventional-commit subjects since the
+`dev` has no ruleset, so the bot can commit to it. On each push the `bump` job:
+
+1. **Skips its own bump commit** (author is `github-actions[bot]` **and** the
+   subject is `chore(release): …`; the commit also carries `[skip ci]`, and
+   pushes made with `GITHUB_TOKEN` do not trigger workflows — three independent
+   reasons it cannot loop).
+2. **Computes the next version** from the conventional-commit subjects since the
    last `v*` tag: a `!` or `BREAKING CHANGE` → major, any `feat` → minor, else
    patch. Scopes count — `feat(session): …` is a feature, not a patch. If there
-   are no new commits since the last tag it stops here.
-4. Takes the **higher** of that number and the version already in
-   `.claude-plugin/plugin.json`, so a deliberate bump committed to the manifest
-   (0.3.x → 1.0.0, say) wins over tag arithmetic that would walk it back.
-5. Stamps the version onto all five files with `bun run scripts/bump-version.ts`
-   and re-verifies with the same reader `version:check` uses.
-6. Cross-compiles all five standalone targets, boots the Linux binary and
+   are no new commits since the last tag, it stops.
+3. Takes the **higher** of that number and the version already in
+   `.claude-plugin/plugin.json`. This makes a deliberate manifest bump
+   (0.3.x → 1.0.0) win over tag arithmetic **and** makes the accumulating bump
+   monotonic: once `dev` has earned a minor, later patch commits don't undo it.
+4. **Stamps the version** onto all five files with `bun run
+   scripts/bump-version.ts` and re-verifies with `version:check`.
+5. Commits `chore(release): vX.Y.Z [skip ci]` and pushes it to `dev`. If dev is
+   already at that version there is nothing to commit — the bump has converged.
+   **If the push is ever refused, the job fails loud** (`::error::` + non-zero
+   exit): a computed-but-unlanded bump would make the next promotion ship the
+   wrong number, so it must never fail in silence.
+
+The version therefore **lives on `dev`** and rides into `main` through the normal
+promotion PR — the same gated path any other change takes. `main` is never
+written to by the workflow.
+
+### `release` — on every merge to `main`
+
+By the time work reaches `main`, the manifest already carries the version the
+`bump` job stamped on `dev`. The `release` job:
+
+1. **Reads the version to publish** — the manifest (`.claude-plugin/plugin.json`),
+   or the `workflow_dispatch` `version` input when forced. It computes nothing:
+   `main` publishes exactly what `dev` decided.
+2. **Stops if that version already has a tag** — a re-push of `main`, or a
+   promotion that carried no version change, must not republish the same number.
+3. Runs `version:check`, `typecheck`, `bun test`.
+4. Cross-compiles all five standalone targets, boots the Linux binary and
    asserts `--version` prints the version being released.
-7. Writes `SHA256SUMS.txt`.
-8. Commits the bump, tags `vX.Y.Z`, and pushes both refs in **one `git push
-   --atomic`** — the branch bump and the tag land together or not at all.
-   ⚠️ **This is the step blocked today:** main's ruleset rejects the branch
-   push, and because the push is atomic the tag is rolled back with it, so the
-   job fails here with a loud `::error::` and **nothing ships and no tag is
-   left behind**. (Before `--atomic`, the two refs were pushed independently:
-   the tag won and the branch lost, which is precisely how `v1.10.3` and
-   `v1.11.0` became orphan tags — a release number with no release.)
-9. Publishes the GitHub Release with the binaries + `install.sh`/`install.ps1` +
-   checksums and generated notes.
+5. Writes `SHA256SUMS.txt` and the release notes.
+6. **Creates the tag and the GitHub Release together**, in one API call, from
+   the **merge commit** (`github.sha`) — binaries + `install.sh`/`install.ps1` +
+   checksums + notes. There is no `git tag` + `git push <tag>` that could strand
+   a tag if publishing failed: **no tag exists unless its release exists.** This
+   is what makes the orphan-tag bug (`v1.10.3`, `v1.11.0`) structurally
+   impossible — the tag is born in the same call as the release, or not at all.
 
-`concurrency: release-main` serialises runs: two at once would each compute a
-version from a tag the other has not pushed yet.
+`concurrency: release-main` serialises release runs; `concurrency: bump-dev`
+serialises bump runs.
 
-## `dev` never releases
+## `dev` bumps but never releases
 
-Every push to `dev` runs `ci.yml` — the same gate a PR runs — but `dev` is
-deliberately absent from `release.yml`'s trigger (`on: push: branches:
-[main]` only). Work accumulates on `dev` and is verified continuously; a
+Every push to `dev` runs `ci.yml` (the same gate a PR runs) and the `bump` job
+above. Neither publishes anything — the `release` job is gated to `main` and to
+manual dispatch. Work accumulates and is verified continuously on `dev`; a
 release only happens when a promotion PR merges `dev` into `main`.
 
 ## Who promotes `dev` → `main`, and when
@@ -74,19 +92,20 @@ feature sliced across patch bumps. `agentistics` set the precedent: the
 coordinator held one commit's promotion until two more specialists' work
 landed alongside it, shipping one release instead of three.
 
-## Branch protection on `main` — active, and it currently blocks the release
+## Branch protection on `main` — active, and path 4 works *with* it
 
-`main` **is** protected today by an active repository ruleset, **"Require PR +
-green CI on main"** (id `21821077`), scoped to `refs/heads/main`. It requires:
+`main` **is** protected by an active repository ruleset, **"Require PR + green CI
+on main"** (id `21821077`), scoped to `refs/heads/main`. It requires:
 
 - changes to arrive **through a pull request**, and
 - the `check` status (from `ci.yml`) to be **green**,
 
-and it blocks `deletion` and `non_fast_forward`. This is what gates the
-promotion PR from `dev` — the good part.
+and it blocks `deletion` and `non_fast_forward`. This gates the promotion PR
+from `dev` — the good part — and the release workflow now **never fights it**,
+because the workflow never writes to `main`.
 
-The catch is step 8: the workflow pushes the bump commit **directly** to
-`main`, outside any PR. The ruleset rejects that push:
+That is the whole reason for path 4. The old design pushed the bump commit
+**directly** to `main`, outside any PR, and the ruleset rejected it:
 
 ```
 remote: error: GH013: Repository rule violations found for refs/heads/main.
@@ -95,27 +114,25 @@ remote: - Required status check "check" is expected.
  ! [remote rejected] HEAD -> main (push declined due to repository rule violations)
 ```
 
-**The bypass that was supposed to save this does not work.** The ruleset carries
-a `RepositoryRole` bypass actor (`actor_id: 5`, admin, `bypass_mode: always`),
-and an earlier version of this document claimed the workflow's `GITHUB_TOKEN`
-push "is authorized through the admin-role bypass." **That claim was false** —
-runs `33274404519` (→ orphan `v1.10.3`) and `33283748102` (→ orphan `v1.11.0`)
-both ran *after* the ruleset and its admin bypass were created, and both were
+**No bypass could have saved it on this repo.** The ruleset carries a
+`RepositoryRole` bypass actor (`actor_id: 5`, admin, `bypass_mode: always`), and
+an earlier version of this document claimed the workflow's `GITHUB_TOKEN` push
+was "authorized through the admin-role bypass." **That claim was false** — runs
+`33274404519` (→ orphan `v1.10.3`) and `33283748102` (→ orphan `v1.11.0`) both
+ran *after* the ruleset and its admin bypass were created, and both were
 rejected with the message above. A `RepositoryRole` bypass applies to human
 collaborators/teams holding that role, **not** to the Actions bot's
-`GITHUB_TOKEN`. The only actor type that would cover the bot is an
-`Integration` (the GitHub Actions app) — and GitHub **rejects an `Integration`
-bypass actor on a personal repo's ruleset** with `422 Validation Failed: Actor
-GitHub Actions integration must be part of the ruleset source or owner
-organization`. So on this personal repo there is **no valid way to grant the
-default `GITHUB_TOKEN` a ruleset bypass**. That is why automatic publishing is
-blocked, and why "just add a bypass for the bot" is not one of the real options.
+`GITHUB_TOKEN`. The only actor type that would cover the bot is an `Integration`
+(the GitHub Actions app) — and GitHub **rejects an `Integration` bypass actor on
+a personal repo's ruleset** with `422 Validation Failed: Actor GitHub Actions
+integration must be part of the ruleset source or owner organization`. So on
+this personal repo there is **no valid way to grant the default `GITHUB_TOKEN` a
+ruleset bypass** — "just add a bypass for the bot" was never a real option.
 
-**What is safe today, regardless of how this is resolved:** the push is now
-atomic and fails loud (step 8). A rejected push can no longer strand a tag, and
-the job goes red with an explicit `::error::` instead of finishing half-done in
-silence. What remains is a policy decision — how the bump should reach `main` —
-written up with alternatives in [`OPEN-DECISIONS.md`](OPEN-DECISIONS.md).
+Path 4 sidesteps the whole problem: the bump lands on `dev` (unprotected), and
+the `release` job on `main` only reads the manifest, tags the merge commit, and
+publishes. The protected branch is never pushed to, so the ruleset stays fully
+intact with **no bypass, no PAT, and no per-release PR**.
 
 ## Version single source of truth
 

@@ -5,58 +5,84 @@ import { parse } from "yaml";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const RAW = readFileSync(join(ROOT, ".github", "workflows", "release.yml"), "utf8");
+
+type Step = { name?: string; id?: string; if?: string; run?: string; uses?: string; with?: Record<string, unknown> };
 const WF = parse(RAW) as {
   on: { push?: { branches?: string[] }; workflow_dispatch?: unknown };
-  jobs: Record<string, { steps: { name?: string; id?: string; if?: string; run?: string }[] }>;
+  jobs: Record<string, { if?: string; concurrency?: { group?: string }; steps: Step[] }>;
 };
 
-const STEPS = WF.jobs.release!.steps;
+// Path 4 — the version bump lives on `dev`; `main` is never written to.
+//
+//   bump    (push to dev)  computes the next version and commits the stamped
+//                          bump to dev. dev has no ruleset, so the bot pushes it.
+//   release (push to main) publishes: reads the manifest version that arrived
+//                          through the promotion PR, builds, and creates the tag
+//                          AND the Release together, from the merge commit. It
+//                          never commits and never pushes a branch — main's
+//                          protection is therefore never in the way.
+const RELEASE = WF.jobs.release!;
+const BUMP = WF.jobs.bump!;
 
-// The requirement, stated once: EVERY merge to main cuts a release. All three
-// merge strategies (merge commit, squash, rebase) are a push to main, so the
-// trigger covers them — what has to be watched is anything that can skip.
-test("every push to main triggers the release", () => {
+// ── Triggers ────────────────────────────────────────────────────────────────
+
+test("a merge to main triggers the workflow", () => {
   expect(WF.on.push?.branches).toContain("main");
+});
+
+test("a push to dev triggers the workflow (that is where the bump lives)", () => {
+  expect(WF.on.push?.branches).toContain("dev");
 });
 
 test("the manual valve is still there", () => {
   expect(WF.on.workflow_dispatch).toBeDefined();
 });
 
-test("the only skip guard cannot fire on a human merge", () => {
-  // Matching the commit SUBJECT alone silently swallowed a squash-merged PR
-  // titled "chore(release): …". The author check is what makes the guard
-  // unable to misidentify a human merge as the bot's own bump commit.
-  const guard = STEPS.find((s) => s.id === "guard");
-  expect(guard).toBeDefined();
-  expect(guard!.run).toContain("github-actions[bot]");
-  expect(guard!.run).toContain("chore(release): ");
-  // Both conditions, not either.
-  expect(guard!.run).toMatch(/AUTHOR"?\s*=\s*"github-actions\[bot\]"\s*\]\s*&&/);
+// ── The core of path 4: the release job never writes to protected main ───────
+
+test("the release job never pushes anything (no write to protected main)", () => {
+  const pushes = RELEASE.steps.filter((s) => /git\s+push/.test(s.run ?? ""));
+  expect(pushes).toHaveLength(0);
 });
 
-test("a forced release bypasses the guard entirely", () => {
-  const guard = STEPS.find((s) => s.id === "guard")!;
-  expect(guard.run).toContain("github.event.inputs.version");
+test("the release job creates no commit (no bump commit lands on main)", () => {
+  const commits = RELEASE.steps.filter((s) => /git\s+commit/.test(s.run ?? ""));
+  expect(commits).toHaveLength(0);
 });
 
-test("the bump commit carries [skip ci], so the loop is prevented twice over", () => {
-  expect(RAW).toContain("[skip ci]");
+test("nothing is ever pushed to main", () => {
+  expect(RAW).not.toContain("HEAD:main");
 });
 
-test("nothing but the two known skips gates the publishing steps", () => {
-  // Any `if:` on a step must reference only guard/version skip outputs. A new
-  // condition sneaking in is how "every merge releases" quietly stops being
-  // true.
-  const conditions = STEPS.map((s) => s.if).filter((c): c is string => !!c);
-  expect(conditions.length).toBeGreaterThan(0);
-  for (const c of conditions) {
-    expect(c).toMatch(/steps\.(guard|version)\.outputs\.skip/);
-  }
+test("the release job is gated to main / manual dispatch, never to dev", () => {
+  expect(RELEASE.if).toBeDefined();
+  expect(RELEASE.if).toContain("refs/heads/main");
+  expect(RELEASE.if).not.toContain("refs/heads/dev");
+});
+
+// ── A tag can never outlive its release: tags are born WITH the release ───────
+//
+// An orphan tag (v1.10.3, v1.11.0) is a release claimed that never happened.
+// The only structural cure is to never create a tag independently of its
+// release. The publish action creates the tag AND the release in one API call
+// against the merge commit; nothing anywhere runs `git tag <name>`.
+
+test("no tag is ever created by hand — the publish step is the only tag author", () => {
+  // `git tag -l` (listing) is fine; `git tag "v…"` / `git tag $…` (creation) is
+  // the orphan-tag hazard and must not appear.
+  expect(RAW).not.toMatch(/git\s+tag\s+["'$]/);
+});
+
+test("the tag is created from the merge commit, together with the release", () => {
+  const publish = RELEASE.steps.find((s) => (s.uses ?? "").includes("action-gh-release"));
+  expect(publish).toBeDefined();
+  const wth = (publish!.with ?? {}) as Record<string, unknown>;
+  expect(wth.tag_name).toBeDefined();
+  expect(String(wth.target_commitish)).toContain("github.sha");
 });
 
 test("the release actually publishes binaries, checksums and installers", () => {
-  const publish = STEPS.find((s) => s.name?.includes("Publish"));
+  const publish = RELEASE.steps.find((s) => s.name?.includes("Publish"));
   expect(publish).toBeDefined();
   expect(RAW).toContain("dist/aipe-*");
   expect(RAW).toContain("dist/SHA256SUMS.txt");
@@ -64,23 +90,64 @@ test("the release actually publishes binaries, checksums and installers", () => 
   expect(RAW).toContain("scripts/install.ps1");
 });
 
-test("runs are serialised, so two merges cannot compute the same version", () => {
-  expect(RAW).toContain("concurrency:");
-  expect(RAW).toContain("release-main");
+test("a version that already shipped is not published twice", () => {
+  // The manifest version arrives via the promotion PR; a re-push of main whose
+  // number already has a tag must stop, not republish.
+  const resolve = RELEASE.steps.find((s) => s.id === "version")!;
+  expect(resolve.run).toMatch(/refs\/tags\/v/);
+  expect(resolve.run).toMatch(/skip=true/);
 });
 
-// ── The bump must actually see every commit in the range ────────────────────
+test("runs on main are serialised, so two merges cannot publish the same number", () => {
+  expect(RELEASE.concurrency?.group).toBe("release-main");
+});
+
+// ── The bump job: decides the version on dev and commits it there ────────────
+
+test("the bump job runs only on a push to dev", () => {
+  expect(BUMP.if).toBeDefined();
+  expect(BUMP.if).toContain("refs/heads/dev");
+  expect(BUMP.if).not.toContain("refs/heads/main");
+});
+
+test("the bump commit carries [skip ci] and is authored so it cannot re-trigger", () => {
+  expect(RAW).toContain("[skip ci]");
+  const guard = BUMP.steps.find((s) => s.id === "guard");
+  expect(guard).toBeDefined();
+  expect(guard!.run).toContain("github-actions[bot]");
+  expect(guard!.run).toContain("chore(release): ");
+});
+
+test("a refused bump push on dev fails the job loudly, never in silence", () => {
+  const step = BUMP.steps.find((s) => /git push/.test(s.run ?? ""));
+  expect(step).toBeDefined();
+  expect(step!.run).toContain("::error::");
+  expect(step!.run).toMatch(/exit 1/);
+  expect(step!.run).not.toMatch(/git push[^\n]*\|\|\s*true/);
+});
+
+// ── Only the known skips gate the work in each job ───────────────────────────
+
+test("every gated step in the release job keys off the version-skip output", () => {
+  for (const s of RELEASE.steps) {
+    if (s.if) expect(s.if).toMatch(/steps\.version\.outputs\.(skip|forced)/);
+  }
+});
+
+test("every gated step in the bump job keys off the guard / version outputs", () => {
+  for (const s of BUMP.steps) {
+    if (s.if) expect(s.if).toMatch(/steps\.(guard|version)\.outputs\.(skip|changed)/);
+  }
+});
+
+// ── The bump must actually see every commit in the range (tformat, scopes) ───
 //
 // `--pretty=format:` omits the trailing newline after its last line, and
 // `while read` returns non-zero on an unterminated line — so that line is
 // silently dropped. `git log` prints newest-first, so what is lost is the
-// range's OLDEST commit. Since every merge to main releases, the usual range
-// holds exactly ONE commit, which means the only commit was the one being
-// dropped: v1.0.1 shipped `feat(update): …` as a patch.
+// range's OLDEST commit. `tformat:` terminates every line, including the last.
 
 test("no read loop consumes a `format:` stream — it would drop a commit", () => {
-  // Command substitution (`$(git log -1 --pretty=format:%s)`) and `grep` are
-  // both fine with a missing terminator; a `while read` loop is not.
   const loops = RAW.split("\n").filter((l) => /while\s+IFS.*read\b/.test(l) || /done\s*<\s*<\(/.test(l));
   expect(loops.length).toBeGreaterThan(0);
   for (const line of loops) {
@@ -88,35 +155,14 @@ test("no read loop consumes a `format:` stream — it would drop a commit", () =
   }
 });
 
-test("both git-log loops that feed a read use tformat", () => {
-  const version = STEPS.find((s) => s.id === "version")!;
+test("the version-computation loop (on dev) uses tformat", () => {
+  const version = BUMP.steps.find((s) => s.id === "version")!;
   expect(version.run).toContain("--pretty=tformat:%s");
-  const notes = STEPS.find((s) => s.run?.includes("What's changed in v"))!;
+});
+
+test("the release-notes loop uses tformat", () => {
+  const notes = RELEASE.steps.find((s) => s.run?.includes("What's changed in v"))!;
   expect(notes.run).toContain("--pretty=tformat:");
-});
-
-// ── A tag must never outlive the release it claims ──────────────────────────
-//
-// `git push origin HEAD:main <tag>` pushed two refs NON-atomically. main's
-// ruleset ("Require PR + green CI on main") rejects the branch ref but does not
-// cover tag refs, so the tag landed while the branch bounced — an orphan tag
-// asserting a release that never happened (v1.10.3, v1.11.0). The push must be
-// atomic so the ruleset rejection takes the tag down with the branch.
-
-test("the bump push is atomic — a rejected branch cannot leave an orphan tag", () => {
-  const step = STEPS.find((s) => s.run?.includes("git push") && s.run?.includes("HEAD:main"));
-  expect(step).toBeDefined();
-  expect(step!.run).toContain("--atomic");
-  // and the two refs still go in ONE push, so --atomic actually binds them
-  expect(step!.run).toMatch(/git push --atomic origin HEAD:main/);
-});
-
-test("a rejected bump push fails the job loudly, never in silence", () => {
-  const step = STEPS.find((s) => s.run?.includes("git push --atomic"))!;
-  // an explicit annotation + non-zero exit, not a swallowed failure
-  expect(step.run).toContain("::error::");
-  expect(step.run).toMatch(/exit 1/);
-  expect(step.run).not.toMatch(/git push[^\n]*\|\|\s*true/);
 });
 
 test("REGRESSION: a lone `feat(scope):` in the range computes minor, not patch", async () => {
