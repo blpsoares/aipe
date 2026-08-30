@@ -5,6 +5,7 @@
 // `--all`. Format: `--compact`/`--detailed` override the saved preference for this
 // one render (item 10, invariant 3) without touching the brain.
 import { realRunner } from "../session/runner";
+import { looksLikeWorkspace } from "../runtime/workspaces";
 import type { AgentopRunner } from "../session/types";
 import { configCommand } from "./config";
 import { loadReport } from "./load";
@@ -59,6 +60,22 @@ export async function run(args: string[], deps: StatusDeps = {}): Promise<number
     return 0;
   }
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
+
+  // Refuse to report on a directory that is not an AIPe workspace. Without this
+  // guard, `loadReport` on a non-workspace returns an empty report and status
+  // prints `(none)` / `{journeys:[],units:[],waiting:[]}` and exits 0 —
+  // indistinguishable from a real, empty workspace. The coordinator runs
+  // `aipe status` in chat to report to the PE; from the wrong directory it would
+  // read "nothing to do" as truth. Fail loud instead, for the table AND `--json`
+  // (both lied the same way before) — same shape as `migrate-layout`/`rehydrate`.
+  // This is deliberately NOT the same as the SessionStart hook's `safeStateBlock`,
+  // which must degrade silently — see the note there.
+  if (!looksLikeWorkspace(workspace)) {
+    console.log(`ERROR workspace: no AIPe workspace at ${workspace} (no .aipe/harness or .aipe/brain.yaml)`);
+    console.log("cd into your workspace, or pass --workspace <dir>.");
+    return 1;
+  }
+
   const journeyId = getFlag(args, "--journey");
   const scope: StatusScope = journeyId ? "journey" : args.includes("--all") ? "all" : "default";
 

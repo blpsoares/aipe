@@ -255,6 +255,16 @@ export async function runSessionContext(args: string[]): Promise<number> {
 // before onboarding is complete there is no coordinator to inject it for, a
 // missing root/brain has nothing to summarize, and any thrown error degrades to
 // no-block rather than a broken session.
+//
+// DELIBERATELY the opposite of `aipe status`'s loud workspace guard, and NOT an
+// inconsistency to "fix" away: `aipe status` is a report a human reads and acts
+// on, so a wrong-directory run must fail loud instead of lying with an empty
+// report. This is the SessionStart hot path — silent degradation is the correct
+// behavior. And it is already guarded upstream: `fields.root` comes from
+// `findWorkspaceRoot` (a validated `.aipe/brain.yaml`), so `!fields.root` below
+// means "not a workspace" and returns no-block; `loadReport` is only ever
+// reached with a proven root. Breaking this would cost the coordinator its
+// context block on every session open — degrade, never throw.
 async function safeStateBlock(fields: Fields): Promise<string | undefined> {
   if (fields.brain !== "present" || !fields.root) return undefined;
   const onboarded =

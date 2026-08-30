@@ -13,6 +13,11 @@ const noAgentop: AgentopRunner = async () => ({ code: 1, stdout: "", stderr: "no
 async function ws(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "aipe-status-"));
   await mkdir(join(dir, ".aipe", "journeys"), { recursive: true });
+  // A real workspace always has a brain.yaml (written at onboarding, before any
+  // journey exists), which is what `looksLikeWorkspace` keys on. The fixture
+  // seeds a minimal one so it reflects a genuine workspace; tests that care
+  // about specific brain contents overwrite it via writeBrain.
+  await writeBrain(dir, "context:\n  name: blpsoares\n  coordinator: Heisenberg\nrepos:\n  - name: aipe\n    url: https://x/y.git\n    path: ./aipe\n");
   return dir;
 }
 
@@ -41,13 +46,44 @@ async function withStdout<T>(fn: () => Promise<T>): Promise<{ out: string; resul
   }
 }
 
-test("an empty (no .aipe) workspace does not crash and reports no journeys (item 6)", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "aipe-empty-"));
+test("a real but empty workspace (brain, no journeys) reports no journeys, exit 0", async () => {
+  // The legitimate empty case: a genuine workspace that simply has no journeys
+  // yet. This must keep working exactly as before (spec v2 acceptance).
+  const dir = await ws();
   const { out, result } = await withStdout(() => run(["--workspace", dir, "--json"], { runner: noAgentop }));
   expect(result).toBe(0);
   const parsed = JSON.parse(out);
   expect(parsed.journeys).toEqual([]);
   expect(parsed.units).toEqual([]);
+});
+
+test("a non-workspace directory fails loud (table), not an empty report", async () => {
+  // The bug: from a dir that is not an AIPe workspace, status printed an empty
+  // report and exited 0 — indistinguishable from a real empty workspace. The
+  // coordinator runs `aipe status` in chat; from the wrong dir it would report
+  // "nothing to do" as truth. Now it must refuse and exit non-zero.
+  const dir = await mkdtemp(join(tmpdir(), "aipe-not-ws-"));
+  const { out, result } = await withStdout(() => run(["--workspace", dir], { runner: noAgentop }));
+  expect(result).not.toBe(0);
+  expect(out).toContain("workspace");
+  // it must NOT print the empty legit report
+  expect(out).not.toContain("JOURNEYS");
+});
+
+test("--json on a non-workspace fails loud, not an empty JSON report", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "aipe-not-ws-json-"));
+  const { out, result } = await withStdout(() => run(["--workspace", dir, "--json"], { runner: noAgentop }));
+  expect(result).not.toBe(0);
+  // the honest failure must not be an empty-but-valid report a caller would trust
+  let parsedEmptyReport = false;
+  try {
+    const parsed = JSON.parse(out);
+    parsedEmptyReport =
+      Array.isArray(parsed.journeys) && parsed.journeys.length === 0 && Array.isArray(parsed.units);
+  } catch {
+    parsedEmptyReport = false;
+  }
+  expect(parsedEmptyReport).toBe(false);
 });
 
 test("a malformed ledger is skipped, not crashed on (item 6)", async () => {
