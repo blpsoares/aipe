@@ -1,5 +1,9 @@
 # AIPe — AI Product Engineer
 
+[![CI](https://github.com/blpsoares/aipe/actions/workflows/ci.yml/badge.svg)](https://github.com/blpsoares/aipe/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/blpsoares/aipe)](https://github.com/blpsoares/aipe/releases)
+[![License: MIT](https://img.shields.io/github/license/blpsoares/aipe)](LICENSE)
+
 AIPe is a framework that turns an agent harness into a general engineering
 coordinator and the user into a **Product Engineer (PE)**. It runs on Claude
 Code, Gemini CLI, Codex CLI, GitHub Copilot CLI, or any `AGENTS.md`-shaped
@@ -493,3 +497,15 @@ workspace) and only ever writes derived files.
   [`docs/dossie/README.md`](docs/dossie/README.md) for the convention.
 - The repository is **English-only**; interaction with the PE may happen in any
   language.
+
+## Contributing & community
+
+- Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR — AIPe
+  dogfoods its own `/operate` dispatch flow, and the doc explains what that
+  means for how this repo is developed and reviewed.
+- Governed by the [Contributor Covenant](CODE_OF_CONDUCT.md).
+- Found a security issue? See [`SECURITY.md`](SECURITY.md) for the private
+  report channel — please don't open a public issue for it.
+- Released under the [MIT License](LICENSE).
+- [`CHANGELOG.md`](CHANGELOG.md) points to the automated
+  [Releases](https://github.com/blpsoares/aipe/releases) page.
