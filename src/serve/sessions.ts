@@ -6,6 +6,7 @@
 //
 // The exec is injected so the parse/match logic stays pure and testable; only
 // the CLI wires the real subprocess.
+import { parseSessionList } from "../session/poll";
 
 export interface SessionInfo {
   id: string;
@@ -95,4 +96,32 @@ async function defaultExec(): Promise<string> {
   await proc.exited;
   if (proc.exitCode !== 0) throw new Error(`agentop exited ${proc.exitCode}`);
   return text;
+}
+
+/**
+ * One agentop read, three views of it: the lenient `SessionInfo[]` (cwd/activity,
+ * for matching a dispatch to its session), the strict live-session id set, and a
+ * `reliable` flag. `reliable` is the honesty pivot the console's liveness depends
+ * on: it is TRUE only when agentop resolved AND its JSON parsed as the expected
+ * shape (via the same strict `parseSessionList` the poll loop uses). A throw
+ * (agentop absent/non-zero) or unparseable/wrong-shape JSON → `reliable:false`
+ * with an empty id set, so a session-mode unit degrades to `unknown` rather than
+ * being flipped to dead-silent (the dangerous direction) — see poll.ts. The
+ * lenient `parseSessions` still runs so any usable rows are surfaced for display.
+ */
+export async function readLive(
+  exec: () => Promise<string> = defaultExec,
+): Promise<{ sessions: SessionInfo[]; liveIds: Set<string>; reliable: boolean }> {
+  let raw: string;
+  try {
+    raw = await exec();
+  } catch {
+    return { sessions: [], liveIds: new Set(), reliable: false };
+  }
+  const sessions = parseSessions(raw);
+  try {
+    return { sessions, liveIds: parseSessionList(raw), reliable: true };
+  } catch {
+    return { sessions, liveIds: new Set(), reliable: false };
+  }
 }

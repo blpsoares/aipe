@@ -17,6 +17,12 @@ const unit = (over: Partial<UnitRow> = {}): UnitRow => ({
   sessionId: "s-1",
   liveness: "running",
   hasEvidence: false,
+  harness: "claude-code",
+  model: "claude-opus-4-8",
+  tier: "reasoning",
+  intensity: "normal",
+  worktree: "/ws/aipe/.worktrees/j-1-jesse",
+  ciBypass: null,
   ...over,
 });
 
@@ -72,6 +78,25 @@ test("detailed table carries branch + PR columns; compact drops them", () => {
   const comp = renderTable(report(), "compact", false).join("\n");
   expect(comp).not.toContain("BRANCH");
   expect(comp).toContain("WHO");
+});
+
+test("detailed table shows a compact ENV column: model short, effort only when it deviates", () => {
+  // Envelope is near-constant (claude-code+opus+reasoning); the table shows the
+  // model short and highlights only the exception (ultracode / non-default harness).
+  const normal = renderTable(report({ units: [unit()] }), "detailed", false).join("\n");
+  expect(normal).toContain("ENV");
+  expect(normal).toContain("opus-4-8"); // "claude-" prefix stripped
+  expect(normal).not.toContain("ultra");
+  const ultra = renderTable(report({ units: [unit({ intensity: "ultracode" })] }), "detailed", false).join("\n");
+  expect(ultra).toContain("ultra");
+  const compact = renderTable(report(), "compact", false).join("\n");
+  expect(compact).not.toContain("ENV");
+});
+
+test("a legacy unit with no envelope renders '-' in ENV, never an invented value", () => {
+  const legacy = renderTable(report({ units: [unit({ harness: null, model: null, tier: null, intensity: null })] }), "detailed", false).join("\n");
+  expect(legacy).toContain("ENV");
+  expect(legacy).not.toContain("opus");
 });
 
 test("the elision line is printed when journeys were hidden (item 4)", () => {

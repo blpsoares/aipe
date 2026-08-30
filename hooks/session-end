@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# SessionEnd hook of the AIPe plugin — releases the coordinator's registered
+# identity on a clean session close, so a coordinator that stops the ordinary way
+# leaves no ghost entry behind (the explicit-release removal path; a hard crash at
+# pid 0 is the documented residual that needs an agentop session pid).
+set -euo pipefail
+
+WORKSPACE="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$WORKSPACE" ]; then
+  printf '{}\n'
+  exit 0
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+
+# Same binary, single source of truth. Any failure → inert JSON; never break
+# session teardown.
+"${PLUGIN_ROOT}/bin/aipe" session-context --release --workspace "${WORKSPACE}" 2>/dev/null || printf '{}\n'
+exit 0

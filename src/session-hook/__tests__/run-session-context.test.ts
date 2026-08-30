@@ -2,7 +2,7 @@
 // persona-context → awareness → JSON on stdout) against a real temp workspace,
 // in both directions — root (coordinator) and repo (persona).
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
@@ -80,6 +80,24 @@ test("runSessionContext at the workspace root emits coordinator-mode JSON", asyn
     expect(ctx).toContain("DISPATCH GATE");
     expect(ctx).not.toContain("Alice");
     expect(ctx).not.toContain("opened directly inside");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("runSessionContext --release removes this coordinator's registered entry and emits inert JSON (the SessionEnd path)", async () => {
+  const dir = await makeWorkspace();
+  const coordDir = join(dir, ".aipe", "runtime", "coordinators");
+  try {
+    // SessionStart registers the coordinator entry.
+    await capture(() => runSessionContext(["--workspace", dir]));
+    expect((await readdir(coordDir)).length).toBeGreaterThan(0);
+
+    // SessionEnd releases it — clean close leaves no ghost, and the hook output
+    // is inert (SessionEnd cannot inject context).
+    const out = await capture(() => runSessionContext(["--workspace", dir, "--release"]));
+    expect(out.trim()).toBe("{}");
+    expect(await readdir(coordDir).catch(() => [])).toHaveLength(0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

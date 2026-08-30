@@ -1,9 +1,21 @@
 import { test, expect, afterEach } from "bun:test";
-import { orgColor, orgWorkersFor, orgSortByRole, orgQuery } from "../runtime/org";
+import {
+  orgColor,
+  orgWorkersFor,
+  orgSortByRole,
+  orgQuery,
+  fitTransform,
+  fitToView,
+  orgContent,
+  orgTransform,
+  zoomBy,
+} from "../runtime/org";
 import type { Worker } from "../runtime/store";
 
 afterEach(() => {
   orgQuery.value = "";
+  orgContent.value = { width: 0, height: 0 };
+  orgTransform.value = { s: 1, x: 0, y: 0 };
 });
 
 const w = (name: string, role: string, repo = "app", extra: Partial<Worker> = {}): Worker =>
@@ -13,9 +25,11 @@ const w = (name: string, role: string, repo = "app", extra: Partial<Worker> = {}
 // at all, so it fell through to the default `slate` — the same color as an
 // idle/available worker, the exact opposite of a specialist whose work just
 // diverged mid-flight.
-test("orgColor(\"redirected\") is amber, not the slate default", () => {
-  expect(orgColor("redirected")).toBe("var(--amber)");
-  expect(orgColor("redirected")).not.toBe("var(--slate)");
+test("orgColor(\"redirected\") gets its own state hue, not the idle default", () => {
+  // Since the palette adopted the site's per-state tokens (SDD §9), state color
+  // goes through --st-*; redirected must never read as idle/removed.
+  expect(orgColor("redirected")).toBe("rgb(var(--st-redirected))");
+  expect(orgColor("redirected")).not.toBe(orgColor("available"));
 });
 
 // #5 — intentional org ordering: dev-fullstack before QA, stable name tiebreaker.
@@ -39,4 +53,46 @@ test("orgWorkersFor mantém a ordenação mesmo com filtro ativo por nome de rep
   const workers = [w("Marina", "qa", "embark"), w("Joaquim", "dev-fullstack", "embark")];
   // repo-name match -> shows all, still ordered by role
   expect(orgWorkersFor(workers, "embark").map((x) => x.name)).toEqual(["Joaquim", "Marina"]);
+});
+
+// ── fit-to-view (j-20260827-jo, dobrada aqui): o org tem que CABER na viewport
+// no load, sem scroll H nem V; reset re-enquadra; resize recalcula. ─────────────
+
+test("fitTransform reduz conteúdo maior que a viewport para caber, centralizado", () => {
+  // avail = 1000-2*20 x 800-2*20 = 960 x 760; ratios 960/2000=0.48, 760/1000=0.76 → s=0.48
+  const t = fitTransform({ width: 2000, height: 1000 }, { width: 1000, height: 800 }, 20);
+  expect(t.s).toBeCloseTo(0.48, 6);
+  // centralizado: scaledW=960 → x=(1000-960)/2=20; scaledH=480 → y=(800-480)/2=160
+  expect(t.x).toBeCloseTo(20, 6);
+  expect(t.y).toBeCloseTo(160, 6);
+  // e não transborda em nenhum eixo
+  expect(t.s * 2000).toBeLessThanOrEqual(1000 + 1e-9);
+  expect(t.s * 1000).toBeLessThanOrEqual(800 + 1e-9);
+});
+
+test("fitTransform nunca amplia conteúdo pequeno além do natural (s<=1) e centraliza", () => {
+  const t = fitTransform({ width: 400, height: 300 }, { width: 1000, height: 800 }, 20);
+  expect(t.s).toBe(1);
+  expect(t.x).toBeCloseTo(300, 6); // (1000-400)/2
+  expect(t.y).toBeCloseTo(250, 6); // (800-300)/2
+});
+
+test("fitTransform é seguro em casos degenerados (viewport/conteúdo zero → identidade)", () => {
+  expect(fitTransform({ width: 0, height: 0 }, { width: 100, height: 100 })).toEqual({ s: 1, x: 0, y: 0 });
+  expect(fitTransform({ width: 100, height: 100 }, { width: 0, height: 0 })).toEqual({ s: 1, x: 0, y: 0 });
+});
+
+test("fitToView lê orgContent e escreve o transform ajustado", () => {
+  orgContent.value = { width: 2000, height: 1000 };
+  fitToView({ width: 1000, height: 800 }, 20);
+  expect(orgTransform.value.s).toBeCloseTo(0.48, 6);
+  expect(orgTransform.value.x).toBeCloseTo(20, 6);
+});
+
+test("reset (zoomBy(0)) RE-ENQUADRA para caber, não volta a s:1", () => {
+  orgContent.value = { width: 2000, height: 1000 };
+  orgTransform.value = { s: 2.5, x: -100, y: -50 };
+  zoomBy(0, { width: 1000, height: 800 }, 20);
+  expect(orgTransform.value.s).toBeCloseTo(0.48, 6);
+  expect(orgTransform.value).not.toEqual({ s: 1, x: 0, y: 0 });
 });

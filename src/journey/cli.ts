@@ -8,7 +8,10 @@ import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
 import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from "./ledger";
 import { ghPrState, reconcileAll, reconcileJourney } from "./reconcile";
-import { closeSessions, sessionsToClose } from "./session-close";
+import { normalizeRepo, normalizeSpecialist } from "./normalize";
+import { dedupeAll } from "./dedupe-run";
+import { readPersonas } from "../hire-specialists/read-personas";
+import { closeUnitSessions, SESSION_CLOSING_STATUSES } from "./session-close";
 import { renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
 import { isValidTaskId } from "../worktree/naming";
@@ -80,13 +83,23 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   const workspace = target.workspace;
   if (target.note) console.log(`NOTE ${target.note}`);
   const id = getFlag(args, "--journey");
-  const repo = getFlag(args, "--repo");
-  const specialist = getFlag(args, "--specialist");
+  const repoFlag = getFlag(args, "--repo");
+  const specialistFlag = getFlag(args, "--specialist");
   const branch = getFlag(args, "--branch");
   const worktree = getFlag(args, "--worktree");
-  if (!id || !repo || !specialist || !branch || !worktree) {
+  if (!id || !repoFlag || !specialistFlag || !branch || !worktree) {
     console.log("ERROR args: --journey, --repo, --specialist, --branch and --worktree are required");
     return 1;
+  }
+  // Write-time identity normalization (j-20260829-dp, item 5): resolve the repo
+  // to its bare name and the specialist to the roster's canonical casing, so the
+  // coordinator's `Jane`/bare-repo and the specialist's self-registered
+  // `jane`/`blpsoares/…` land on ONE ledger key instead of two. Fixed in the DATA
+  // at write, never painted over in the view.
+  const repo = normalizeRepo(repoFlag);
+  const specialist = normalizeSpecialist(specialistFlag, await readPersonas(workspace));
+  if (repo !== repoFlag || specialist !== specialistFlag) {
+    console.log(`NOTE record: normalized identity ${repoFlag}/${specialistFlag} → ${repo}/${specialist} (jane/Jane dedupe).`);
   }
   const pr = getFlag(args, "--pr");
   const pkg = getFlag(args, "--package");
@@ -177,10 +190,13 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
 
   // Rule 2 — the ledger record above is the important thing and is now durable;
   // closing the session is housekeeping done AFTER it, and must never lose the
-  // record. When this write lands a session-mode unit (verified/merged), end its
+  // record. When this write lands a session-mode unit on a TERMINAL status
+  // (SESSION_CLOSING_STATUSES — verified/merged/failed/escalated), end its
   // session(s) as the coordinator's instrument (an internal agentop spawn that
-  // never passes through the specialist guard) and say so. Idempotent, non-fatal.
-  if (status === "verified" || status === "merged") {
+  // never passes through the specialist guard) and say so — closing only what it
+  // can verify, and surfacing a stale/missing sessionId instead of staying
+  // silent. Idempotent, non-fatal.
+  if (SESSION_CLOSING_STATUSES.has(status)) {
     const ledger = await readLedger(workspace, id);
     // Per task (j-20260826-uv): closing THIS task's delivery must end only THIS
     // task's session(s) — a sibling task of the same persona on the same unit is
@@ -188,11 +204,8 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
     const unitRecords = (ledger?.dispatches ?? []).filter(
       (d) => d.repo === repo && (d.package ?? null) === (pkg ?? null) && (d.task ?? null) === (task ?? null),
     );
-    const ids = sessionsToClose(unitRecords);
-    if (ids.length > 0) {
-      const lines = await closeSessions(ids, `${repo}${pkg ? `/${pkg}` : ""}`, deps.sessionRunner ?? realRunner);
-      for (const l of lines) console.log(l);
-    }
+    const lines = await closeUnitSessions(unitRecords, `${repo}${pkg ? `/${pkg}` : ""}`, deps.sessionRunner ?? realRunner);
+    for (const l of lines) console.log(l);
   }
 
   // Item 9 — a ledger record is a state event: log the delta table (gated on TTY
@@ -374,6 +387,27 @@ async function verifyCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   return critical > 0 ? 1 : 0;
 }
 
+// `aipe journey dedupe [--dry-run]` — migrate the jane/Jane duplicates already on
+// disk: canonicalize repo + specialist, collapse rows that share a branch into
+// one, keep merged units immutable (j-20260829-dp §10). --dry-run reports without
+// writing.
+async function dedupeCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const dryRun = args.includes("--dry-run");
+  const results = await dedupeAll(workspace, { dryRun });
+  let collapsed = 0;
+  let normalized = 0;
+  for (const r of results) {
+    for (const m of r.merges) {
+      collapsed += m.dropped;
+      console.log(`${dryRun ? "WOULD-MERGE" : "MERGED"} journey=${r.journey} ${m.unit} kept=${m.kept} dropped=${m.dropped}`);
+    }
+    normalized += r.normalized;
+  }
+  console.log(`STATE dedupe journeys-changed=${results.length} duplicates-collapsed=${collapsed} normalized=${normalized}${dryRun ? " (dry-run)" : ""}`);
+  return 0;
+}
+
 export async function run(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -387,11 +421,13 @@ export async function run(args: string[], deps: JourneyDeps = {}): Promise<numbe
       return specCommand(rest);
     case "reconcile":
       return reconcileCommand(rest);
+    case "dedupe":
+      return dedupeCommand(rest);
     case "verify":
       return verifyCommand(rest, deps);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
-      console.log("Usage: aipe journey <start|record|show|spec|reconcile|verify> [options]");
+      console.log("Usage: aipe journey <start|record|show|spec|reconcile|dedupe|verify> [options]");
       return 1;
   }
 }
