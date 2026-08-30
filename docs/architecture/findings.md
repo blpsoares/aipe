@@ -36,8 +36,6 @@ board code falls through to `"working"` for `unknown`
 unverifiable, but the *column* assignment contradicts the SDD's "never." **Still
 divergent.**
 
-## New findings from this audit
-
 **3 — `aipe status config` strips comments from `brain.yaml`.** The write path is a
 plain `stringify(brain)` (`src/status/config.ts:69`) of an object obtained by
 `parse(raw)` (`src/make-workspace/read.ts:47`). A `parse → object → stringify`
@@ -45,7 +43,11 @@ round-trip through the `yaml` package preserves key **order** (as the file's own
 header claims) but discards **every comment** — comments survive only through the
 Document API, which this path does not use. So each `aipe status config
 --auto/--format` write silently drops any comments the PE put in `brain.yaml`.
-**Finding.**
+Already known and documented **before this journey started**:
+`docs/dossie/README.md:213-219` (Appendix item 3), committed 2026-08-29 in PR #36,
+a day earlier. **Still divergent** — not a discovery of this audit.
+
+## New findings from this audit
 
 **4 — Cost-index multiplier for the gated tier looks under-priced.** The
 `frontier` tier is the authorization-gated one (`src/execution/policy.ts:8`), yet
