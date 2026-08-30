@@ -109,12 +109,33 @@ export function navigate(path: string): void {
   closeMobile();
 }
 
+// The canonical hash a given path resolves to (what navigate() would write).
+// Kept next to the listener so the redirect-rewrite guard below and navigate()
+// agree byte-for-byte on the target hash.
+function canonicalHash(p: string): string {
+  return "#/" + p.replace(/^\//, "");
+}
+
 // Browser back/forward and manual hash edits route without re-triggering
 // navigate()'s own hash write (app.html:1184's `_routing` guard, simplified:
 // navigate() is idempotent when the hash already matches).
+//
+// The guard fires on EITHER of two conditions, not just a view change:
+//   1. the target view differs from the current one (the ordinary case), or
+//   2. the raw hash is not yet the canonical hash for that target — i.e. it is a
+//      legacy/redirect form (e.g. '#/activity', which resolves to '/board').
+// Condition 2 is load-bearing for brief item 3: clicking an old '#/activity'
+// link while ALREADY on /board leaves the canonical target (/board) equal to
+// currentPath, so condition 1 alone skips navigate() and the hash is stranded at
+// '#/activity' — URL and view disagree on screen. Calling navigate() rewrites
+// the hash to '#/board'. This does not loop: navigate()'s own hash write fires a
+// second hashchange whose raw hash is now already canonical, so both conditions
+// are false and it stops. The guard's original purpose — not re-navigating on a
+// hash that is already canonical AND already the current view — is preserved.
 if (typeof window !== "undefined") {
   window.addEventListener("hashchange", () => {
-    const p = hashTarget(location.hash || "");
-    if (p && p !== currentPath.value) navigate(p);
+    const raw = location.hash || "";
+    const p = hashTarget(raw);
+    if (p && (p !== currentPath.value || raw !== canonicalHash(p))) navigate(p);
   });
 }

@@ -42,3 +42,22 @@ test("navigating to the old '/activity' path lands on the board page (/board)", 
   navigate("/activity");
   expect(currentPath.value).toBe("/board");
 });
+
+// Gate blocker (item 3): the two tests above only prove the pure function and a
+// direct navigate() call — they bypass the `hashchange` listener's guard, which
+// is where the redirect actually broke. When the canonical target of a legacy
+// hash equals the current view (already on /board), the guard `p !==
+// currentPath.value` skipped navigate() and the hash was left stranded at
+// '#/activity'. This test drives the REAL event through the registered listener.
+test("a '#/activity' hashchange fired while ALREADY on /board rewrites the URL to '#/board' (no stranded legacy hash)", () => {
+  navigate("/board");
+  expect(currentPath.value).toBe("/board");
+  expect(location.hash).toBe("#/board");
+
+  // Simulate clicking the old '#/activity' link/bookmark while sitting on /board.
+  location.hash = "#/activity";
+  window.dispatchEvent(new Event("hashchange"));
+
+  expect(currentPath.value).toBe("/board");
+  expect(location.hash).toBe("#/board"); // rewritten to canonical, not left at '#/activity'
+});

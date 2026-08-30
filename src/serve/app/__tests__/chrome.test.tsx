@@ -169,6 +169,35 @@ test("navigate() falls back to Agora (/) for an unknown path", () => {
   expect(currentPath.value).toBe("/");
 });
 
+test("<App> clicking the old '#/activity' hash while already on /board keeps the board on screen (no desync to Agora)", () => {
+  // Brief item 3 / gate blocker: the failure was NOT that the redirect function
+  // is missing — hashTarget('#/activity') already returns '/board'. It was that
+  // firing the real `hashchange` EVENT while ALREADY on /board left the URL and
+  // the view disagreeing: the listener's `p !== currentPath.value` guard saw the
+  // canonical target (/board) already equal to currentPath, skipped navigate(),
+  // and the hash was stranded at '#/activity' — an inconsistent state on screen
+  // (URL says activity, view/nav say board). This test exercises the real event,
+  // not the pure hashTarget()/navigate() the router unit tests call directly.
+  act(() => navigate("/board"));
+  const { container } = render(<App />);
+  const view = container.querySelector("#view")!;
+  expect(view.querySelector(".aboard")).toBeTruthy(); // the board is on screen
+  expect(view.querySelector(".zone-needs")).toBeNull(); // Agora is NOT on screen
+
+  // The old link/bookmark is clicked while we are already sitting on /board.
+  act(() => {
+    location.hash = "#/activity";
+    window.dispatchEvent(new Event("hashchange"));
+  });
+
+  // Consequence: the person still sees the board, and the URL was rewritten to
+  // the canonical '#/board' — URL and view agree, no strand at '#/activity'.
+  expect(currentPath.value).toBe("/board");
+  expect(location.hash).toBe("#/board");
+  expect(view.querySelector(".aboard")).toBeTruthy();
+  expect(view.querySelector(".zone-needs")).toBeNull();
+});
+
 test("<App> switches the rendered #view content when navigate() changes the route", () => {
   navigate("/");
   const { container } = render(<App />);
