@@ -5,12 +5,15 @@ import { parse } from "yaml";
 
 const ROOT = join(import.meta.dir, "..", "..");
 const RAW = readFileSync(join(ROOT, ".github", "workflows", "release.yml"), "utf8");
+const CI_RAW = readFileSync(join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
 
 type Step = { name?: string; id?: string; if?: string; run?: string; uses?: string; with?: Record<string, unknown> };
 const WF = parse(RAW) as {
-  on: { push?: { branches?: string[] }; workflow_dispatch?: unknown };
+  on: Record<string, unknown> & { push?: { branches?: string[] }; workflow_dispatch?: unknown };
+  permissions?: Record<string, string>;
   jobs: Record<string, { if?: string; concurrency?: { group?: string }; steps: Step[] }>;
 };
+const CI = parse(CI_RAW) as { on: Record<string, unknown> };
 
 // Path 4 — the version bump lives on `dev`; `main` is never written to.
 //
@@ -124,6 +127,76 @@ test("a refused bump push on dev fails the job loudly, never in silence", () => 
   expect(step!.run).toContain("::error::");
   expect(step!.run).toMatch(/exit 1/);
   expect(step!.run).not.toMatch(/git push[^\n]*\|\|\s*true/);
+});
+
+// ── The bump commit at dev's head must carry a legitimate `check` status ─────
+//
+// The bump commit becomes the head of `dev` and therefore the head of the
+// promotion PR into protected `main`, whose ruleset requires the `check` status.
+// The commit is pushed with GITHUB_TOKEN and carries [skip ci], so neither push-
+// nor PR-triggered CI ever runs on it — left alone, the promotion PR is BLOCKED
+// forever with an EMPTY check list (silence, read as "nothing to report" instead
+// of "nothing ran"). The bump job runs the SAME gate ci.yml runs, on the exact
+// commit it pushed, and posts `check` itself. That satisfies the ruleset
+// legitimately — the gate genuinely runs — without loosening the protection.
+
+test("the bump commit records whether it actually pushed, so later steps can gate on it", () => {
+  const commit = BUMP.steps.find((s) => s.id === "commit");
+  expect(commit).toBeDefined();
+  expect(commit!.run).toMatch(/pushed=true/);
+  expect(commit!.run).toMatch(/pushed=false/);
+  expect(commit!.run).toContain("sha=$(git rev-parse HEAD)");
+});
+
+test("the bump commit is gated by the SAME checks ci.yml runs — not a rubber stamp", () => {
+  const gate = BUMP.steps.find((s) => s.id === "gate");
+  expect(gate).toBeDefined();
+  // Mirror ci.yml's `check` job: version guard, type-check, tests, build smoke.
+  expect(gate!.run).toContain("version:check");
+  expect(gate!.run).toContain("typecheck");
+  expect(gate!.run).toContain("bun test");
+  expect(gate!.run).toContain("build:host");
+  for (const cmd of ["version:check", "typecheck", "bun test", "build:host"]) {
+    expect(CI_RAW).toContain(cmd);
+  }
+  // runs only when a bump commit was actually pushed
+  expect(gate!.if).toContain("steps.commit.outputs.pushed");
+});
+
+test("the bump job posts the `check` status on the exact commit it pushed", () => {
+  const post = BUMP.steps.find((s) => /statuses\//.test(s.run ?? ""));
+  expect(post).toBeDefined();
+  expect(post!.run).toContain("statuses/${{ steps.commit.outputs.sha }}");
+  expect(post!.run).toContain("context=check");
+  // the state is DERIVED from the gate outcome, never a hardcoded success
+  expect(post!.run).toContain("steps.gate.outcome");
+  expect(post!.run).toContain('state="$STATE"');
+});
+
+test("a bump that fails the gate posts a RED check and fails loud — never a silent empty list", () => {
+  const post = BUMP.steps.find((s) => /statuses\//.test(s.run ?? ""));
+  expect(post).toBeDefined();
+  // runs even after a failed gate, so the PR shows the failure instead of nothing
+  expect(post!.if).toContain("always()");
+  expect(post!.run).toContain("STATE=failure");
+  expect(post!.run).toContain("::error::");
+  expect(post!.run).toMatch(/exit 1/);
+});
+
+test("posting the check cannot reintroduce the bump loop — nothing listens on `status`", () => {
+  // Neither workflow triggers on the `status` event, and the check is posted via
+  // the API (statuses/), not a git push — so it creates neither a commit nor a
+  // workflow run. The bump's three loop guards ([skip ci], bot author,
+  // GITHUB_TOKEN) are untouched.
+  expect(WF.on).not.toHaveProperty("status");
+  expect(CI.on).not.toHaveProperty("status");
+  const post = BUMP.steps.find((s) => /statuses\//.test(s.run ?? ""));
+  expect(post!.run).not.toMatch(/git\s+(push|commit)/);
+  expect(RAW).toContain("[skip ci]");
+});
+
+test("the workflow declares statuses:write, needed to post the bump check", () => {
+  expect(WF.permissions?.statuses).toBe("write");
 });
 
 // ── Only the known skips gate the work in each job ───────────────────────────
