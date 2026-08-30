@@ -109,3 +109,37 @@ test("journey record accepts valid --mode/--intensity/--harness/--session-id and
     sessionId: "s-abc",
   });
 });
+
+// item 5 (j-20260829-dp): the jane/Jane split is fixed at WRITE time. Recording
+// `jane`+`blpsoares/agentistics` then `Jane`+`agentistics` on the SAME task must
+// leave ONE ledger unit, not two — the identity is normalized before the upsert.
+test("journey record normalizes repo+specialist so jane/Jane collapse to one unit", async () => {
+  const dir = await ws();
+  await Bun.write(join(dir, ".aipe", "personas.yaml"), "personas:\n  - name: Jane\n    role: dev-fullstack\n    repo: agentistics\n");
+  await run(["start", "--workspace", dir, "--id", "j1"]);
+  // the coordinator's write: canonical name, bare repo
+  await run(["record", "--workspace", dir, "--journey", "j1", "--repo", "agentistics", "--specialist", "Jane", "--task", "web-ui", "--branch", "aipe/j1/web--jane", "--worktree", "w"]);
+  // the specialist's self-registration: slug name, org-prefixed repo
+  await run(["record", "--workspace", dir, "--journey", "j1", "--repo", "blpsoares/agentistics", "--specialist", "jane", "--task", "web-ui", "--branch", "aipe/j1/web--jane", "--worktree", "w"]);
+  const ledger = parse(await readFile(join(dir, ".aipe", "journeys", "j1.yaml"), "utf8")) as { dispatches: { specialist: string; repo: string }[] };
+  expect(ledger.dispatches.length).toBe(1);
+  expect(ledger.dispatches[0]!.specialist).toBe("Jane");
+  expect(ledger.dispatches[0]!.repo).toBe("agentistics");
+});
+
+// The migration reaches an existing duplicate, keeping a merged unit immutable.
+test("journey dedupe collapses an on-disk duplicate stuck behind a merged unit", async () => {
+  const dir = await ws();
+  await Bun.write(join(dir, ".aipe", "personas.yaml"), "personas:\n  - name: Jane\n    role: dev-fullstack\n    repo: agentistics\n");
+  await run(["start", "--workspace", dir, "--id", "j1"]);
+  // a merged unit (immutable) + a stuck lowercase/org-prefixed dispatched dup on the same branch
+  await run(["record", "--workspace", dir, "--journey", "j1", "--repo", "agentistics", "--specialist", "Jane", "--task", "web", "--branch", "aipe/j1/web--jane", "--worktree", "w", "--status", "merged"]);
+  await run(["record", "--workspace", dir, "--journey", "j1", "--repo", "blpsoares/agentistics", "--specialist", "jane", "--branch", "aipe/j1/web--jane", "--worktree", "w"]);
+  let ledger = parse(await readFile(join(dir, ".aipe", "journeys", "j1.yaml"), "utf8")) as { dispatches: { specialist: string; status: string }[] };
+  expect(ledger.dispatches.length).toBe(2); // the dup slipped in (different key before migration)
+  const { output } = await capture(() => run(["dedupe", "--workspace", dir]));
+  expect(output).toContain("MERGED journey=j1");
+  ledger = parse(await readFile(join(dir, ".aipe", "journeys", "j1.yaml"), "utf8")) as { dispatches: { specialist: string; status: string }[] };
+  expect(ledger.dispatches.length).toBe(1);
+  expect(ledger.dispatches[0]!.status).toBe("merged"); // the merged unit survived, immutable
+});

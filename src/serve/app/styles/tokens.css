@@ -1,16 +1,59 @@
 /* ── Tokens ─────────────────────────────────────────────────────────────────
-   Emerald "ops" console. True-grey neutrals with a faint green bias, one
-   emerald accent used with restraint; status hues (sky/amber/slate) are separate
-   from the accent. Both themes are first-class.
-   Ported verbatim from src/serve/app.html:8-431 (:root vars + theme overrides). */
+   The console's palette is ADOPTED VERBATIM from the site
+   (openvibes-embark:packages/aipe-site/src/index.css) — an Iris-violet brand and
+   one semantic token PER ledger state (`--st-*`), so the two products stop
+   speaking different palettes (SDD §9, j-20260829-dp). The new canonical tokens
+   are space-separated RGB triples (site format) so `rgb(var(--x) / <alpha>)`
+   opacity works; they are consumed ONLY via `rgb(var(--x))`.
+
+   Theme mechanism (kept from the console, NOT the site's `.dark` class): bare
+   `:root` is light; `@media (prefers-color-scheme: dark)` follows the OS; an
+   explicit `:root[data-theme="light"|"dark"]` (set by theme.ts) wins over both.
+
+   Two kinds of token live here:
+     • CANONICAL TRIPLES (new names — `--surface-*`, `--text/muted/faint`,
+       `--brand[-strong]`, `--st-*`): the source of truth, redefined per theme.
+     • ⚠ TRANSITIONAL ALIASES (technical debt, by construction): the console's OLD
+       names (`--panel`, `--ink`, `--accent`, `--sky` …) kept as resolved-color
+       aliases onto the canonical tokens, so base.css/components (~300 uses of the
+       old names, consumed as raw `var(--x)` colors) did not have to be rewritten
+       in one risky pass. To RETIRE the aliases: migrate every
+       `var(--panel|--ink|--accent|--sky|--amber|--slate|--rose|--bg-2|…)` use to
+       its canonical name (via `rgb(var(--surface-1))` etc.), then delete the
+       "TRANSITIONAL ALIASES" block. Until then, a bare `--panel` means
+       "= --surface-1"; it is NOT an independent token.
+   `--bg`, `--line`, `--line-2`, `--on-brand` and the shadows stay resolved colors
+   per theme (base.css consumes them raw). */
+
 :root {
-  --bg: #f4f4f6; --bg-2: #eeeef1;
-  --panel: #ffffff; --panel-2: #f6f6f8; --panel-3: #ececef; --raise: #ffffff;
-  --ink: #17171b; --ink-2: #52525b; --ink-3: #84848e;
-  --line: #e7e7ea; --line-2: #d7d7dc;
-  --accent: #059669; --accent-2: #10b981; --accent-ink: #047857; --accent-wash: #ecfdf5;
-  --sky: #0284c7; --amber: #b45309; --slate: #64748b; --rose: #e11d48;
-  --sky-w: #e0f2fe; --amber-w: #fef3c7; --slate-w: #f1f5f9;
+  /* ── Canonical triples — LIGHT (site :root, verbatim) ── */
+  --surface-1: 255 255 255;
+  --surface-2: 240 242 248;
+  --surface-3: 231 234 243;
+  --text: 20 21 31;
+  --muted: 74 78 96;
+  --faint: 118 123 143;
+  --brand: 98 66 224;
+  --brand-strong: 82 52 206;
+
+  /* State ramp — LIGHT (deepened for AA on light surfaces) */
+  --st-dispatched: 28 104 214;
+  --st-running: 168 106 8;
+  --st-delivered: 8 128 116;
+  --st-verified: 22 143 57;
+  --st-failed: 200 38 38;
+  --st-escalated: 188 80 12;
+  --st-merged: 132 58 226;
+  --st-redirected: 12 130 148;
+  --st-removed: 92 98 118;
+
+  /* Resolved colors kept per-theme (base.css consumes these raw) */
+  --bg: rgb(247 248 251);
+  --line: rgb(233 236 244);          /* soft border (site --line-soft) */
+  --line-2: rgb(216 221 232);        /* stronger divider (site --line) */
+  --on-brand: #ffffff;               /* text on a brand fill; brand is deep here */
+
+  /* Non-color tokens (theme-independent) */
   --shadow-1: 0 1px 2px rgba(16,22,19,.06);
   --shadow-2: 0 1px 3px rgba(16,22,19,.08), 0 8px 24px rgba(16,22,19,.08);
   --shadow-3: 0 12px 32px rgba(16,22,19,.14), 0 2px 8px rgba(16,22,19,.08);
@@ -18,34 +61,121 @@
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
   --sb: 248px;
+
+  /* ── ⚠ TRANSITIONAL ALIASES → canonical (see header). Defined once; they read
+     whichever theme's triples are live, so they need no per-theme repetition. ── */
+  --bg-2: rgb(var(--surface-2));
+  --panel: rgb(var(--surface-1));
+  --panel-2: rgb(var(--surface-2));
+  --panel-3: rgb(var(--surface-3));
+  --raise: rgb(var(--surface-1));
+  --ink: rgb(var(--text));
+  --ink-2: rgb(var(--muted));
+  --ink-3: rgb(var(--faint));
+  --accent: rgb(var(--brand));
+  --accent-2: rgb(var(--brand-strong));
+  --accent-ink: rgb(var(--brand-strong));
+  --accent-wash: rgb(var(--brand) / .12);
+  /* Generic severity/decorative hues fold into the state ramp so even non-state
+     UI (warnings, KPIs, the connection dot) stays on one palette. State itself is
+     NEVER painted through these — it goes through --st-* (statusMeta.stateVar). */
+  --sky: rgb(var(--st-dispatched));
+  --amber: rgb(var(--st-escalated));
+  --slate: rgb(var(--st-removed));
+  --rose: rgb(var(--st-failed));
+  --sky-w: rgb(var(--st-dispatched) / .13);
+  --amber-w: rgb(var(--st-escalated) / .13);
+  --slate-w: rgb(var(--st-removed) / .13);
 }
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #101013; --bg-2: #151519;
-    --panel: #1a1a1f; --panel-2: #202027; --panel-3: #29292f; --raise: #1d1d23;
-    --ink: #ececee; --ink-2: #9c9ca6; --ink-3: #6a6a74;
-    --line: rgba(255,255,255,.08); --line-2: rgba(255,255,255,.14);
-    --accent: #10b981; --accent-2: #34d399; --accent-ink: #6ee7b7; --accent-wash: rgba(16,185,129,.10);
-    --sky: #38bdf8; --amber: #fbbf24; --slate: #94a0ad; --rose: #fb7185;
-    --sky-w: rgba(56,189,248,.13); --amber-w: rgba(251,191,36,.13); --slate-w: rgba(148,163,184,.13);
+    --surface-1: 16 17 26;
+    --surface-2: 23 25 38;
+    --surface-3: 32 35 52;
+    --text: 233 234 242;
+    --muted: 162 165 186;
+    --faint: 122 126 150;
+    --brand: 141 125 255;
+    --brand-strong: 172 158 255;
+
+    --st-dispatched: 76 154 255;
+    --st-running: 245 172 60;
+    --st-delivered: 32 202 182;
+    --st-verified: 61 210 100;
+    --st-failed: 255 104 104;
+    --st-escalated: 255 146 62;
+    --st-merged: 199 116 236;
+    --st-redirected: 44 205 226;
+    --st-removed: 128 134 158;
+
+    --bg: rgb(8 9 15);
+    --line: rgb(26 28 42);
+    --line-2: rgb(40 43 60);
+    --on-brand: #0b0616;             /* brand is a light violet here → dark text */
+
     --shadow-1: 0 1px 2px rgba(0,0,0,.4);
     --shadow-2: 0 2px 6px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.45);
     --shadow-3: 0 16px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.4);
   }
 }
+
 :root[data-theme="light"] {
-  --bg: #f4f4f6; --bg-2: #eeeef1; --panel: #fff; --panel-2: #f6f6f8; --panel-3: #ececef; --raise:#fff;
-  --ink: #17171b; --ink-2: #52525b; --ink-3: #84848e; --line: #e7e7ea; --line-2: #d7d7dc;
-  --accent: #059669; --accent-2: #10b981; --accent-ink: #047857; --accent-wash: #ecfdf5;
-  --sky: #0284c7; --amber: #b45309; --slate: #64748b; --rose: #e11d48;
-  --sky-w: #e0f2fe; --amber-w: #fef3c7; --slate-w: #f1f5f9;
-  --shadow-1: 0 1px 2px rgba(16,22,19,.06); --shadow-2: 0 1px 3px rgba(16,22,19,.08), 0 8px 24px rgba(16,22,19,.08); --shadow-3: 0 12px 32px rgba(16,22,19,.14), 0 2px 8px rgba(16,22,19,.08);
+  --surface-1: 255 255 255;
+  --surface-2: 240 242 248;
+  --surface-3: 231 234 243;
+  --text: 20 21 31;
+  --muted: 74 78 96;
+  --faint: 118 123 143;
+  --brand: 98 66 224;
+  --brand-strong: 82 52 206;
+
+  --st-dispatched: 28 104 214;
+  --st-running: 168 106 8;
+  --st-delivered: 8 128 116;
+  --st-verified: 22 143 57;
+  --st-failed: 200 38 38;
+  --st-escalated: 188 80 12;
+  --st-merged: 132 58 226;
+  --st-redirected: 12 130 148;
+  --st-removed: 92 98 118;
+
+  --bg: rgb(247 248 251);
+  --line: rgb(233 236 244);
+  --line-2: rgb(216 221 232);
+  --on-brand: #ffffff;
+
+  --shadow-1: 0 1px 2px rgba(16,22,19,.06);
+  --shadow-2: 0 1px 3px rgba(16,22,19,.08), 0 8px 24px rgba(16,22,19,.08);
+  --shadow-3: 0 12px 32px rgba(16,22,19,.14), 0 2px 8px rgba(16,22,19,.08);
 }
+
 :root[data-theme="dark"] {
-  --bg: #101013; --bg-2: #151519; --panel: #1a1a1f; --panel-2: #202027; --panel-3: #29292f; --raise:#1d1d23;
-  --ink: #ececee; --ink-2: #9c9ca6; --ink-3: #6a6a74; --line: rgba(255,255,255,.08); --line-2: rgba(255,255,255,.14);
-  --accent: #10b981; --accent-2: #34d399; --accent-ink: #6ee7b7; --accent-wash: rgba(16,185,129,.10);
-  --sky: #38bdf8; --amber: #fbbf24; --slate: #94a0ad; --rose: #fb7185;
-  --sky-w: rgba(56,189,248,.13); --amber-w: rgba(251,191,36,.13); --slate-w: rgba(148,163,184,.13);
-  --shadow-1: 0 1px 2px rgba(0,0,0,.4); --shadow-2: 0 2px 6px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.45); --shadow-3: 0 16px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.4);
+  --surface-1: 16 17 26;
+  --surface-2: 23 25 38;
+  --surface-3: 32 35 52;
+  --text: 233 234 242;
+  --muted: 162 165 186;
+  --faint: 122 126 150;
+  --brand: 141 125 255;
+  --brand-strong: 172 158 255;
+
+  --st-dispatched: 76 154 255;
+  --st-running: 245 172 60;
+  --st-delivered: 32 202 182;
+  --st-verified: 61 210 100;
+  --st-failed: 255 104 104;
+  --st-escalated: 255 146 62;
+  --st-merged: 199 116 236;
+  --st-redirected: 44 205 226;
+  --st-removed: 128 134 158;
+
+  --bg: rgb(8 9 15);
+  --line: rgb(26 28 42);
+  --line-2: rgb(40 43 60);
+  --on-brand: #0b0616;
+
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-2: 0 2px 6px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.45);
+  --shadow-3: 0 16px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.4);
 }

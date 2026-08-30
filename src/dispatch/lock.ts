@@ -116,23 +116,32 @@ async function hasDispatchedDispatch(workspaceDir: string, lock: Lock): Promise<
 // bound is what keeps a crash from wedging a repo forever.
 export const STALE_ORPHAN_GRACE_MS = 10 * 60_000; // 10 minutes
 
-// A lock is ACTIVE unless we can positively show its holder is gone. Three
-// signals decide it, in order of authority:
+// A lock is ACTIVE unless we can POSITIVELY show its holder is gone. Four signals
+// decide it, in order of authority:
 //
-//   1. A recorded, DEAD pid → overwritable at once. The pid is the coordinator's
+//   1. A recorded, DEAD pid → overwritable at once. The pid is the holder's
 //      long-lived session pid (passed via --pid); a tracked pid that no longer
-//      exists is a crashed holder, reconcilable even if it just claimed. (pid<=0
-//      means "no pid tracking" — the ephemeral CLI pid is meaningless — so the
-//      ledger/freshness govern instead.)
+//      exists is a crashed holder, reconcilable even if it just claimed. This is
+//      the ONLY positive proof of death — every other path below keeps the lock.
 //   2. A matching "dispatched"/"redirected" dispatch in some journey → the
 //      PRIMARY, durable liveness signal. A finished session calls `dispatch
 //      release` at delivered/escalated/merged, flipping the status away.
 //   3. FRESHNESS — the fix for the claim→record window. A lock claimed within
 //      STALE_ORPHAN_GRACE_MS is live even with no dispatched entry yet, because
-//      the atomic claim legitimately precedes the ledger write. Without this a
-//      rival reads the not-yet-recorded lock as an orphan and overwrites it, and
-//      two sessions both "win" the same repo — the very race this module exists
-//      to close. Past the grace with still no dispatched entry, it is an orphan.
+//      the atomic claim legitimately precedes the ledger write.
+//   4. UNVERIFIABLE OWNER (pid <= 0) → treated as ALIVE (j-20260829-5q). This is
+//      the safe inverse of the defect this journey closes: every coordinator lock
+//      is born with pid 0 (the coordinator has no registered process identity at
+//      the write point), and the OLD code let a pid-0 lock aged past the grace be
+//      reconciled as an orphan — so a real claim silently STOMPED the live lock of
+//      an active task (it happened twice in one day). A holder we cannot verify is
+//      NOT proof of death; on doubt we KEEP the lock, so a rival collides (warns,
+//      exits non-zero, routes to resolve-overlap) instead of overwriting in
+//      silence. Better a needless collision than a protection that evaporates.
+//      The cost is deliberate and endorsed: a pid-0 holder that truly crashed
+//      before recording is no longer auto-reconciled — recovery is `dispatch
+//      release` or an authorized `--force`, not a silent takeover. A holder that
+//      passes a real --pid keeps automatic crash recovery via signal (1).
 //
 // `now` is injectable purely so the grace boundary is testable; production passes
 // the real clock.
@@ -142,10 +151,11 @@ export async function isLockActive(
   now: number = Date.now(),
 ): Promise<boolean> {
   if (!lock) return false;
-  if (lock.pid > 0 && !isPidAlive(lock.pid)) return false; // (1) crashed holder
+  if (lock.pid > 0 && !isPidAlive(lock.pid)) return false; // (1) provably crashed holder
   if (await hasDispatchedDispatch(workspaceDir, lock)) return true; // (2) ledger-backed
   const created = Date.parse(lock.timestamp); // (3) freshly-claimed, record imminent
-  return Number.isFinite(created) && now - created < STALE_ORPHAN_GRACE_MS;
+  if (Number.isFinite(created) && now - created < STALE_ORPHAN_GRACE_MS) return true;
+  return lock.pid <= 0; // (4) unverifiable owner → alive, never a silent orphan
 }
 
 // The human unit key a force-claim override is authorized against — the same
@@ -165,7 +175,11 @@ async function hasForceAuthorization(workspaceDir: string, journey: string, unit
 }
 
 export type ClaimResult =
-  | { ok: true; claimed: true; reconciled: boolean; forced?: boolean; previous?: Lock }
+  // `previous` is the primary reconciled lock (last one removed) kept for
+  // backward compatibility; `reconciledLocks` is EVERY lock this claim tore down,
+  // so the CLI can announce each removal loudly (j-20260829-5q: silence on a
+  // reconciliation is exactly how a live lock got stomped unnoticed).
+  | { ok: true; claimed: true; reconciled: boolean; forced?: boolean; previous?: Lock; reconciledLocks?: Lock[] }
   | { ok: false; reason: "collision"; holder: Lock; overlaps?: [string, string][] }
   | { ok: false; reason: "unauthorized-force"; holder: Lock; unit: string; overlaps?: [string, string][] };
 
@@ -233,7 +247,12 @@ async function claimLegacy(workspaceDir: string, input: ClaimInput): Promise<Cla
       try {
         await link(tmp, path);
         await unlink(tmp);
-        return { ok: true, claimed: true, reconciled: removed !== undefined, ...(removed ? { previous: removed } : {}) };
+        return {
+          ok: true,
+          claimed: true,
+          reconciled: removed !== undefined,
+          ...(removed ? { previous: removed, reconciledLocks: [removed] } : {}),
+        };
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
       }
@@ -253,7 +272,13 @@ async function claimLegacy(workspaceDir: string, input: ClaimInput): Promise<Cla
         }
         // authorized --force: overwrite atomically via rename.
         await rename(tmp, path);
-        return { ok: true, claimed: true, reconciled: true, forced: true, ...(incumbent ? { previous: incumbent } : {}) };
+        return {
+          ok: true,
+          claimed: true,
+          reconciled: true,
+          forced: true,
+          ...(incumbent ? { previous: incumbent, reconciledLocks: [incumbent] } : {}),
+        };
       }
       // stale / orphan → remove and retry the atomic create so a rival that
       // recreates an ACTIVE lock in the gap makes us loop back to the check.
@@ -263,7 +288,12 @@ async function claimLegacy(workspaceDir: string, input: ClaimInput): Promise<Cla
     // Exhausted retries under contention: last-resort atomic overwrite.
     const incumbent = (await readLock(path)) ?? removed;
     await rename(tmp, path);
-    return { ok: true, claimed: true, reconciled: true, ...(incumbent ? { previous: incumbent } : {}) };
+    return {
+      ok: true,
+      claimed: true,
+      reconciled: true,
+      ...(incumbent ? { previous: incumbent, reconciledLocks: [incumbent] } : {}),
+    };
   } finally {
     await rm(tmp, { force: true }).catch(() => {});
   }
@@ -419,6 +449,7 @@ async function claimPathAware(workspaceDir: string, input: ClaimInput): Promise<
     const all = await readAllLocks(dir);
     let reconciled = false;
     let previous: Lock | undefined;
+    const reconciledLocks: Lock[] = []; // every writer torn down, for a loud report
     const overlapping: Lock[] = [];
 
     for (const { file, lock: other } of all) {
@@ -429,6 +460,7 @@ async function claimPathAware(workspaceDir: string, input: ClaimInput): Promise<
         await unlink(join(dir, file)).catch(() => {}); // stale writer in the unit → reconcile away
         reconciled = true;
         previous = other;
+        reconciledLocks.push(other);
         continue;
       }
       if (pathSetsOverlap(declared, other.paths ?? [])) overlapping.push(other);
@@ -447,6 +479,7 @@ async function claimPathAware(workspaceDir: string, input: ClaimInput): Promise<
       // authorized force: remove every overlapping active writer, then take over.
       for (const o of overlapping) {
         await unlink(lockPath(workspaceDir, o.repo, o.package, o.task)).catch(() => {});
+        reconciledLocks.push(o);
       }
       previous = holder;
       reconciled = true;
@@ -463,6 +496,7 @@ async function claimPathAware(workspaceDir: string, input: ClaimInput): Promise<
       }
       previous = previous ?? mineExisting;
       reconciled = true;
+      reconciledLocks.push(mineExisting);
     }
     await unlink(myPath).catch(() => {});
     await writeFile(myPath, content, "utf8");
@@ -472,6 +506,7 @@ async function claimPathAware(workspaceDir: string, input: ClaimInput): Promise<
       reconciled,
       ...(overlapping.length > 0 && input.force ? { forced: true } : {}),
       ...(previous ? { previous } : {}),
+      ...(reconciledLocks.length ? { reconciledLocks } : {}),
     };
   } finally {
     await release();

@@ -9,7 +9,7 @@ import { readGraph } from "../relationship/read-graph";
 import { readLedger } from "../journey/ledger";
 import { packageFqid } from "../context-brain/packages";
 import { checkDependenciesLanded, validateBatch } from "./law";
-import { claimLock, claimUnit, reconcileLockPaths, releaseLock } from "./lock";
+import { claimLock, claimUnit, reconcileLockPaths, releaseLock, type Lock } from "./lock";
 import { detectTouchedPaths } from "./detect";
 import { planOverlapResolution } from "./resolution";
 import { roleWritesToRepo } from "./roles";
@@ -175,6 +175,25 @@ async function validateCommand(args: string[]): Promise<number> {
 // acquire the per-repo lock so N parallel coordinator sessions can't provision
 // worktrees for one repo at once. A collision (an ACTIVE lock held by another
 // session) WARNS and exits non-zero — it never hard-blocks; --force overrides.
+
+// Reconciliation must never be silent (j-20260829-5q): removing another claim's
+// lock used to pass as a routine one-liner, and that is exactly how a LIVE lock
+// got stomped unnoticed (twice in one day). Every torn-down lock is named on its
+// own WARN line, with what to do if its owner was in fact still working.
+function announceReconciled(locks?: Lock[]): void {
+  if (!locks || locks.length === 0) return;
+  for (const l of locks) {
+    const paths = l.paths && l.paths.length ? l.paths.join(",") : "the whole unit";
+    const who = `${l.journey}/${l.specialist}${l.task ? ` task=${l.task}` : ""} (pid ${l.pid})`;
+    console.log(`WARN reconciled — removed the lock of ${who} over ${paths}, held since ${l.timestamp}.`);
+  }
+  console.log(
+    "WARN if any of those tasks is still live, its work is now UNPROTECTED — have it re-run its claim, " +
+      "or resolve with `aipe dispatch resolve-overlap`. A lock is only reconciled when its owner is not " +
+      "provably alive; an unverifiable owner (pid 0) is kept, not removed.",
+  );
+}
+
 async function claimCommand(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const repo = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
@@ -210,9 +229,15 @@ async function claimCommand(args: string[]): Promise<number> {
   if (task && !writes && declaredPaths.length > 0) {
     console.log(`NOTE --path is ignored for non-writing role "${role ?? "unknown"}" (a reviewer touches no files); claiming the task-split lock.`);
   }
-  // The coordinator's long-lived session pid, for crash-based reconciliation.
-  // Absent ⇒ 0 (the ephemeral CLI pid is meaningless): the lock's liveness is
-  // then governed purely by the ledger's "dispatched" status.
+  // The holder's long-lived session pid, for crash-based reconciliation. Passing
+  // a REAL --pid is what earns automatic crash recovery: a tracked pid that later
+  // dies is a provable orphan, safely reconciled. Absent ⇒ 0 (the ephemeral CLI
+  // pid would die the instant this command returns, so it is worse than nothing).
+  // A pid-0 lock is now treated as ALIVE, not a silent orphan (j-20260829-5q):
+  // the coordinator has no reachable session pid at the write point, and the old
+  // "0 ⇒ reconcilable" reading let a real claim stomp a live lock. The tradeoff is
+  // deliberate — a pid-0 holder that truly crashed is recovered by `dispatch
+  // release` or an authorized `--force`, not a silent takeover.
   const pidFlag = getFlag(args, "--pid");
   const pid = pidFlag && Number.isInteger(Number(pidFlag)) ? Number(pidFlag) : 0;
   const result = await claimLock(workspace, {
@@ -235,8 +260,10 @@ async function claimCommand(args: string[]): Promise<number> {
     const prevStr = prev ? `${prev.journey}/${prev.specialist}(pid ${prev.pid})` : "none";
     if (result.forced) {
       console.log(`FORCED ${unit}${taskSuffix} journey=${journey} over prev=${prevStr} (authorized override)`);
+      announceReconciled(result.reconciledLocks);
     } else if (result.reconciled) {
       console.log(`RECONCILED ${unit}${taskSuffix} journey=${journey} prev=${prevStr}`);
+      announceReconciled(result.reconciledLocks);
     } else {
       console.log(`CLAIMED ${unit}${taskSuffix} journey=${journey} specialist=${specialist}`);
     }
