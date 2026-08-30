@@ -73,18 +73,43 @@ export function parseOrientationUnits(md: string): string[] {
   return units;
 }
 
+// An unsubstituted template slot: angle-bracketed guidance text left intact from
+// renderOrientationTemplate (`<why this matters …>`, `<unit>`, `<what this unit
+// must do …>`). A real, filled spec has none — the PE replaces every one before
+// approval. A URL autolink (`<https://…>`, `<mailto:…>`) is NOT a slot, so those
+// shapes are excluded and a spec may legitimately cite a link. Matches are single
+// runs on one line (no nesting, no newline) so a stray `<` can't swallow a page.
+const PLACEHOLDER_RE = /<(?!https?:\/\/|mailto:)[^<>\n]+>/g;
+
+// The distinct unsubstituted placeholders still present in the body — order-
+// preserving, de-duplicated. An empty array means every slot was filled.
+export function findPlaceholders(md: string): string[] {
+  const seen = new Set<string>();
+  for (const m of md.matchAll(PLACEHOLDER_RE)) seen.add(m[0]);
+  return [...seen];
+}
+
 export interface OrientationCheck {
   ok: boolean;
   missingSections: string[];
   missingUnits: string[];
+  placeholders: string[];
 }
 
-// Validates that every canonical section heading is present and that every unit
-// in the batch has a `### <unit>` scope subsection.
+// Validates that every canonical section heading is present, that every unit
+// in the batch has a `### <unit>` scope subsection, AND that no unsubstituted
+// `<...>` placeholder survives — a template with its slots intact is not a
+// filled spec, so a structurally-complete-but-unedited scaffold is NOT ok.
 export function validateOrientation(md: string, units: string[]): OrientationCheck {
   const missingSections = SPEC_SECTIONS.filter((s) => !new RegExp(`^##\\s+${escapeRe(s)}\\s*$`, "m").test(md));
   const missingUnits = units.filter((u) => !new RegExp(`^###\\s+${escapeRe(u)}\\s*$`, "m").test(md));
-  return { ok: missingSections.length === 0 && missingUnits.length === 0, missingSections, missingUnits };
+  const placeholders = findPlaceholders(md);
+  return {
+    ok: missingSections.length === 0 && missingUnits.length === 0 && placeholders.length === 0,
+    missingSections,
+    missingUnits,
+    placeholders,
+  };
 }
 
 function escapeRe(s: string): string {

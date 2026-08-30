@@ -12,7 +12,7 @@ import { normalizeRepo, normalizeSpecialist } from "./normalize";
 import { dedupeAll } from "./dedupe-run";
 import { readPersonas } from "../hire-specialists/read-personas";
 import { closeUnitSessions, SESSION_CLOSING_STATUSES } from "./session-close";
-import { renderOrientationTemplate, validateOrientation } from "./spec";
+import { parseOrientationUnits, renderOrientationTemplate, validateOrientation } from "./spec";
 import { classifyRecordTarget, findPhantomLedgers } from "./record-target";
 import { isValidTaskId } from "../worktree/naming";
 import { DISPATCH_STATUSES } from "./types";
@@ -292,6 +292,24 @@ async function showCommand(args: string[], deps: JourneyDeps = {}): Promise<numb
 // The coordinator's Orientation Spec: a durable, PE-approved cross-package spec
 // written before any dispatch (the gate). Scaffold → PE edits → --check → PE
 // --approve; --amend bumps the version (re-approval) after an escalation.
+//
+// Who consults spec approval, and whether they trust the ledger record alone or
+// look at the real artifact (the enumeration this gate is built around):
+//   • `journey spec --approve` (here) — the WRITER of `approved:true`. It now
+//     ESTABLISHES the artifact first: reads the file, refuses an absent/empty
+//     one, and runs validateOrientation (sections + no `<...>` placeholders).
+//   • `journey spec --show` (here) — now cross-checks the file; it will not
+//     parrot `approved=true` over a file that has since gone missing.
+//   • `journey spec --check` (here) — always read the FILE; also rejects a raw
+//     template now that validateOrientation flags placeholders.
+//   • `session dispatch` (session/cli.ts) — reads the orientation.md FILE
+//     (refuses missing/empty) before writing any prompt. Already correct: it
+//     never trusts the ledger record without the artifact.
+//   • `execution propose` (execution/cli.ts) — reads the spec FILE to price its
+//     units; pre-approval by design, so it must NOT require `approved`. Correct.
+//   • `serve` floor.ts + `status` assemble.ts — DISPLAY `spec.approved` to derive
+//     a console phase / status line. Presentation only (a UI cannot read the
+//     workspace file), never a gate that lets work proceed. Correct as-is.
 async function specCommand(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
   const id = getFlag(args, "--journey");
@@ -308,6 +326,33 @@ async function specCommand(args: string[]): Promise<number> {
     const ledger = await readLedger(workspace, id);
     if (!ledger?.spec) {
       console.log("ERROR spec: no orientation spec to approve — scaffold it first");
+      return 1;
+    }
+    // The gate must ESTABLISH that a real, filled spec exists before it records
+    // approval — never approve on the strength of the ledger record alone. The
+    // spec path is the ledger's own recorded path (never the default), so a
+    // record pointing at a since-deleted file is caught here, not trusted.
+    const specAbs = join(workspace, ledger.spec.path);
+    let md: string;
+    try {
+      md = await readFile(specAbs, "utf8");
+    } catch {
+      console.log(`REJECT missing-file ${ledger.spec.path} — the ledger records a spec but its file is absent; nothing to approve`);
+      return 1;
+    }
+    if (md.trim() === "") {
+      console.log(`REJECT empty-file ${ledger.spec.path} — the spec file is blank; fill it before approving`);
+      return 1;
+    }
+    // Validate against the units the spec itself declares (its `### <unit>`
+    // headings) so approval checks the real artifact's completeness — every
+    // canonical section present, and no unsubstituted `<...>` placeholder left.
+    const check = validateOrientation(md, parseOrientationUnits(md));
+    if (!check.ok) {
+      for (const s of check.missingSections) console.log(`REJECT missing-section ${s}`);
+      for (const u of check.missingUnits) console.log(`REJECT missing-unit ${u}`);
+      for (const p of check.placeholders) console.log(`REJECT placeholder ${p}`);
+      console.log(`REJECT not-approvable ${ledger.spec.path} — fill the spec (replace every <...> placeholder) before approving`);
       return 1;
     }
     await setJourneySpec(workspace, id, { ...ledger.spec, approved: true });
@@ -330,6 +375,7 @@ async function specCommand(args: string[]): Promise<number> {
     }
     for (const s of check.missingSections) console.log(`REJECT missing-section ${s}`);
     for (const u of check.missingUnits) console.log(`REJECT missing-unit ${u}`);
+    for (const p of check.placeholders) console.log(`REJECT placeholder ${p}`);
     return 1;
   }
 
@@ -339,7 +385,25 @@ async function specCommand(args: string[]): Promise<number> {
       console.log(`STATE spec=none journey=${id}`);
       return 0;
     }
-    console.log(`SPEC ${ledger.spec.path} v${ledger.spec.version} approved=${ledger.spec.approved}`);
+    // A record that claims approval must be backed by a file that still exists.
+    // Reporting `approved=true` over a since-deleted spec would hand the
+    // coordinator a green light for an artifact that is gone — that is
+    // inconsistent state, and `show` must say so rather than parrot the record.
+    let fileExists = true;
+    try {
+      await access(join(workspace, ledger.spec.path));
+    } catch {
+      fileExists = false;
+    }
+    if (ledger.spec.approved && !fileExists) {
+      console.log(
+        `INCONSISTENT ${ledger.spec.path} v${ledger.spec.version} — the record claims approval but the spec file is MISSING; re-scaffold and re-approve before dispatching`,
+      );
+      return 1;
+    }
+    console.log(
+      `SPEC ${ledger.spec.path} v${ledger.spec.version} approved=${ledger.spec.approved}${fileExists ? "" : " (file missing)"}`,
+    );
     return 0;
   }
 

@@ -133,3 +133,33 @@ test("a codex-harness unit is refused before anything is written or started, and
   // startBatch.
   await expect(readFile(join(worktree, ".claude", "settings.json"), "utf8")).rejects.toThrow();
 });
+
+// Part 2 (sibling caller) — the session dispatch path resolves each unit's own
+// harness via getAdapter, which falls back to claude-code for an UNKNOWN id. A
+// present-but-unregistered harness ("factory-droid" — real name, no adapter)
+// must be refused before anything is written or started, exactly like a codex
+// unit is: otherwise it would silently start as claude-code, defeating the very
+// "approved for one harness must not start on another" invariant. (Reverting the
+// hasAdapter guard makes this dispatch as claude-code → this test fails.)
+test("an unknown-harness unit is refused before anything is written or started, and no session runs", async () => {
+  const dir = await fixture();
+  const worktree = join(dir, ".worktrees", "j1-joaquim");
+  await mkdir(worktree, { recursive: true });
+  await recordDispatch(dir, "j1", {
+    repo: "embark", specialist: "Joaquim", branch: "aipe/j1/joaquim",
+    worktree, status: "dispatched", mode: "session", intensity: "normal", harness: "factory-droid",
+  });
+
+  const mustNotStartASession: AgentopRunner = async (args) => {
+    if (args[0] === "--version") return { code: 0, stdout: "agentop v1.9.0", stderr: "" };
+    throw new Error(`dispatchCommand must not have invoked agentop with: ${args.join(" ")}`);
+  };
+
+  const r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: mustNotStartASession });
+  expect(r.code).toBe(1);
+  expect(r.lines).toEqual([
+    'ERROR harness: embark uses "factory-droid", which has no adapter registered — not session-dispatchable',
+  ]);
+
+  expect((await readLedger(dir, "j1"))!.dispatches[0]!.sessionId).toBeUndefined();
+});
