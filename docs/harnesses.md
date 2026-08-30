@@ -75,20 +75,46 @@ installed and do nothing, which is worse than not installing it.
 
 A specialist dispatched under session mode runs as its own detached `agentop`
 session. AIPe **never starts a session it cannot govern**, so a harness whose
-adapter returns `containmentHook(): null` is rejected from session mode by
-`aipe dispatch validate`. This is the eligibility rule working as designed, not
-a gap to patch quietly.
+adapter returns `containmentHook(): null` is not session-eligible. This is the
+eligibility rule working as designed, not a gap to patch quietly.
 
-- **Codex** — project hooks only load after a human interactively trusts them
-  via `/hooks` (trust is per-hook-hash, with no config-file way to self-declare
-  it). AIPe's dispatch is fully non-interactive, so the containment hook would
-  be on disk and inert.
-- **Copilot** — the same shape of problem, via default-on directory trust.
+There is a **second, independent** path to ineligibility: a harness `agentop` has
+no name for (`agentopHarness: null`) cannot be addressed as a session at all. The
+`generic` adapter hits both at once — it is uncontainable *and* has no agentop
+identity — which is why its row is `❌` for two reasons, not one.
+
+**Codex and Copilot are refused for genuinely different reasons, and the
+difference is the point** — a single "not containable" label would hide it:
+
+- **Codex — the hook is written but never *trusted*.** The adapter really does
+  write a well-formed hook to `.codex/hooks.json`; it is inert anyway. Codex only
+  loads a project's non-managed hook after a human interactively **trusts** it via
+  `/hooks` (trust is per-hook-hash, with no config-file way to self-declare it).
+  Non-interactive dispatch can never clear that gate, so `containmentHook()`
+  returns `null` on purpose: a hook on disk that blocks nothing is *silently
+  wrong*, which is worse than plainly ineligible.
+- **Copilot — the *worktree* is never trusted.** A different mechanism, same
+  verdict. Copilot's CLI asks the user to confirm trust for any directory it has
+  not seen before, **default-on** — and a dispatched worktree is, by construction,
+  new, so it always hits that prompt. (Contrast Gemini, which *is* containable:
+  its folder trust is **disabled by default**, so a fresh worktree is unaffected.
+  Had Gemini's trust been default-on, its answer would flip to Copilot's — the
+  rule keys on the mechanism, not the vendor.)
 
 Both write their containment hook anyway, so the moment either CLI ships a
-non-interactive trust path the adapter is a small change. The reasoning is kept
-in full at the top of `containmentHook` in
-[`src/harness/codex.ts`](../src/harness/codex.ts).
+non-interactive trust path the adapter is a small change. The full reasoning lives
+at the top of `containmentHook` in
+[`src/harness/codex.ts`](../src/harness/codex.ts) and in the header of
+[`src/harness/copilot.ts`](../src/harness/copilot.ts).
+
+**The eligibility law is enforced twice, on purpose.** `aipe dispatch validate` is
+advisory, and `--harness` on a `journey record` is unvalidated — so a ledger unit
+can *name* a non-containable harness. The **binding** refusal is therefore re-run
+on the path that actually opens a session (`dispatchCommand`,
+[`src/session/cli.ts`](../src/session/cli.ts)): a codex or copilot unit is refused
+with a non-zero exit *before any hook is written or any session runs*. The
+advisory check is not the one that starts processes, so it is not the one trusted
+to stop them.
 
 Note that this is a *unit* question, not a *workspace* question: a
 `claude-code` workspace can still dispatch a unit to `gemini`, because that only
