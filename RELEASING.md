@@ -135,6 +135,40 @@ feature sliced across patch bumps. `agentistics` set the precedent: the
 coordinator held one commit's promotion until two more specialists' work
 landed alongside it, shipping one release instead of three.
 
+### The command: `aipe release promote`
+
+Promotion is a command now, not hand-craft — and, more importantly, so is
+**knowing it actually published**. The failure this exists to end is the one
+that left the Kanban and the Report stuck on `dev` while the PE watched a
+1.12.1 console and concluded they were never built: a promotion that *looked*
+done because a workflow exited 0, when nothing had actually shipped.
+
+```sh
+aipe release promote                 # READ-ONLY: what would promote, and is it already published?
+aipe release promote --execute       # open+merge the dev→main PR, then VERIFY publication
+aipe release promote --json          # machine-readable
+```
+
+- **Read-only by default.** With no `--execute` it writes nothing: it reads the
+  version the bump job stamped on `dev`, asks the **published registry** (the
+  `v*` tag on the remote **and** a live, non-draft GitHub Release) whether that
+  version is out, and reports. Promotion itself stays the coordinator's
+  authority — a specialist runs the read-only form to see where things stand.
+- **Its success is drawn from the registry, never from an exit code.** Under
+  `--execute` it opens and merges the promotion PR (branch protection stays in
+  force — `gh pr merge` refuses an un-green branch), then **polls the registry
+  until the tag and live release exist**, up to `--timeout` (default 600s). It
+  returns success **only** when the registry confirms; if the deadline passes
+  without confirmation it says so plainly and **fails** (`STATE=unestablished`,
+  non-zero). A merged PR is not a publication.
+- **A fact it cannot read is never assumed.** If the registry can't be reached
+  (gh unauthenticated, a network failure), the verdict is `unverifiable`, not
+  `published` — the command declines to claim what it could not establish.
+- **It refuses to promote on a drifting lockfile.** Before acting it runs `bun
+  install --frozen-lockfile` — the exact CI enforcement — so lock drift the
+  release would otherwise introduce is caught here, named, and blocked, instead
+  of exploding as a red `check` on the next unrelated PR.
+
 ## Branch protection on `main` — active, and path 4 works *with* it
 
 `main` **is** protected by an active repository ruleset, **"Require PR + green CI

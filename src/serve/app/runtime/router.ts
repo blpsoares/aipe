@@ -93,6 +93,27 @@ export const currentPath: Signal<string> = signal(resolveInitialPath());
 // status guide at its own card). Consumed and cleared by the target view.
 export const focusAnchor: Signal<string | null> = signal(null);
 
+// Monotonic remount epoch for main.tsx's <LocationProvider key={...}>. Exists
+// because currentPath.value alone is NOT sufficient as a key (#84): preact-iso's
+// LocationProvider (router.js) installs its own global `popstate` listener that
+// recomputes ITS OWN internal route from `location.pathname + search` — always
+// "/", since the server only ever answers GET /. The hashchange guard above
+// already rewrites a legacy/non-canonical hash (the '#/activity' → '/board'
+// case), but that fix only touches OUR currentPath/hash; it does nothing about
+// preact-iso's own internal reducer, which a raw hash anchor pointing at the
+// route we're already on can still corrupt via popstate (fired twice, one per
+// hash write, per the QA repro) even when the hash never actually changes
+// value (so hashchange never fires at all). Since the target equals the
+// current route in that case, currentPath.value never changes either — so a
+// key derived only from currentPath.value never remounts, and the corrupted
+// "/" reducer state sticks, stranding the view on the Floor/Agora while
+// currentPath.value/location.hash both stay correct. Bumping this on every
+// popstate, independent of whether the resolved path changed, forces main.tsx
+// to throw the corrupted LocationProvider instance away for a fresh one seeded
+// from our own (always-correct) currentPath — regardless of listener
+// registration order, since the old instance is discarded wholesale.
+export const navEpoch: Signal<number> = signal(0);
+
 export function navigate(path: string): void {
   const p = canonicalPath(path) ?? "/"; // Agora is the landing route (redirects applied)
   currentPath.value = p;
@@ -137,5 +158,12 @@ if (typeof window !== "undefined") {
     const raw = location.hash || "";
     const p = hashTarget(raw);
     if (p && (p !== currentPath.value || raw !== canonicalHash(p))) navigate(p);
+  });
+
+  // See navEpoch above — this is the #84 fix. Deliberately unconditional: we
+  // can't tell from here whether THIS popstate is one that corrupted
+  // preact-iso's internal route, so we force the remount on every one.
+  window.addEventListener("popstate", () => {
+    navEpoch.value++;
   });
 }
