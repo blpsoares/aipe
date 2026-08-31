@@ -24,6 +24,19 @@ export function deriveReleaseState(repo: string, f: RepoReleaseFacts): RepoRelea
     unpromotedOnDev: f.unpromotedOnDev,
   };
 
+  // A reachable tag with commits beyond it, but no established publish method:
+  // from git alone an unpublished tag-release backlog and a push-published repo
+  // look identical, so we refuse to guess either way (#74 — the openvibes-embark
+  // false REPRESADO). Say what we see and how to resolve it, rather than assert.
+  if (f.mainBaselineUnverified) {
+    const { tag, ahead } = f.mainBaselineUnverified;
+    return {
+      ...base,
+      state: "unknown",
+      reason: `${ahead} commit(s) on ${f.releaseBranch} beyond ${tag}, but this repo's publish method is not established — a tag-release backlog and a push-deploy repo are indistinguishable here; register publish.releaseVia (tag|push) to resolve it`,
+    };
+  }
+
   const mainNull = f.unreleasedOnMain === null;
   // The integration count only matters (and only exists) for the dev-then-main
   // flow; for main-direct there is no promotion step to be undeterminable about.

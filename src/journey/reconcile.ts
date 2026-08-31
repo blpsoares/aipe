@@ -4,6 +4,7 @@
 // the CLI wires in the real `gh` via ghPrState.
 import { listJourneys, readLedger, writeLedger } from "./ledger";
 import { dedupeLedger } from "./dedupe";
+import { parsePrUrl } from "../forge/slug";
 import { readPersonas } from "../hire-specialists/read-personas";
 import type { PersonaRegistryEntry } from "../hire-specialists/types";
 
@@ -86,12 +87,25 @@ export async function reconcileAll(
   return out;
 }
 
+// The gh args for `pr view` (without the leading "gh"), BY NUMBER with an
+// explicit `--repo`, never handing gh the URL and trusting its cwd resolution.
+// #76: run inside `openvibes-embark/`, gh inferred the wrong slug and returned
+// "Could not resolve to a Repository". This is the sibling of checks.ts's
+// `buildGhChecksArgs` — the same shared-shape fix, applied to the whole family.
+// A non-github input (a test fixture, a bare ref) passes straight through.
+export function buildGhPrViewArgs(prUrl: string): string[] {
+  const ref = parsePrUrl(prUrl);
+  return ref
+    ? ["pr", "view", ref.number, "--repo", `${ref.owner}/${ref.repo}`, "--json", "state"]
+    : ["pr", "view", prUrl, "--json", "state"];
+}
+
 // Real PR-state fetcher over the gh CLI. Returns null when gh fails (not
 // installed, unauthenticated, unknown PR) so reconcile treats it as "unknown"
 // and leaves the dispatch untouched rather than guessing.
 export const ghPrState: PrStateFetcher = async (prUrl: string): Promise<PrState> => {
   try {
-    const proc = Bun.spawn(["gh", "pr", "view", prUrl, "--json", "state"], {
+    const proc = Bun.spawn(["gh", ...buildGhPrViewArgs(prUrl)], {
       stdout: "pipe",
       stderr: "pipe",
     });

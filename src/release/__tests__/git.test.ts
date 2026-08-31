@@ -70,15 +70,70 @@ describe("realReleaseResolver (real git)", () => {
     expect(s.reason).toContain("2 commit(s) merged into dev not yet in main");
   });
 
-  test("main ahead of the last release tag → merged-unpublished (unreleased)", async () => {
+  test("main ahead of the last release tag, publish established as tag → merged-unpublished (unreleased)", async () => {
     const dir = await initRepo();
     await commit(dir);
     await run(["git", "-C", dir, "tag", "v1.0.0"]);
     await commit(dir); // main now 1 commit beyond the tag
-    const s = await realReleaseResolver(repo("aipe"), dir);
+    // The represado-by-tag claim is only made once the repo's method is ESTABLISHED
+    // as tag-release (the PE's registration) — otherwise a push-published repo and
+    // a tag-release backlog are indistinguishable here (see the #74 case below).
+    const s = await realReleaseResolver(repo("aipe", { releaseVia: "tag" }), dir);
     expect(s.state).toBe("merged-unpublished");
     expect(s.unreleasedOnMain).toBe(1);
     expect(s.reason).toContain("1 commit(s) on main beyond v1.0.0");
+  });
+
+  test("the baseline is the highest tag REACHABLE from main — an unreachable (upstream) tag is ignored (#75)", async () => {
+    // openvibes-embark's real shape: v1.5.0/v1.5.1 exist in the object DB (fetched
+    // from the `upstream` remote) but are NOT reachable from this repo's main; the
+    // highest tag on main's own lineage is v1.4.0. The baseline must be v1.0.0
+    // here (reachable), never a tag that only lives in the object pool.
+    const dir = await initRepo();
+    await commit(dir); // c1 on main
+    await run(["git", "-C", dir, "tag", "v1.0.0"]); // reachable
+    await commit(dir); // c2 on main — 1 beyond v1.0.0
+    // A divergent branch carrying a HIGHER tag that never merges into main.
+    await run(["git", "-C", dir, "checkout", "-q", "-b", "upstream-ish"]);
+    await commit(dir, "upstream-ish");
+    await run(["git", "-C", dir, "tag", "v2.0.0"]); // NOT reachable from main
+    await run(["git", "-C", dir, "checkout", "-q", "main"]);
+
+    const s = await realReleaseResolver(repo("aipe", { releaseVia: "tag" }), dir);
+    expect(s.latestReleaseTag).toBe("v1.0.0"); // the reachable one, not v2.0.0
+    expect(s.unreleasedOnMain).toBe(1); // v1.0.0..main, not v2.0.0..main (=2)
+    expect(s.reason).toContain("beyond v1.0.0");
+  });
+
+  test("reachable tag with commits beyond it but NO established publish method → unknown, not a false REPRESADO (#74)", async () => {
+    // The openvibes-embark false alarm: an old reachable tag (v1.4.0) sits far
+    // behind main because the repo publishes by PUSH-deploy, not by cutting tags.
+    // Absent an established method, a tag-release backlog and a push-published repo
+    // look identical from git — so the honest verdict is "unknown", never REPRESADO.
+    const dir = await initRepo();
+    await commit(dir);
+    await run(["git", "-C", dir, "tag", "v1.0.0"]);
+    await commit(dir);
+    await commit(dir);
+    await commit(dir); // main 3 beyond the tag, publish method NOT registered
+    const s = await realReleaseResolver(repo("openvibes-embark"), dir);
+    expect(s.state).toBe("unknown");
+    expect(s.state).not.toBe("merged-unpublished");
+    expect(s.reason).toContain("publish method");
+    expect(s.reason.toLowerCase()).toContain("releasevia");
+  });
+
+  test("publish established as push-deploy → published at main head even with an old tag behind (#74)", async () => {
+    // Once the PE establishes the repo publishes by push, an ancient tag left on
+    // the lineage is not a backlog: the head IS the published state.
+    const dir = await initRepo();
+    await commit(dir);
+    await run(["git", "-C", dir, "tag", "v1.0.0"]);
+    await commit(dir);
+    await commit(dir); // 2 beyond the tag
+    const s = await realReleaseResolver(repo("openvibes-embark", { releaseVia: "push" }), dir);
+    expect(s.state).toBe("published");
+    expect(s.unreleasedOnMain).toBe(0);
   });
 
   test("main-direct repo (no dev, no tags) → published at main head (the embark flow)", async () => {

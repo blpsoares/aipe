@@ -44,6 +44,53 @@ test("findPlaceholders reports the intact slots but ignores URL autolinks", () =
   expect(findPlaceholders(md)).toEqual(["<why this matters>"]);
 });
 
+test("findPlaceholders ignores chevrons inside a fenced code block — quoting real command output is not an unfilled slot (#82)", () => {
+  // The real case: a spec cites a command whose own syntax carries chevrons
+  // (`--pr <url>`, `<command you ran>`). Inside a code fence that is EVIDENCE the
+  // PE deliberately pasted, not a template slot to substitute. Flagging it forced
+  // people to mutilate the evidence to get the spec approved.
+  const md = [
+    "## Problem",
+    "Record delivery evidence exactly like this:",
+    "```bash",
+    'aipe journey record --pr <url> --evidence-cmd "<command you ran>"',
+    "```",
+    "Everything above is intentional.",
+    "",
+  ].join("\n");
+  expect(findPlaceholders(md)).toEqual([]);
+});
+
+test("findPlaceholders ignores chevrons in inline code but still flags a real prose slot (#82)", () => {
+  const md = "Pass `--branch <you>` to the runner.\nBut <fill this in> is a genuine slot.\n";
+  expect(findPlaceholders(md)).toEqual(["<fill this in>"]);
+});
+
+test("a filled spec that quotes chevron-bearing commands in a code block still passes validateOrientation (#82)", () => {
+  const md = [
+    "# Orientation Spec — j1",
+    "## Problem",
+    "Ship the gate. Evidence is recorded with:",
+    "```bash",
+    'aipe journey record --journey <id> --pr <url>',
+    "```",
+    "## Cross-package contracts",
+    "aipe consumes agentop.",
+    "## Per-package scope",
+    "### aipe",
+    "- **Scope:** close the spec gate",
+    "- **Acceptance:** green tests",
+    "## Sequencing",
+    "- **Wave 1:** aipe",
+    "## Out of scope",
+    "- the site",
+    "",
+  ].join("\n");
+  const check = validateOrientation(md, ["aipe"]);
+  expect(check.placeholders).toEqual([]);
+  expect(check.ok).toBe(true);
+});
+
 test("validateOrientation flags missing sections and units", () => {
   const md = "# Orientation\n\n## Problem\nx\n\n### web\n- Scope\n";
   const check = validateOrientation(md, ["web", "api"]);

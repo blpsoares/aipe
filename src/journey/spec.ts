@@ -95,11 +95,44 @@ export function parseOrientationUnits(md: string): string[] {
 // runs on one line (no nesting, no newline) so a stray `<` can't swallow a page.
 const PLACEHOLDER_RE = /<(?!https?:\/\/|mailto:)[^<>\n]+>/g;
 
+// Markdown code — fenced blocks (``` / ~~~) and inline spans (`…`) — is QUOTED
+// material, not template slots. A spec that cites a command's real output or an
+// example invocation legitimately carries chevron-shaped text inside code
+// (`--pr <url>`, `<command you ran>`, an `<html>` tag in a doc about rendering
+// HTML). Flagging those forced people to mutilate the evidence to get a spec
+// approved (#82). Stripping code before scanning keeps the check honest: it
+// flags only unfilled slots in the prose the PE is meant to substitute. Prose
+// chevrons outside code are still slots — the only reliable place to quote
+// literal `<…>` is inside code, which is where markdown puts it anyway.
+function stripCode(md: string): string {
+  const out: string[] = [];
+  let fence: string | null = null; // the ``` / ~~~ run that opened the current block
+  for (const line of md.split("\n")) {
+    const m = line.match(/^\s*(```+|~~~+)/);
+    if (fence) {
+      // Inside a fenced block: drop the line; close on a fence of the same kind,
+      // at least as long as the opener (CommonMark's closing rule).
+      if (m && m[1]![0] === fence[0] && m[1]!.length >= fence.length) fence = null;
+      continue;
+    }
+    if (m) {
+      fence = m[1]!; // opening fence line is code too — drop it
+      continue;
+    }
+    // Outside a fence: strip inline code spans on this line. A run of N
+    // backticks opens and the next run closes; the rough `+…`+ match is enough
+    // to erase quoted `<…>` without touching prose.
+    out.push(line.replace(/`+[^`]*`+/g, ""));
+  }
+  return out.join("\n");
+}
+
 // The distinct unsubstituted placeholders still present in the body — order-
-// preserving, de-duplicated. An empty array means every slot was filled.
+// preserving, de-duplicated. An empty array means every slot was filled. Code
+// (fenced or inline) is quoted evidence, not slots, so it is stripped first.
 export function findPlaceholders(md: string): string[] {
   const seen = new Set<string>();
-  for (const m of md.matchAll(PLACEHOLDER_RE)) seen.add(m[0]);
+  for (const m of stripCode(md).matchAll(PLACEHOLDER_RE)) seen.add(m[0]);
   return [...seen];
 }
 

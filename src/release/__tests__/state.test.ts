@@ -65,6 +65,18 @@ describe("deriveReleaseState", () => {
     expect(s.reason).toContain("could not be established");
   });
 
+  test("a reachable tag with a gap but an unestablished publish method → unknown, not represado (#74)", () => {
+    const s = deriveReleaseState(
+      "openvibes-embark",
+      facts({ flow: "main-direct", unpromotedOnDev: null, unreleasedOnMain: null, mainBaselineUnverified: { tag: "v1.4.0", ahead: 121 } }),
+    );
+    expect(s.state).toBe("unknown");
+    expect(s.state).not.toBe("merged-unpublished");
+    expect(s.reason).toContain("121 commit(s)");
+    expect(s.reason).toContain("v1.4.0");
+    expect(s.reason).toContain("publish method");
+  });
+
   test("dev-then-main, both counts unreadable → unknown", () => {
     const s = deriveReleaseState("aipe", facts({ unreleasedOnMain: null, unpromotedOnDev: null }));
     expect(s.state).toBe("unknown");
