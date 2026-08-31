@@ -7,6 +7,7 @@ import {
   statusExitCode,
   stopPlan,
   portHolder,
+  newestForWorkspace,
   NOT_RUNNING_CODE,
 } from "../lifecycle";
 import type { ServeEntry } from "../../runtime/serve-registry";
@@ -34,6 +35,7 @@ test("isHelpRequest catches --help and -h anywhere in the args", () => {
 test("serveSubcommand reads the leading positional only", () => {
   expect(serveSubcommand(["status"])).toBe("status");
   expect(serveSubcommand(["stop", "--workspace", "x"])).toBe("stop");
+  expect(serveSubcommand(["tailscale"])).toBe("tailscale");
   // a flag first ⇒ this is the plain `serve` (start) form, no subcommand
   expect(serveSubcommand(["--port", "4317"])).toBeUndefined();
   // an unknown positional is not a subcommand
@@ -70,6 +72,17 @@ test("stopPlan returns the pids to kill for this workspace, most-recent-first", 
   expect(stopPlan(entries, wsAbs)).toEqual([3, 1]);
   // idempotent: nothing for this workspace ⇒ empty plan, no throw
   expect(stopPlan([], wsAbs)).toEqual([]);
+});
+
+test("newestForWorkspace picks the most-recently-started console for this workspace, or null", () => {
+  const wsAbs = resolve("/home/u/ws");
+  const entries = [
+    entry({ pid: 1, workspace: "/home/u/ws", startedAt: 10 }),
+    entry({ pid: 2, workspace: "/home/u/other", startedAt: 999 }),
+    entry({ pid: 3, workspace: "/home/u/ws", startedAt: 30 }),
+  ];
+  expect(newestForWorkspace(entries, wsAbs)?.pid).toBe(3);
+  expect(newestForWorkspace([], wsAbs)).toBeNull();
 });
 
 test("portHolder names who holds a busy host:port, preferring an exact host match", () => {

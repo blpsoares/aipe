@@ -18,16 +18,16 @@ export function isHelpRequest(args: string[]): boolean {
   return args.some((a) => HELP_FLAGS.has(a));
 }
 
-const SUBCOMMANDS = new Set(["status", "stop"]);
+const SUBCOMMANDS = new Set(["status", "stop", "tailscale"]);
 
 /**
  * The lifecycle subcommand, if any. Only a LEADING positional counts
  * (`aipe serve status`), so the plain start form (`aipe serve --port 4317`)
  * and stray values are never mistaken for one.
  */
-export function serveSubcommand(args: string[]): "status" | "stop" | undefined {
+export function serveSubcommand(args: string[]): "status" | "stop" | "tailscale" | undefined {
   const head = args[0];
-  return head && SUBCOMMANDS.has(head) ? (head as "status" | "stop") : undefined;
+  return head && SUBCOMMANDS.has(head) ? (head as "status" | "stop" | "tailscale") : undefined;
 }
 
 /** The running consoles bound to this workspace (path-resolved on both sides). */
@@ -51,6 +51,13 @@ export function stopPlan(entries: ServeEntry[], workspaceAbs: string): number[] 
     .slice()
     .sort((a, b) => b.startedAt - a.startedAt)
     .map((e) => e.pid);
+}
+
+/** The most-recently-started console for this workspace, to point Tailscale Serve at — or null when none runs. */
+export function newestForWorkspace(entries: ServeEntry[], workspaceAbs: string): ServeEntry | null {
+  const matched = selectForWorkspace(entries, workspaceAbs);
+  if (matched.length === 0) return null;
+  return matched.slice().sort((a, b) => b.startedAt - a.startedAt)[0]!;
 }
 
 /**
