@@ -82,12 +82,14 @@ do.
 
 ## The diagrams
 
-The six specs under `diagrams/` are **specifications, not drawings**. The pipeline
-in `render/` reads each spec and generates two versions (English for the repo,
-Portuguese for publication) from that single source, so a correction is made in
-exactly one place. Its output lands in a git-ignored `out/` and is **never
-committed** — the render is derived, the spec is the source. Do not commit renders,
-and do not add Mermaid, ASCII, SVG, or images to the tree.
+The six specs under `diagrams/` are the **single source**. A versioned renderer
+(`render/`) reads each spec and generates the published figures from it, so a
+correction is made in exactly one place — the spec — and re-flows to every output.
+The generated figures are committed as **versioned assets**: a bilingual HTML
+(EN/PT toggle) per diagram in `diagrams/html/`, and a Portuguese PNG per diagram
+in `diagrams/png/`. Regenerate them from the specs with the renderer; never
+hand-edit an HTML or PNG, and do not hand-author a Mermaid/ASCII diagram in the
+prose — the specs are where a diagram is authored.
 
 Each `.yaml` has an `id`, a `type` (`graph | sequence | state-machine | matrix`),
 an `argument` (what the diagram proves, in `en` and `pt`), a list of `nodes`, and

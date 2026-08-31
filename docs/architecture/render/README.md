@@ -1,11 +1,15 @@
 # Diagram renderer
 
-The single external pipeline for the six specs in `../diagrams/*.yaml`. It reads
-the YAML, validates it, and emits one standalone HTML per diagram per language
-(`en`, `pt`). **Nothing is authored per diagram**: every node, edge, label, note
-and evidence pointer comes from the spec, so a correction is made in exactly one
-place — the spec — and re-flows to all outputs. See `../README.md` for the
-normative schema.
+The single versioned pipeline for the six specs in `../diagrams/*.yaml`. It reads
+the YAML, validates it, and emits the **published figures** as versioned assets:
+one bilingual HTML (EN/PT toggle) per diagram in `../diagrams/html/`, and one
+Portuguese PNG per diagram in `../diagrams/png/`. **Nothing is authored per
+diagram** — every node, edge, label, note and evidence pointer comes from the spec,
+so a correction is made in exactly one place (the spec) and re-flows to all
+outputs. See `../README.md` for the normative schema.
+
+The artifacts are committed. Regenerate them from the specs; never hand-edit an
+HTML or PNG.
 
 ## What it guarantees
 
@@ -22,8 +26,10 @@ normative schema.
   label; the complete note and the verbatim `evidence` (as a GitHub link) live in a
   numbered `<details>` panel below the graph.
 - **Non-DAG shapes survive.** Self-loops (`from == to`) draw a visible arc;
-  back-edges route a left gutter; forward skips a right gutter. No node or edge is
-  dropped.
+  back-edges route a left gutter, forward skips a right gutter; a de-collision pass
+  guarantees no two edge labels overlap. No node or edge is dropped.
+- **Bilingual, one file.** Each HTML carries both EN and PT, laid out per language,
+  with an on-screen toggle (and a light/dark toggle).
 
 ## Run
 
@@ -33,25 +39,22 @@ normative schema.
 python3 -m venv /tmp/arch-venv && /tmp/arch-venv/bin/pip install playwright pyyaml
 /tmp/arch-venv/bin/playwright install chromium   # no-op if already present
 
-# validate the specs (schema + evidence pointers), no output written
-python3 render.py validate
+python3 render.py validate    # schema + evidence pointers, no output written
+python3 render.py html         # write ../diagrams/html/*.html (bilingual)
+/tmp/arch-venv/bin/python render.py all    # html + ../diagrams/png/*.pt.png (needs playwright)
 
-# write the 12 HTML files to ./out (git-ignored)
-python3 render.py html
-
-# screenshot each HTML in both themes to ./out (needs the venv's playwright)
-/tmp/arch-venv/bin/python render.py all
+# uncommitted verification shots — both languages × both themes — to a scratch dir:
+/tmp/arch-venv/bin/python render.py verify --out /tmp/arch-verify
 ```
 
-Output lands in `../out/`, which is git-ignored: **the render is derived, the spec
-is the source, and nothing rendered is committed to the repo.** For publication the
-Portuguese HTML is the master (the site is PT); the English HTML lives next to the
-code.
+The committed PNG is Portuguese, light theme, `device_scale_factor=2` (the
+publication master; the site is PT). The HTML carries both languages.
 
 ## Verifying a render (mandatory for any visual change)
 
-Generating is not verifying. Run the renderer over **all six** specs, open the
-HTML in chromium in **both** `data-theme="light"` and `data-theme="dark"`, and
-**look**: the full note is legible, no edge overlaps a node, self-loops are drawn,
-`evidence` shows on every node, the kinds are distinguishable, and the node/edge
-counts match the spec. A green exit code proves none of that.
+Generating is not verifying. Run the renderer over **all six** specs, open each
+HTML in chromium in **both** themes and **both** languages, and **look**: the full
+note is legible, no edge label overlaps another (a `foreignObject.elabfo` bbox test
+catches what the eye misses), self-loops are drawn, `evidence` shows on every node,
+the kinds are distinguishable, and the node/edge counts match the spec. A green
+exit code proves none of that.
