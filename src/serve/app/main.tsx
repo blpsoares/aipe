@@ -12,7 +12,7 @@ import { BottomNav } from "./components/BottomNav";
 import { Topbar } from "./components/Topbar";
 import { CommandPalette, openPalette } from "./components/CommandPalette";
 import { WorkerDrawer } from "./components/WorkerDrawer";
-import { currentPath } from "./runtime/router";
+import { currentPath, navEpoch } from "./runtime/router";
 import { collapsed, mobileOpen, closeMobile } from "./runtime/ui";
 import { bootstrap } from "./runtime/sse";
 import { wireActivityNotifications } from "./runtime/notify";
@@ -22,16 +22,19 @@ import { t } from "./runtime/i18n";
 const appRoutes = routes as RouteContract[];
 
 // preact-iso does the actual path→component matching for the view area.
-// Keyed on currentPath so a hash-driven navigation (runtime/router.ts) remounts
-// LocationProvider with the new `url` — see runtime/router.ts for why we don't
-// drive navigation through preact-iso's own pushState-based `route()`.
+// Keyed on currentPath + navEpoch so a hash-driven navigation
+// (runtime/router.ts) remounts LocationProvider with the new `url` — see
+// runtime/router.ts for why we don't drive navigation through preact-iso's own
+// pushState-based `route()`. navEpoch (not just currentPath) is load-bearing:
+// see its doc comment in runtime/router.ts for #84 (a same-route popstate that
+// corrupts LocationProvider's internal state without changing currentPath).
 function Shell() {
   return (
     // preact-iso's LocationProvider supports a `url` prop for initial state
     // (router.js:102-103) but its .d.ts omits it — same gap the library's own
     // prerender.js works around.
     // @ts-expect-error - `url` is a real (if untyped) LocationProvider prop
-    <LocationProvider key={currentPath.value} url={currentPath.value}>
+    <LocationProvider key={`${currentPath.value}:${navEpoch.value}`} url={currentPath.value}>
       <Router>
         {appRoutes.map((r) => (
           <Route key={r.path} path={r.path} component={r.component} />
