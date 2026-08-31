@@ -507,12 +507,18 @@ async function reconcileCommand(args: string[]): Promise<number> {
   const results = id ? [await reconcileJourney(workspace, id, ghPrState)] : await reconcileAll(workspace, ghPrState);
   let totalChecked = 0;
   let totalMerged = 0;
+  let totalCollapsed = 0;
   for (const r of results) {
     totalChecked += r.checked;
     totalMerged += r.merged.length;
+    totalCollapsed += r.collapsed;
     for (const pr of r.merged) console.log(`MERGED journey=${r.journey} ${pr}`);
+    // #97 — closing a unit drops the phantom rows it accumulated (re-gate, case/
+    // package variant, stale redirect). Say so, per journey, so the cleanup is
+    // auditable and never silent.
+    if (r.collapsed > 0) console.log(`CLOSED-UNIT journey=${r.journey} collapsed=${r.collapsed} phantom row(s)`);
   }
-  console.log(`STATE reconcile checked=${totalChecked} merged=${totalMerged}`);
+  console.log(`STATE reconcile checked=${totalChecked} merged=${totalMerged} collapsed=${totalCollapsed}`);
   return 0;
 }
 
