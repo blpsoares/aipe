@@ -16,7 +16,7 @@ const sess = (over: Partial<JourneyDispatch>): JourneyDispatch => ({
   status: "dispatched", mode: "session", ...over,
 });
 const ledgerOf = (...dispatches: JourneyDispatch[]): JourneyLedger => ({ id: "j1", dispatches });
-const entry = (id: string, cwd: string): RosterEntry => ({ id, liveness: "alive", cwd, task: "aipe/j1", label: id });
+const entry = (id: string, cwd: string, liveness: RosterEntry["liveness"] = "alive"): RosterEntry => ({ id, liveness, cwd, task: "aipe/j1", label: id });
 
 // A forge that reports MERGED for the given PR urls, OPEN otherwise.
 const mergedFor = (...urls: string[]) => async (pr: string): Promise<PrState> => (urls.includes(pr) ? "MERGED" : "OPEN");
@@ -103,6 +103,45 @@ test("the fix round is protected even BEFORE its sessionId is recorded (protecte
   const items = await planReap(ledger, "/ws", [entry("s-FIX", "/ws/aipe/jesse")], true, mergedFor("http://pr/1"));
   // s-FIX is at the fix row's worktree → active work → the merged row must not reap it.
   expect(items.every((i) => i.disposition !== "would-close")).toBe(true);
+});
+
+// ── item 3, round 2: collect by PROCESS STATE, not just merged PR. A session
+// that died BEFORE landing any work is invisible to a reaper that only trusts
+// "PR merged" — this is the j-20260830-c5 real case (not-landed=4, no PR ever
+// opened, the specialist's process was already dead). `exited` in agentop's own
+// roster (Liveness "gone") is an observable fact of death that stands on its
+// own, independent of the ledger's status or the PR.
+
+test("a not-landed unit (no PR) whose recorded session has EXITED is planned would-close — the process is provably dead", async () => {
+  const ledger = ledgerOf(sess({ status: "delivered", sessionId: "s1", worktree: "/ws/aipe/wt1" })); // no pr at all
+  const items = await planReap(ledger, "/ws", [entry("s1", "/ws/aipe/wt1", "gone")], true, mergedFor());
+  expect(items[0]!.disposition).toBe("would-close");
+  expect(items[0]!.sessionId).toBe("s1");
+});
+
+test("a DISPATCHED (keep-alive) unit whose session has EXITED is reaped too — dead trumps 'still working'", async () => {
+  const ledger = ledgerOf(sess({ status: "dispatched", sessionId: "s1", worktree: "/ws/aipe/wt1" }));
+  const items = await planReap(ledger, "/ws", [entry("s1", "/ws/aipe/wt1", "gone")], true, mergedFor());
+  expect(items[0]!.disposition).toBe("would-close");
+});
+
+test("a BLOCKED unit whose session is still ALIVE stays protected — waiting/needs-approval is never a reap target", async () => {
+  const ledger = ledgerOf(sess({ status: "blocked", sessionId: "s1", worktree: "/ws/aipe/wt1", blockedReason: "x" }));
+  const items = await planReap(ledger, "/ws", [entry("s1", "/ws/aipe/wt1", "alive")], true, mergedFor());
+  expect(items[0]!.disposition).toBe("protected");
+});
+
+test("a session agentop marks LOST is NOT reaped by the dead-process path — ambiguous, may still hold work", async () => {
+  const ledger = ledgerOf(sess({ status: "dispatched", sessionId: "s1", worktree: "/ws/aipe/wt1" }));
+  const items = await planReap(ledger, "/ws", [entry("s1", "/ws/aipe/wt1", "lost")], true, mergedFor());
+  expect(items[0]!.disposition).toBe("protected"); // falls through to the ordinary keep-alive rule
+});
+
+test("a MERGED unit whose session has EXITED is still would-close, worded by the dead-process fact", async () => {
+  const ledger = ledgerOf(sess({ status: "merged", pr: "http://pr/1", sessionId: "s1", worktree: "/ws/aipe/wt1" }));
+  const items = await planReap(ledger, "/ws", [entry("s1", "/ws/aipe/wt1", "gone")], true, mergedFor("http://pr/1"));
+  expect(items[0]!.disposition).toBe("would-close");
+  expect(items[0]!.reason).toContain("exited");
 });
 
 test("subagent-mode units are ignored entirely", async () => {

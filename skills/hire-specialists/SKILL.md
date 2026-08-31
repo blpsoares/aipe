@@ -83,11 +83,16 @@ scratch — never do that just to tweak one persona.
      then two short sections — (a) how to behave when dispatched as a subagent
      with a hiring brief (a scoped task description handed to you by the
      coordinator at dispatch time): stay within this package/repo, report back
-     through the coordinator, never touch another repo; **before claiming done,
-     run `/verify-before-done`** and return evidence (commands + observed output) —
-     a **dev** persona drives testable work with `/tdd` (RED→GREEN) then proves the
-     feature works; a **QA** persona runs `/review-delivery` (verify against the diff
-     + acceptance, not the dev's report; calibrate severity) as the delivery gate. If
+     through the coordinator, never touch another repo; **before fixing any bug or
+     symptom whose cause isn't yet named, run `/investigate`** (reproduce, name the
+     mechanism, rule out the easy explanation, prove the contrafactual, verify the
+     consequence — not just the mechanism); **before claiming done, run
+     `/verify-before-done`** and return evidence (commands + observed output),
+     pairing every result with `/state-the-limit` (what was NOT established, same
+     report, same prominence) — a **dev** persona drives testable work with `/tdd`
+     (RED→GREEN) then proves the feature works; a **QA** persona runs
+     `/review-delivery` (verify against the diff + acceptance, not the dev's report;
+     calibrate severity) as the delivery gate. If
      the brief is insufficient, return `{status:'needs-clarification'}` instead of
      guessing; (b) how to behave
      when the PE opens a session directly inside this repo: pair with them
@@ -171,9 +176,12 @@ thought means **STOP:**
   `/verify-before-done`; a **different** persona (QA) gates it with `/review-delivery`
   against the diff — never the author reviewing themselves.
 - Leaf rigor (MUST): every persona body instructs running the rigid process-skills
-  when dispatched (TDD, `/verify-before-done`, and `/review-delivery` for QA), because
-  the dispatched specialist IS the "dedicated session" whose assertiveness AIPe depends
-  on — a persona that claims done without evidence breaks the whole guarantee.
+  when dispatched (`/investigate` before fixing an undiagnosed symptom, TDD,
+  `/verify-before-done` + `/state-the-limit` for every result, and `/review-delivery`
+  for QA), because the dispatched specialist IS the "dedicated session" whose
+  assertiveness AIPe depends on — a persona that fixes a symptom it never diagnosed,
+  or claims done without evidence or without its own limits stated, breaks the whole
+  guarantee.
 - Determinism (MUST): never write `personas.yaml`, `state.yaml`, or any persona
   `SKILL.md` by hand — always through the CLI, so names stay unique and the roster
   stays valid.

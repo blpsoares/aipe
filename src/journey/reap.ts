@@ -2,10 +2,15 @@
 // fires on a ledger transition and depends on the coordinator having recorded it
 // in the right place with the right sessionId — the trigger that is documented
 // to err. This reaper does NOT depend on that registration: for every
-// session-mode unit it establishes the landing by VERIFIABLE FACT — the unit has
-// a PR and the forge reports that PR MERGED — finds the real live session
-// (reconciling a stale id by worktree, item 3), and closes only what it can
-// stand behind. It NEVER touches a blocked/dispatched/redirected session.
+// session-mode unit it establishes the landing by VERIFIABLE FACT — either the
+// unit has a PR and the forge reports that PR MERGED, OR (round 2 of item 3)
+// agentop's own roster proves the session's PROCESS has exited — finds the real
+// live session where one exists (reconciling a stale id by worktree), and
+// closes only what it can stand behind. A LIVE blocked/dispatched/redirected
+// session (agentop status running/unregistered, or lost — ambiguous, may still
+// hold work) is NEVER touched; only a session agentop reports as provably dead
+// (exited/closed) is reaped regardless of its ledger status, because a dead
+// process is not "still working" no matter what the ledger last recorded.
 //
 // It is an EXPLICIT coordinator step, never background: it plans first, and the
 // CLI lists the plan before any close. Killing a session is a decision, not an
@@ -37,6 +42,37 @@ export type ReapDisposition =
   | "protected" // dispatched/blocked/redirected → still working or waiting; never closed
   | "not-landed" // no PR, or the PR is not merged → work has not landed; left alone
   | "unresolvable"; // landed, but no live session could be established → said, not guessed
+
+// Item 3, round 2: a session's PROCESS STATE is a fact independent of the
+// ledger's status and of the PR. agentop's own roster proves a process has
+// cleanly ended (`exited`/`closed` → Liveness "gone", see sessionLiveness in
+// poll.ts) — that fact overrides both KEEP_ALIVE ("still working") and
+// not-landed ("no PR to check yet"): a dead process cannot be either. This is
+// what closes the c5 case (a session that died BEFORE ever opening a PR,
+// invisible to a PR-only reaper) and the ghost-registration case (a
+// dispatched/blocked/redirected row whose session quietly died). `lost` is
+// deliberately excluded — agentop uses it when it could not account for the
+// process cleanly, which may still be an orphan holding work, not the proven
+// death this checks for. `alive` (running/unregistered) is obviously excluded:
+// a session idle waiting for a person (agentop's `activity`: waiting / needs
+// approval) still reports `status: running`, so it never reaches here — the
+// hard PE guarantee ("never close a session waiting on a person") holds
+// because that guarantee is about status, and this only acts on "gone".
+function findDeadProcess(
+  d: { sessionId?: string; worktree: string },
+  workspace: string,
+  roster: RosterEntry[],
+): { id: string; reconciled: boolean; staleId: string | null } | null {
+  const idRes = resolveLiveSessionId(d, workspace, roster);
+  if (idRes.kind === "none") return null;
+  const found = roster.find((e) => e.id === idRes.id);
+  if (found?.liveness !== "gone") return null;
+  return {
+    id: found.id,
+    reconciled: idRes.kind === "reconciled",
+    staleId: idRes.kind === "reconciled" ? idRes.staleId : null,
+  };
+}
 
 export interface ReapItem {
   unit: string; // repo or repo/package
@@ -81,9 +117,28 @@ export async function planReap(
     const recordedId = d.sessionId ?? null;
     const base = { unit, specialist: d.specialist, recordedId, sessionId: recordedId, reconciled: false };
 
-    // 1 — protection wins over everything. A blocked session is closed on NO
-    // path, even with a merged PR; a dispatched (fix loop) / redirected session
-    // is live work. This is checked FIRST so no later fact can override it.
+    // 0 — a provably DEAD process wins over everything, including KEEP_ALIVE and
+    // not-landed: neither "still working" nor "not yet landed" can be true of a
+    // process that has actually exited. Checked before the ledger-status
+    // protection so a stale dispatched/blocked/redirected registration for a
+    // session that quietly died gets reaped instead of protected forever.
+    if (rosterReliable) {
+      const dead = findDeadProcess(d, workspace, roster);
+      if (dead) {
+        items.push({
+          ...base,
+          disposition: "would-close",
+          sessionId: dead.id,
+          reconciled: dead.reconciled,
+          reason: `agentop reports the process behind session ${dead.id} has exited${dead.reconciled ? ` (found at its worktree${dead.staleId ? `; recorded id ${dead.staleId} was stale` : ""})` : ""} — a dead process is neither "still working" nor "not yet landed"; closing only removes a stale registration${d.pr ? ` (unit's PR: ${d.pr})` : " (no PR was ever opened for this unit)"}`,
+        });
+        continue;
+      }
+    }
+
+    // 1 — protection wins over everything else. A blocked session is closed on
+    // NO path, even with a merged PR; a dispatched (fix loop) / redirected
+    // session is live work. Checked before any later fact can override it.
     if (KEEP_ALIVE.has(d.status)) {
       items.push({ ...base, disposition: "protected", reason: `status "${d.status}" — still working or waiting on the coordinator; never reaped` });
       continue;

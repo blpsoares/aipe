@@ -6,6 +6,8 @@
 import verifyBeforeDoneSkill from "../../skills/verify-before-done/SKILL.md" with { type: "text" };
 import reviewDeliverySkill from "../../skills/review-delivery/SKILL.md" with { type: "text" };
 import tddSkill from "../../skills/tdd/SKILL.md" with { type: "text" };
+import investigateSkill from "../../skills/investigate/SKILL.md" with { type: "text" };
+import stateTheLimitSkill from "../../skills/state-the-limit/SKILL.md" with { type: "text" };
 
 export interface FloorSkill {
   name: string;
@@ -36,6 +38,20 @@ export const RELIABILITY_FLOOR: FloorSkill[] = [
     objective: "Prove behavior by a test that failed then passed — the preferred delivery evidence.",
     whenToUse: "For any testable change inside a dispatched dev specialist.",
     content: tddSkill,
+  },
+  {
+    name: "investigate",
+    description: "Establish the cause before choosing a fix — five gated steps (dev + QA).",
+    objective: "Reproduce, name the mechanism, rule out the easy explanation, prove the contrafactual, verify the consequence.",
+    whenToUse: "Before fixing any bug or symptom whose cause is not yet named as a specific line/function/event.",
+    content: investigateSkill,
+  },
+  {
+    name: "state-the-limit",
+    description: "Report what was NOT established alongside every result, at equal prominence (dev + QA).",
+    objective: "Never let a claim (a fix, a verdict, a count) sound stronger than what was actually verified.",
+    whenToUse: "Whenever reporting a result — a fix, a verification, a measurement, a gate verdict.",
+    content: stateTheLimitSkill,
   },
 ];
 
