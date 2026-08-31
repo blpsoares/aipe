@@ -31,6 +31,16 @@ export interface RepoPublish {
   flow?: PublishFlow;
   releaseBranch?: string; // default "main"
   integrationBranch?: string; // default "dev"
+  // HOW the repo publishes, a fact the PE establishes (never guessed by name):
+  //   • "tag"  — cuts a semver release tag; commits on the release branch beyond
+  //     the latest reachable tag ARE an unpublished backlog (REPRESADO).
+  //   • "push" — publishes by deploy on push to the release branch (no tag
+  //     release, e.g. openvibes-embark's aipe-site); the branch head IS the
+  //     published state, so an old tag left on the lineage is not a backlog.
+  // Absent ⇒ the method is unestablished: a reachable tag with commits beyond it
+  // cannot be attributed (backlog vs push-published look identical from git), so
+  // the release state is `unknown` rather than a guessed tag/push (#74).
+  releaseVia?: "tag" | "push";
 }
 
 export interface RepoEntry {

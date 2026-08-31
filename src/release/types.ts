@@ -30,6 +30,13 @@ export interface RepoReleaseFacts {
   unpromotedOnDev: number | null;
   releaseBranch: string;
   integrationBranch: string;
+  // Set ONLY when there IS a reachable release tag with commits beyond it, but
+  // the repo's publish method is not established (no `publish.releaseVia`): from
+  // git alone a tag-release backlog and a push-published repo look identical, so
+  // the count is not asserted as `unreleasedOnMain` (which stays null) — this
+  // carries the honest detail so the derivation can say "unknown" and name the
+  // gap and the fix, instead of a false REPRESADO (#74). Absent otherwise.
+  mainBaselineUnverified?: { tag: string; ahead: number };
 }
 
 // The three-way answer. `merged-unpublished` and `unknown` are BOTH surfaced
