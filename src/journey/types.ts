@@ -7,15 +7,23 @@
 //   delivered  → failed → (re)dispatched → …        (QA rejected the delivery)
 //   dispatched → escalated                          (cross-repo need, PE decides)
 //   dispatched → blocked                             (stuck, waiting on the coordinator)
+//   dispatched → abandoned                          (session ended, no verdict ever recorded)
 //   * → redirected                                 (PE redirected it live via attach)
 //   * → removed                                     (worktree torn down)
 // `verified` = a dev delivery that PASSED its QA gate (the only "cleared for PE"
-// non-merged state). `failed` = QA rejected it; the unit is NOT done.
-// `blocked` = the specialist declared itself stuck and is waiting on the
-// coordinator — distinct from `escalated` (a cross-repo scope decision the PE
-// owns) and from `delivered` (work done). It is the first-class "I cannot
-// proceed, I need an answer" signal the coordinator can discover without reading
-// a terminal (surfaced by `session collect` and `journey verify`).
+// non-merged state). `failed` = QA rejected it, WITH evidence of what was
+// checked (D4, j-20260830-w0: `failed` now requires evidence exactly like
+// `delivered`/`verified` — a real QA verdict always names what it ran). `blocked`
+// = the specialist declared itself stuck and is waiting on the coordinator —
+// distinct from `escalated` (a cross-repo scope decision the PE owns) and from
+// `delivered` (work done). It is the first-class "I cannot proceed, I need an
+// answer" signal the coordinator can discover without reading a terminal
+// (surfaced by `session collect` and `journey verify`). `abandoned` is the
+// honest name for what used to masquerade as a reasonless `failed`: a session
+// that ended (died, was killed, ran out) without ever producing a QA verdict.
+// It is NOT a rejection — the unit is simply unfinished and needs a fresh
+// dispatch — and `aipe status` must never render it the way it renders a real
+// QA `failed`.
 export type DispatchStatus =
   | "dispatched"
   | "delivered"
@@ -23,6 +31,7 @@ export type DispatchStatus =
   | "failed"
   | "escalated"
   | "blocked"
+  | "abandoned"
   | "merged"
   | "removed"
   | "redirected";
@@ -34,15 +43,28 @@ export const DISPATCH_STATUSES: DispatchStatus[] = [
   "failed",
   "escalated",
   "blocked",
+  "abandoned",
   "merged",
   "removed",
   "redirected",
 ];
 
-// Statuses that assert a unit of work is DONE and therefore MUST carry evidence
-// (Pilar 1 — verify-before-done): a dev delivery and a passed QA verdict. The
-// ledger CLI refuses to record these without attached evidence.
-export const EVIDENCE_REQUIRED_STATUSES: DispatchStatus[] = ["delivered", "verified"];
+// Statuses that assert a unit of work reached a real, checked VERDICT and
+// therefore MUST carry evidence (Pilar 1 — verify-before-done): a dev
+// delivery, a passed QA verdict, and (D4, j-20260830-w0) a QA REJECTION —
+// `failed` with no evidence is indistinguishable from a session that died
+// before ever forming an opinion, which is exactly the incident this closes
+// (a dead QA session's ledger row read as "reprovado" to the coordinator, who
+// only discovered otherwise by opening the YAML by hand). The ledger CLI
+// refuses to record any of these without attached evidence.
+export const EVIDENCE_REQUIRED_STATUSES: DispatchStatus[] = ["delivered", "verified", "failed"];
+
+// The narrower set the CI gate (recordDispatchGuarded) actually re-resolves
+// checks for: a done-CLAIM (delivered/verified) that names a PR must have
+// green CI. `failed` is deliberately EXCLUDED even though it now requires
+// evidence too — a QA rejection is routinely filed BECAUSE the checks are red,
+// so gating it on green CI would make the common case unrecordable.
+export const CI_GATED_STATUSES: DispatchStatus[] = ["delivered", "verified"];
 
 // A unit whose PR has merged is immutable within the journey — never re-dispatched.
 export const IMMUTABLE_STATUSES: DispatchStatus[] = ["merged"];
@@ -113,6 +135,13 @@ export interface JourneyDispatch {
   // always says what would unblock it; absent on every other status. A
   // per-transition annotation, NOT sticky — it never leaks onto a later write.
   blockedReason?: string;
+  // Why a unit was recorded `abandoned` (D4, j-20260830-w0) — what established
+  // that the session ended with no verdict (e.g. "agentop reports the session
+  // gone; no ledger record was ever written"). Required by the ledger gate
+  // whenever `status: "abandoned"` is recorded, same discipline as
+  // `blockedReason`/`redirectReason`: the whole value of the status is saying
+  // WHY it is not a verdict, so a reasonless one is refused.
+  abandonedReason?: string;
   // Model-policy audit (optional; absent on legacy ledgers): the tier the
   // coordinator assigned and the concrete model the specialist ran on.
   tier?: string;
@@ -128,10 +157,12 @@ export interface JourneyDispatch {
   // `--ci-none` bypass — the PR's forge reported no CI checks configured and the
   // specialist deliberately claimed that. Present ⇒ the CI gate was consciously
   // waived for this record (an audit can see the claim was made on purpose);
-  // absent ⇒ the record either passed a green CI gate or predates it. The only
-  // value today is "no-checks"; kept as a string union so a future bypass reason
-  // is additive.
-  ciBypass?: "no-checks";
+  // absent ⇒ the record either passed a green CI gate or predates it.
+  // "no-checks" — the PR genuinely reports no CI configured (`--ci-none`).
+  // "verified-pre-merge" (D2, j-20260830-w0) — checks were seen green before
+  // the PR merged but gh can no longer resolve them (branch deleted); a
+  // distinct, honest claim from "no-checks", never a substitute for it.
+  ciBypass?: "no-checks" | "verified-pre-merge";
 }
 
 // An explicit PE grant, recorded only after the PE says yes in the live session.
@@ -153,6 +184,12 @@ export interface JourneySpec {
   path: string;
   version: number;
   approved: boolean;
+  // The content hash (spec.ts hashOrientationContent) the version above was
+  // last computed against (j-20260830-w0/D1). Absent on ledgers written before
+  // this field existed — that absence means "no baseline to compare against
+  // yet", not "unchanged", so the first read after upgrade backfills it
+  // without bumping the version.
+  contentHash?: string;
 }
 
 export interface JourneyLedger {

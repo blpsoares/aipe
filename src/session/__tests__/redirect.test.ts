@@ -49,6 +49,7 @@ test("the prompt carries the redirect MUST, with the exact command", () => {
     personaBody: "You are Joaquim.", specSlice: "Fix it.", worktree: "/w/wt",
     packagePath: null, branch: "b", journeyId: "j1", workspace: "/w",
     fqid: "embark", intensity: "normal", repo: "embark",
+    specVersion: 1, history: "",
   });
   expect(p).toContain("--status redirected");
   expect(p).toContain("before acting on it");

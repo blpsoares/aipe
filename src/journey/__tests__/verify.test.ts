@@ -226,6 +226,30 @@ test("blocked-open (warning): a specialist waiting on the coordinator, with its 
   expect(findings[0]!.detail).toContain("need the API key");
 });
 
+// D4 (j-20260830-w0) — abandoned-open is a WARNING (unfinished work needing a
+// fresh dispatch), never confused with failed-open's CRITICAL (a QA rejection
+// left unaddressed) — the exact distinction the status exists to draw.
+test("abandoned-open (warning, NOT critical): a session that ended with no verdict, not yet re-dispatched", () => {
+  const findings = verifyJourney(
+    ledgerOf(d({ status: "abandoned", abandonedReason: "agentop reports the session gone; no ledger record was ever written" })),
+    [],
+  );
+  expect(findings).toHaveLength(1);
+  expect(findings[0]).toMatchObject({ severity: "warning", code: "abandoned-open", unit: "embark" });
+  expect(findings[0]!.detail).toContain("agentop reports the session gone");
+});
+
+test("abandoned is NOT open when a fresh dispatch is already back on the unit", () => {
+  const findings = verifyJourney(
+    ledgerOf(
+      d({ status: "abandoned", abandonedReason: "session died" }),
+      d({ specialist: "Ana", status: "dispatched" }),
+    ),
+    [],
+  );
+  expect(findings.some((f) => f.code === "abandoned-open")).toBe(false);
+});
+
 test("findings are ordered critical-first, then by unit", () => {
   const ledger = ledgerOf(
     d({ repo: "embark", package: "web", status: "escalated" }), // warning

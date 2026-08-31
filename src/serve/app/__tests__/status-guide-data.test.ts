@@ -21,7 +21,9 @@ test("every guide entry names what it means, what causes it, what unblocks it, a
 });
 
 test("the reject page names the evidence-required statuses precisely", () => {
-  // delivered + verified are the done-claims the ledger rejects without proof.
-  expect([...EVIDENCE_STATUSES].sort()).toEqual(["delivered", "verified"]);
+  // delivered + verified + failed (D4, j-20260830-w0) are the claims the
+  // ledger rejects without proof — a QA rejection must show what it checked
+  // too, or it is indistinguishable from a session that died with no verdict.
+  expect([...EVIDENCE_STATUSES].sort()).toEqual(["delivered", "failed", "verified"]);
   expect(rejectedGuide().some((e) => e.key === "no-evidence")).toBe(true);
 });

@@ -55,7 +55,7 @@ export interface UnitRow {
   // (a copyable `cd` target for the read-only console) and the honest CI-waiver
   // flag on a delivered/verified record.
   worktree: string;
-  ciBypass: "no-checks" | null;
+  ciBypass: "no-checks" | "verified-pre-merge" | null;
 }
 
 export interface JourneyRow {
@@ -77,6 +77,7 @@ export type WaitingKind =
   | "escalated"
   | "redirected"
   | "blocked"
+  | "abandoned"
   | "no-evidence"
   | "finished-unprocessed";
 

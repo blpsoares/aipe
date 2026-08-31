@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { classifyGhChecks } from "../checks";
+import { buildGhChecksArgs, classifyGhChecks, makeGhPrChecks, parsePrUrl, type GhRunner } from "../checks";
 
 const j = (rows: unknown[]): string => JSON.stringify(rows);
 
@@ -42,4 +42,57 @@ test("garbage stdout that is valid JSON but not an array → unknown", () => {
 test("all-pass rows but a non-zero exit does not become green — fail safe", () => {
   // rows look terminal-pass, but exit 8 says pending: trust the exit.
   expect(classifyGhChecks(8, j([{ bucket: "pass" }]), "")).toBe("pending");
+});
+
+// D2 (j-20260830-w0) — "gate abstains on CI it can resolve": the real cause was
+// resolving checks by whatever gh does with the raw URL/branch, which breaks
+// exactly for a merged PR whose branch has been deleted. The fix queries by PR
+// NUMBER with an explicit --repo, which never depends on the branch existing.
+test("builds the gh args by PR NUMBER with an explicit --repo, never the raw URL", () => {
+  expect(buildGhChecksArgs("https://github.com/acme/widgets/pull/257")).toEqual([
+    "pr", "checks", "257", "--repo", "acme/widgets", "--json", "bucket,state",
+  ]);
+});
+
+test("a non-URL input (legacy caller, bare number) is passed through, still never as a branch", () => {
+  expect(buildGhChecksArgs("257")).toEqual(["pr", "checks", "257", "--json", "bucket,state"]);
+});
+
+test("a non-github.com host is not parsed as a PR ref (avoid confidently guessing a wrong owner/repo)", () => {
+  expect(parsePrUrl("https://gitlab.com/acme/widgets/pull/1")).toBeNull();
+});
+
+test("resolves a MERGED, branch-deleted PR by number — the exact D2 regression, reverting buildGhChecksArgs to pass the raw URL makes this fail", async () => {
+  const fake: GhRunner = async (args) => {
+    // Simulate the real symptom: whatever gh does with the URL/branch form
+    // comes back unresolvable for a merged PR with its branch gone; the
+    // number+--repo form (the fix) succeeds.
+    const byNumber = args[2] === "257" && args.includes("--repo") && args[args.indexOf("--repo") + 1] === "acme/widgets";
+    if (byNumber) return { code: 0, stdout: JSON.stringify([{ bucket: "pass", state: "SUCCESS" }]), stderr: "" };
+    return { code: 1, stdout: "", stderr: "no branch found for pull request" };
+  };
+  const resolve = makeGhPrChecks(fake);
+  const r = await resolve("https://github.com/acme/widgets/pull/257");
+  expect(typeof r === "string" ? r : r.verdict).toBe("green");
+});
+
+test("an unresolvable verdict carries what was attempted and what came back, not a list of guesses", async () => {
+  const fake: GhRunner = async () => ({ code: 1, stdout: "", stderr: "gh: To use GitHub CLI, run: gh auth login" });
+  const resolve = makeGhPrChecks(fake);
+  const r = await resolve("https://github.com/acme/widgets/pull/9");
+  if (typeof r === "string") throw new Error("expected an object resolution with detail");
+  expect(r.verdict).toBe("unknown");
+  expect(r.detail).toContain("pr checks 9 --repo acme/widgets");
+  expect(r.detail).toContain("gh auth login");
+});
+
+test("a spawn failure is reported as unknown with the spawn error in the detail", async () => {
+  const fake: GhRunner = async () => {
+    throw new Error("ENOENT: gh not found");
+  };
+  const resolve = makeGhPrChecks(fake);
+  const r = await resolve("https://github.com/acme/widgets/pull/9");
+  if (typeof r === "string") throw new Error("expected an object resolution with detail");
+  expect(r.verdict).toBe("unknown");
+  expect(r.detail).toContain("ENOENT: gh not found");
 });

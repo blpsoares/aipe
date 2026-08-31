@@ -19,6 +19,17 @@ export interface PromptInput {
   // detached specialist records against its OWN task identity — not the unit —
   // and a concurrent run of the same persona never overwrites its ledger row.
   task?: string;
+  // D1 (j-20260830-w0) — the content-derived version of the Orientation Spec
+  // this dispatch was composed against (spec.ts hashOrientationContent, bumped
+  // by session/cli.ts on drift). Stated explicitly so a specialist can tell
+  // "a new round" from "the same command run twice" instead of guessing from
+  // the ledger alone.
+  specVersion: number;
+  // Pre-rendered "history for this unit" block (session/cli.ts
+  // renderUnitHistory) — other tasks/specialists that already touched this
+  // same unit, framed as context, never as the current order. Empty string ⇒
+  // no history to show (a fresh unit).
+  history: string;
 }
 
 export function composePrompt(input: PromptInput): string {
@@ -36,7 +47,12 @@ export function composePrompt(input: PromptInput): string {
   }
 
   parts.push(input.personaBody.trim());
-  parts.push(`# Your assignment (${input.fqid})\n\n${input.specSlice.trim()}`);
+  // The dispatch identity line (D1, j-20260830-w0): which task, against which
+  // spec version — the two facts the Lawson incident showed a specialist has
+  // no way to infer on its own from the ledger alone.
+  const dispatchLine = `This dispatch: task ${input.task ?? "(unit-level)"} · spec version v${input.specVersion}.`;
+  parts.push(`# Your assignment (${input.fqid})\n\n${dispatchLine}\n\n${input.specSlice.trim()}`);
+  if (input.history) parts.push(input.history);
 
   // Every step below is phrased as an outcome or as an `aipe` subcommand, never
   // as a slash command — a Codex or Gemini session has no `/verify-before-done`.
