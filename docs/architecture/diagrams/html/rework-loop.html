@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en" data-diagram="rework-loop">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIPe · Rework loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* tokens.css — inlined VERBATIM from src/serve/app/styles/tokens.css.
+   The renderer reads it from disk; no colour literal lives in the pipeline. */
+/* ── Tokens ─────────────────────────────────────────────────────────────────
+   The console's palette is ADOPTED VERBATIM from the site
+   (openvibes-embark:packages/aipe-site/src/index.css) — an Iris-violet brand and
+   one semantic token PER ledger state (`--st-*`), so the two products stop
+   speaking different palettes (SDD §9, j-20260829-dp). The new canonical tokens
+   are space-separated RGB triples (site format) so `rgb(var(--x) / <alpha>)`
+   opacity works; they are consumed ONLY via `rgb(var(--x))`.
+
+   Theme mechanism (kept from the console, NOT the site's `.dark` class): bare
+   `:root` is light; `@media (prefers-color-scheme: dark)` follows the OS; an
+   explicit `:root[data-theme="light"|"dark"]` (set by theme.ts) wins over both.
+
+   Two kinds of token live here:
+     • CANONICAL TRIPLES (new names — `--surface-*`, `--text/muted/faint`,
+       `--brand[-strong]`, `--st-*`): the source of truth, redefined per theme.
+     • ⚠ TRANSITIONAL ALIASES (technical debt, by construction): the console's OLD
+       names (`--panel`, `--ink`, `--accent`, `--sky` …) kept as resolved-color
+       aliases onto the canonical tokens, so base.css/components (~300 uses of the
+       old names, consumed as raw `var(--x)` colors) did not have to be rewritten
+       in one risky pass. To RETIRE the aliases: migrate every
+       `var(--panel|--ink|--accent|--sky|--amber|--slate|--rose|--bg-2|…)` use to
+       its canonical name (via `rgb(var(--surface-1))` etc.), then delete the
+       "TRANSITIONAL ALIASES" block. Until then, a bare `--panel` means
+       "= --surface-1"; it is NOT an independent token.
+   `--bg`, `--line`, `--line-2`, `--on-brand` and the shadows stay resolved colors
+   per theme (base.css consumes them raw). */
+
+:root {
+  /* ── Canonical triples — LIGHT (site :root, verbatim) ── */
+  --surface-1: 255 255 255;
+  --surface-2: 240 242 248;
+  --surface-3: 231 234 243;
+  --text: 20 21 31;
+  --muted: 74 78 96;
+  --faint: 118 123 143;
+  --brand: 98 66 224;
+  --brand-strong: 82 52 206;
+
+  /* State ramp — LIGHT (deepened for AA on light surfaces) */
+  --st-dispatched: 28 104 214;
+  --st-running: 168 106 8;
+  --st-delivered: 8 128 116;
+  --st-verified: 22 143 57;
+  --st-failed: 200 38 38;
+  --st-escalated: 188 80 12;
+  --st-merged: 132 58 226;
+  --st-redirected: 12 130 148;
+  --st-removed: 92 98 118;
+
+  /* Resolved colors kept per-theme (base.css consumes these raw) */
+  --bg: rgb(247 248 251);
+  --line: rgb(233 236 244);          /* soft border (site --line-soft) */
+  --line-2: rgb(216 221 232);        /* stronger divider (site --line) */
+  --on-brand: #ffffff;               /* text on a brand fill; brand is deep here */
+
+  /* Non-color tokens (theme-independent) */
+  --shadow-1: 0 1px 2px rgba(16,22,19,.06);
+  --shadow-2: 0 1px 3px rgba(16,22,19,.08), 0 8px 24px rgba(16,22,19,.08);
+  --shadow-3: 0 12px 32px rgba(16,22,19,.14), 0 2px 8px rgba(16,22,19,.08);
+  --radius: 12px; --radius-lg: 16px;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --sb: 248px;
+
+  /* ── ⚠ TRANSITIONAL ALIASES → canonical (see header). Defined once; they read
+     whichever theme's triples are live, so they need no per-theme repetition. ── */
+  --bg-2: rgb(var(--surface-2));
+  --panel: rgb(var(--surface-1));
+  --panel-2: rgb(var(--surface-2));
+  --panel-3: rgb(var(--surface-3));
+  --raise: rgb(var(--surface-1));
+  --ink: rgb(var(--text));
+  --ink-2: rgb(var(--muted));
+  --ink-3: rgb(var(--faint));
+  --accent: rgb(var(--brand));
+  --accent-2: rgb(var(--brand-strong));
+  --accent-ink: rgb(var(--brand-strong));
+  --accent-wash: rgb(var(--brand) / .12);
+  /* Generic severity/decorative hues fold into the state ramp so even non-state
+     UI (warnings, KPIs, the connection dot) stays on one palette. State itself is
+     NEVER painted through these — it goes through --st-* (statusMeta.stateVar). */
+  --sky: rgb(var(--st-dispatched));
+  --amber: rgb(var(--st-escalated));
+  --slate: rgb(var(--st-removed));
+  --rose: rgb(var(--st-failed));
+  --sky-w: rgb(var(--st-dispatched) / .13);
+  --amber-w: rgb(var(--st-escalated) / .13);
+  --slate-w: rgb(var(--st-removed) / .13);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-1: 16 17 26;
+    --surface-2: 23 25 38;
+    --surface-3: 32 35 52;
+    --text: 233 234 242;
+    --muted: 162 165 186;
+    --faint: 122 126 150;
+    --brand: 141 125 255;
+    --brand-strong: 172 158 255;
+
+    --st-dispatched: 76 154 255;
+    --st-running: 245 172 60;
+    --st-delivered: 32 202 182;
+    --st-verified: 61 210 100;
+    --st-failed: 255 104 104;
+    --st-escalated: 255 146 62;
+    --st-merged: 199 116 236;
+    --st-redirected: 44 205 226;
+    --st-removed: 128 134 158;
+
+    --bg: rgb(8 9 15);
+    --line: rgb(26 28 42);
+    --line-2: rgb(40 43 60);
+    --on-brand: #0b0616;             /* brand is a light violet here → dark text */
+
+    --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+    --shadow-2: 0 2px 6px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.45);
+    --shadow-3: 0 16px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.4);
+  }
+}
+
+:root[data-theme="light"] {
+  --surface-1: 255 255 255;
+  --surface-2: 240 242 248;
+  --surface-3: 231 234 243;
+  --text: 20 21 31;
+  --muted: 74 78 96;
+  --faint: 118 123 143;
+  --brand: 98 66 224;
+  --brand-strong: 82 52 206;
+
+  --st-dispatched: 28 104 214;
+  --st-running: 168 106 8;
+  --st-delivered: 8 128 116;
+  --st-verified: 22 143 57;
+  --st-failed: 200 38 38;
+  --st-escalated: 188 80 12;
+  --st-merged: 132 58 226;
+  --st-redirected: 12 130 148;
+  --st-removed: 92 98 118;
+
+  --bg: rgb(247 248 251);
+  --line: rgb(233 236 244);
+  --line-2: rgb(216 221 232);
+  --on-brand: #ffffff;
+
+  --shadow-1: 0 1px 2px rgba(16,22,19,.06);
+  --shadow-2: 0 1px 3px rgba(16,22,19,.08), 0 8px 24px rgba(16,22,19,.08);
+  --shadow-3: 0 12px 32px rgba(16,22,19,.14), 0 2px 8px rgba(16,22,19,.08);
+}
+
+:root[data-theme="dark"] {
+  --surface-1: 16 17 26;
+  --surface-2: 23 25 38;
+  --surface-3: 32 35 52;
+  --text: 233 234 242;
+  --muted: 162 165 186;
+  --faint: 122 126 150;
+  --brand: 141 125 255;
+  --brand-strong: 172 158 255;
+
+  --st-dispatched: 76 154 255;
+  --st-running: 245 172 60;
+  --st-delivered: 32 202 182;
+  --st-verified: 61 210 100;
+  --st-failed: 255 104 104;
+  --st-escalated: 255 146 62;
+  --st-merged: 199 116 236;
+  --st-redirected: 44 205 226;
+  --st-removed: 128 134 158;
+
+  --bg: rgb(8 9 15);
+  --line: rgb(26 28 42);
+  --line-2: rgb(40 43 60);
+  --on-brand: #0b0616;
+
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-2: 0 2px 6px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.45);
+  --shadow-3: 0 16px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.4);
+}
+
+</style>
+<style>
+:root { --sans-ui: "Inter", var(--sans); --mono-ui: "JetBrains Mono", var(--mono); }
+* { box-sizing: border-box; }
+html, body { margin: 0; max-width: 100%; overflow-x: hidden; }
+body {
+  background: var(--bg); color: rgb(var(--text)); font-family: var(--sans-ui);
+  -webkit-font-smoothing: antialiased; line-height: 1.5; padding: 40px 28px 64px;
+}
+.wrap { max-width: 1100px; margin: 0 auto; }
+.view[hidden] { display: none !important; }
+
+.controls {
+  position: sticky; top: 12px; z-index: 5; display: flex; gap: 8px;
+  justify-content: flex-end; margin-bottom: -18px;
+}
+.controls button {
+  font-family: var(--mono-ui); font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-2);
+  background: rgb(var(--surface-1)); color: rgb(var(--text)); box-shadow: var(--shadow-1);
+}
+.controls button:hover { border-color: rgb(var(--brand)); color: rgb(var(--brand)); }
+
+.eyebrow {
+  font-family: var(--mono-ui); font-size: 12px; letter-spacing: .12em;
+  text-transform: uppercase; color: rgb(var(--brand)); font-weight: 600;
+}
+h1 { font-size: 30px; font-weight: 700; margin: 8px 0 6px; letter-spacing: -.01em; }
+.kicker {
+  font-family: var(--mono-ui); font-size: 12px; color: rgb(var(--faint));
+  display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.kicker .tag { border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 10px; }
+.argument {
+  font-size: 15.5px; color: rgb(var(--muted)); max-width: 780px;
+  border-left: 3px solid rgb(var(--brand) / .5); padding-left: 16px; margin: 0 0 24px;
+}
+.legend {
+  display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 22px;
+  font-size: 12.5px; color: rgb(var(--muted));
+}
+.legend .lgtitle {
+  font-family: var(--mono-ui); font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: rgb(var(--faint)); width: 100%; margin-bottom: 2px;
+}
+.lg { display: inline-flex; align-items: center; gap: 7px; }
+.lg b { color: rgb(var(--text)); font-weight: 600; font-family: var(--mono-ui); font-size: 12px; }
+
+.scroller { overflow-x: auto; padding: 8px 0 4px; }
+svg.diagram {
+  display: block; margin: 0 auto; max-width: 100%; height: auto;
+  background: rgb(var(--surface-2) / .4); border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 16px); padding: 8px;
+}
+.edge { fill: none; stroke: rgb(var(--faint)); stroke-width: 1.7; }
+.edge.back { stroke: rgb(var(--faint) / .85); stroke-dasharray: 5 4; }
+.arrowhead { fill: rgb(var(--faint)); }
+.elabfo { overflow: visible; }
+.elab {
+  font-family: var(--mono-ui); font-size: 10.5px; line-height: 1.25;
+  color: rgb(var(--muted)); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 2px 6px; text-align: center; box-shadow: var(--shadow-1);
+}
+.node {
+  height: 100%; display: flex; align-items: center; gap: 12px;
+  background: rgb(var(--surface-1)); border: 1px solid var(--line-2);
+  border-radius: var(--radius, 12px); padding: 10px 14px; box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.node.state { border-left: 5px solid var(--stripe); }
+.nlabel {
+  font-family: var(--mono-ui); font-size: 13px; font-weight: 500;
+  color: rgb(var(--text)); line-height: 1.3;
+}
+/* kind badge — SHAPE + fill encode kind (brand/grey only, never --st-*).
+   The number is wrapped in <i> above the shape so a rotated diamond never tilts it. */
+.badge {
+  position: relative; flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--mono-ui); font-weight: 700; font-size: 13px;
+}
+.badge > i { position: relative; z-index: 1; font-style: normal; }
+.badge.sm { width: 16px; height: 16px; }
+.badge.kind-deterministic { background: rgb(var(--brand)); color: var(--on-brand); }
+.badge.kind-judgment {
+  background: rgb(var(--surface-1)); color: rgb(var(--brand-strong));
+  border: 2px solid rgb(var(--brand));
+}
+.badge.kind-structure { background: rgb(var(--muted)); color: var(--on-brand); border-radius: 6px; }
+.badge.kind-denied {
+  background: rgb(var(--surface-2)); color: rgb(var(--muted));
+  border: 2px double rgb(var(--faint));
+}
+.badge.kind-gate { background: transparent; color: var(--on-brand); }
+.badge.kind-gate::before {
+  content: ""; position: absolute; inset: 1px; z-index: 0;
+  background: rgb(var(--brand-strong)); border-radius: 5px; transform: rotate(45deg);
+}
+.detail-h {
+  font-family: var(--mono-ui); font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; color: rgb(var(--faint));
+  margin: 34px 0 10px; border-top: 1px solid var(--line); padding-top: 20px;
+}
+.drow {
+  border: 1px solid var(--line); border-radius: var(--radius, 12px);
+  margin-bottom: 8px; background: rgb(var(--surface-1)); overflow: hidden;
+}
+.drow summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center;
+  gap: 12px; padding: 12px 14px;
+}
+.drow summary::-webkit-details-marker { display: none; }
+.drow .dlabel {
+  font-family: var(--mono-ui); font-size: 13.5px; font-weight: 600;
+  color: rgb(var(--text)); flex: 1 1 auto;
+}
+.kindtag {
+  font-family: var(--mono-ui); font-size: 10px; letter-spacing: .06em;
+  text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+  color: rgb(var(--muted)); background: rgb(var(--surface-3));
+  border: 1px solid var(--line-2); flex: 0 0 auto;
+}
+.sttag {
+  font-family: var(--mono-ui); font-size: 10px; padding: 3px 8px; border-radius: 999px;
+  color: var(--stripe); border: 1px solid var(--stripe); background: transparent; flex: 0 0 auto;
+}
+.note { margin: 0 14px 12px; padding-left: 42px; font-size: 14.5px; color: rgb(var(--muted)); max-width: 820px; }
+.evidence {
+  display: inline-block; margin: 0 14px 14px 14px; font-family: var(--mono-ui);
+  font-size: 12.5px; text-decoration: none; color: rgb(var(--brand-strong)); word-break: break-all;
+}
+.evidence:hover { text-decoration: underline; }
+.evidence .evk {
+  color: rgb(var(--faint)); text-transform: uppercase; font-size: 10px;
+  letter-spacing: .08em; margin-right: 6px;
+}
+footer {
+  margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line);
+  font-family: var(--mono-ui); font-size: 11.5px; color: rgb(var(--faint));
+  display: flex; gap: 20px; flex-wrap: wrap;
+}
+footer a { color: rgb(var(--faint)); text-decoration: none; }
+footer a:hover { color: rgb(var(--brand)); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="controls">
+    <button id="langBtn" type="button" aria-label="toggle language">PT</button>
+    <button id="themeBtn" type="button" aria-label="toggle theme">Dark</button>
+  </div>
+  <div class="view" data-lang="en">
+  <div class="eyebrow">AIPe · Architecture · Rework loop</div>
+  <h1>Rework loop</h1>
+  <div class="kicker"><span class="tag">state machine</span>
+    <span>7 nodes · 7 edges</span></div>
+  <p class="argument">The fix loop is the most-travelled path in the system, and every step of it is adjudicated: QA rejection is recorded as `failed` WITH evidence of the defect, reopening the unit requires a `--reason`, and the stale session id is forced out so re-dispatch always starts a NEW session — a rejected delivery is never silently re-blessed by reusing the one that produced it.</p>
+  <div class="legend"><span class="lgtitle">Kinds in this diagram</span><span class="lg"><span class="badge kind-deterministic sm"></span><b>deterministic</b> · tested CLI</span><span class="lg"><span class="badge kind-judgment sm"></span><b>judgment</b> · SKILL.md prose</span><span class="lg"><span class="badge kind-gate sm"></span><b>gate</b> · a human decision</span></div>
+  <div class="scroller"><svg viewBox="0 0 850 774" width="850" height="774" xmlns="http://www.w3.org/2000/svg" role="img" class="diagram"><defs><marker id="arrow-en" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrowhead"/></marker></defs><path class="edge" d="M 412.0 90.0 L 412.0 144.0" marker-end="url(#arrow-en)"/><path class="edge" d="M 412.0 194.0 L 412.0 248.0" marker-end="url(#arrow-en)"/><path class="edge" d="M 592.0 169.0 C 612.0 169.0 612.0 709.0 592.0 709.0" marker-end="url(#arrow-en)"/><path class="edge" d="M 412.0 298.0 L 412.0 352.0" marker-end="url(#arrow-en)"/><path class="edge" d="M 412.0 402.0 L 412.0 456.0" marker-end="url(#arrow-en)"/><path class="edge" d="M 412.0 526.0 L 412.0 580.0" marker-end="url(#arrow-en)"/><path class="edge back" d="M 232.0 605.0 C 212.0 605.0 212.0 65.0 232.0 65.0" marker-end="url(#arrow-en)"/><foreignObject x="337.5" y="105.5" width="149.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">QA reviews the diff</div></foreignObject><foreignObject x="317.0" y="202.0" width="190.0" height="38.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">reject (--status failed + evidence)</div></foreignObject><foreignObject x="618.0" y="697.5" width="64.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">pass</div></foreignObject><foreignObject x="376.0" y="313.5" width="72.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">fix loop</div></foreignObject><foreignObject x="365.5" y="417.5" width="93.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">reopen unit</div></foreignObject><foreignObject x="317.0" y="541.5" width="190.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">pending filter picks it up</div></foreignObject><foreignObject x="29.0" y="53.5" width="177.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">fix delivered → re-gate</div></foreignObject><foreignObject x="232.0" y="40.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-deterministic state" style="--stripe: rgb(var(--st-delivered))"><span class="badge kind-deterministic"><i>1</i></span><span class="nlabel">delivered</span></div></foreignObject><foreignObject x="232.0" y="144.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-gate"><span class="badge kind-gate"><i>2</i></span><span class="nlabel">QA gate — verdict</span></div></foreignObject><foreignObject x="232.0" y="248.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-judgment state" style="--stripe: rgb(var(--st-failed))"><span class="badge kind-judgment"><i>3</i></span><span class="nlabel">failed (with evidence)</span></div></foreignObject><foreignObject x="232.0" y="352.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-deterministic"><span class="badge kind-deterministic"><i>4</i></span><span class="nlabel">re-dispatch requires --reason</span></div></foreignObject><foreignObject x="232.0" y="456.0" width="360.0" height="70.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-deterministic"><span class="badge kind-deterministic"><i>5</i></span><span class="nlabel">stale sessionId forced out → NEW session</span></div></foreignObject><foreignObject x="232.0" y="580.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-deterministic state" style="--stripe: rgb(var(--st-dispatched))"><span class="badge kind-deterministic"><i>6</i></span><span class="nlabel">dispatched (fresh)</span></div></foreignObject><foreignObject x="232.0" y="684.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-judgment state" style="--stripe: rgb(var(--st-verified))"><span class="badge kind-judgment"><i>7</i></span><span class="nlabel">verified (re-gate passed)</span></div></foreignObject></svg></div>
+  <div class="detail-h">Nodes — note &amp; evidence</div>
+  <details open class="drow kind-deterministic"><summary><span class="badge kind-deterministic"><i>1</i></span><span class="dlabel">delivered</span><span class="kindtag">deterministic</span><span class="sttag" style="--stripe: rgb(var(--st-delivered))">delivered</span></summary><p class="note">The dev reported done with attached evidence, and (if a PR is named) green CI.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/ledger.ts#L296" target="_blank" rel="noopener"><span class="evk">evidence</span> src/journey/ledger.ts:296</a></details><details open class="drow kind-gate"><summary><span class="badge kind-gate"><i>2</i></span><span class="dlabel">QA gate — verdict</span><span class="kindtag">gate</span></summary><p class="note">An independent QA persona reviews the diff against the acceptance criteria, not the author&#x27;s report. Two outcomes: pass → verified, reject → failed. QA must record under its OWN --task or the CLI refuses the write (it would collide with the dev&#x27;s record).</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/skills/review-delivery/SKILL.md#L10" target="_blank" rel="noopener"><span class="evk">evidence</span> skills/review-delivery/SKILL.md:10</a></details><details open class="drow kind-judgment"><summary><span class="badge kind-judgment"><i>3</i></span><span class="dlabel">failed (with evidence)</span><span class="kindtag">judgment</span><span class="sttag" style="--stripe: rgb(var(--st-failed))">failed</span></summary><p class="note">The rejection is recorded as `failed` and carries evidence of the defect — not a bare verdict. In the recorded scenario one PR was rejected three times, each round finding a defect the previous did not.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/types.ts#L7" target="_blank" rel="noopener"><span class="evk">evidence</span> src/journey/types.ts:7</a></details><details open class="drow kind-deterministic"><summary><span class="badge kind-deterministic"><i>4</i></span><span class="dlabel">re-dispatch requires --reason</span><span class="kindtag">deterministic</span></summary><p class="note">Moving a delivered/verified unit back to `dispatched` is refused without a --reason, so reopening finished work is always deliberate and audited. The guard keys on the UNIT (repo+package+task), so a fix can reuse or swap the specialist and the invariant still holds.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/ledger.ts#L318" target="_blank" rel="noopener"><span class="evk">evidence</span> src/journey/ledger.ts:318</a></details><details open class="drow kind-deterministic"><summary><span class="badge kind-deterministic"><i>5</i></span><span class="dlabel">stale sessionId forced out → NEW session</span><span class="kindtag">deterministic</span></summary><p class="note">On reopening, the sticky sessionId is explicitly cleared (present-but- undefined ⇒ &quot;clear&quot;, not &quot;inherit&quot;). Without this the re-dispatch would silently no-op: the pending filter only picks up a session unit that is `dispatched` and has NO sessionId, so a unit still carrying its OLD id would never start a new session.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/ledger.ts#L410" target="_blank" rel="noopener"><span class="evk">evidence</span> src/journey/ledger.ts:410</a></details><details open class="drow kind-deterministic"><summary><span class="badge kind-deterministic"><i>6</i></span><span class="dlabel">dispatched (fresh)</span><span class="kindtag">deterministic</span><span class="sttag" style="--stripe: rgb(var(--st-dispatched))">dispatched</span></summary><p class="note">A new specialist session takes the fix task. The pr/evidence of the prior try are already dropped (not sticky), so the re-gate judges the new work, not a leftover claim.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/ledger.ts#L400" target="_blank" rel="noopener"><span class="evk">evidence</span> src/journey/ledger.ts:400</a></details><details open class="drow kind-judgment"><summary><span class="badge kind-judgment"><i>7</i></span><span class="dlabel">verified (re-gate passed)</span><span class="kindtag">judgment</span><span class="sttag" style="--stripe: rgb(var(--st-verified))">verified</span></summary><p class="note">The fixed delivery passes QA on re-gate and is cleared for the PE.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/types.ts#L12" target="_blank" rel="noopener"><span class="evk">evidence</span> src/journey/types.ts:12</a></details>
+</div>
+<div class="view" data-lang="pt" hidden>
+  <div class="eyebrow">AIPe · Arquitetura · Loop de conserto</div>
+  <h1>Loop de conserto</h1>
+  <div class="kicker"><span class="tag">máquina de estados</span>
+    <span>7 nós · 7 arestas</span></div>
+  <p class="argument">O loop de conserto é o caminho mais percorrido do sistema, e cada passo é adjudicado: a reprovação do QA é registrada como `failed` COM evidência do defeito, reabrir a unidade exige `--reason`, e o id de sessão obsoleto é forçado para fora para que o re-dispatch sempre inicie uma sessão NOVA — uma entrega reprovada nunca é reabençoada em silêncio reusando a que a produziu.</p>
+  <div class="legend"><span class="lgtitle">Kinds neste diagrama</span><span class="lg"><span class="badge kind-deterministic sm"></span><b>deterministic</b> · CLI testada</span><span class="lg"><span class="badge kind-judgment sm"></span><b>judgment</b> · prosa de SKILL.md</span><span class="lg"><span class="badge kind-gate sm"></span><b>gate</b> · decisão humana</span></div>
+  <div class="scroller"><svg viewBox="0 0 850 774" width="850" height="774" xmlns="http://www.w3.org/2000/svg" role="img" class="diagram"><defs><marker id="arrow-pt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="arrowhead"/></marker></defs><path class="edge" d="M 412.0 90.0 L 412.0 144.0" marker-end="url(#arrow-pt)"/><path class="edge" d="M 412.0 194.0 L 412.0 248.0" marker-end="url(#arrow-pt)"/><path class="edge" d="M 592.0 169.0 C 612.0 169.0 612.0 709.0 592.0 709.0" marker-end="url(#arrow-pt)"/><path class="edge" d="M 412.0 298.0 L 412.0 352.0" marker-end="url(#arrow-pt)"/><path class="edge" d="M 412.0 402.0 L 412.0 456.0" marker-end="url(#arrow-pt)"/><path class="edge" d="M 412.0 526.0 L 412.0 580.0" marker-end="url(#arrow-pt)"/><path class="edge back" d="M 232.0 605.0 C 212.0 605.0 212.0 65.0 232.0 65.0" marker-end="url(#arrow-pt)"/><foreignObject x="348.0" y="105.5" width="128.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">QA revisa o diff</div></foreignObject><foreignObject x="317.0" y="202.0" width="190.0" height="38.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">reprova (--status failed + evidência)</div></foreignObject><foreignObject x="618.0" y="697.5" width="64.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">aprova</div></foreignObject><foreignObject x="348.0" y="313.5" width="128.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">loop de conserto</div></foreignObject><foreignObject x="355.0" y="417.5" width="114.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">reabre unidade</div></foreignObject><foreignObject x="317.0" y="541.5" width="190.0" height="23.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">filtro de pendentes a pega</div></foreignObject><foreignObject x="16.0" y="46.0" width="190.0" height="38.0" class="elabfo"><div xmlns="http://www.w3.org/1999/xhtml" class="elab">conserto entregue → re-gate</div></foreignObject><foreignObject x="232.0" y="40.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-deterministic state" style="--stripe: rgb(var(--st-delivered))"><span class="badge kind-deterministic"><i>1</i></span><span class="nlabel">delivered</span></div></foreignObject><foreignObject x="232.0" y="144.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-gate"><span class="badge kind-gate"><i>2</i></span><span class="nlabel">Gate de QA — veredito</span></div></foreignObject><foreignObject x="232.0" y="248.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-judgment state" style="--stripe: rgb(var(--st-failed))"><span class="badge kind-judgment"><i>3</i></span><span class="nlabel">failed (com evidência)</span></div></foreignObject><foreignObject x="232.0" y="352.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-deterministic"><span class="badge kind-deterministic"><i>4</i></span><span class="nlabel">re-dispatch exige --reason</span></div></foreignObject><foreignObject x="232.0" y="456.0" width="360.0" height="70.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-deterministic"><span class="badge kind-deterministic"><i>5</i></span><span class="nlabel">sessionId obsoleto forçado para fora → sessão NOVA</span></div></foreignObject><foreignObject x="232.0" y="580.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-deterministic state" style="--stripe: rgb(var(--st-dispatched))"><span class="badge kind-deterministic"><i>6</i></span><span class="nlabel">dispatched (nova)</span></div></foreignObject><foreignObject x="232.0" y="684.0" width="360.0" height="50.0"><div xmlns="http://www.w3.org/1999/xhtml" class="node kind-judgment state" style="--stripe: rgb(var(--st-verified))"><span class="badge kind-judgment"><i>7</i></span><span class="nlabel">verified (re-gate aprovou)</span></div></foreignObject></svg></div>
+  <div class="detail-h">Nós — nota &amp; evidência</div>
+  <details open class="drow kind-deterministic"><summary><span class="badge kind-deterministic"><i>1</i></span><span class="dlabel">delivered</span><span class="kindtag">deterministic</span><span class="sttag" style="--stripe: rgb(var(--st-delivered))">delivered</span></summary><p class="note">O dev reportou concluído com evidência anexada e (se nomeia PR) CI verde.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/ledger.ts#L296" target="_blank" rel="noopener"><span class="evk">evidência</span> src/journey/ledger.ts:296</a></details><details open class="drow kind-gate"><summary><span class="badge kind-gate"><i>2</i></span><span class="dlabel">Gate de QA — veredito</span><span class="kindtag">gate</span></summary><p class="note">Uma persona de QA independente revisa o diff contra os critérios de aceite, não o relato do autor. Dois desfechos: aprova → verified, reprova → failed. O QA deve registrar sob sua PRÓPRIA --task ou o CLI recusa a escrita (colidiria com o registro do dev).</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/skills/review-delivery/SKILL.md#L10" target="_blank" rel="noopener"><span class="evk">evidência</span> skills/review-delivery/SKILL.md:10</a></details><details open class="drow kind-judgment"><summary><span class="badge kind-judgment"><i>3</i></span><span class="dlabel">failed (com evidência)</span><span class="kindtag">judgment</span><span class="sttag" style="--stripe: rgb(var(--st-failed))">failed</span></summary><p class="note">A reprovação é registrada como `failed` e carrega evidência do defeito — não um veredito nu. No cenário registrado uma PR foi reprovada três vezes, cada rodada achando um defeito que a anterior não achou.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/types.ts#L7" target="_blank" rel="noopener"><span class="evk">evidência</span> src/journey/types.ts:7</a></details><details open class="drow kind-deterministic"><summary><span class="badge kind-deterministic"><i>4</i></span><span class="dlabel">re-dispatch exige --reason</span><span class="kindtag">deterministic</span></summary><p class="note">Mover uma unidade delivered/verified de volta a `dispatched` é recusado sem --reason, então reabrir trabalho concluído é sempre deliberado e auditado. A guarda chaveia na UNIDADE (repo+package+task), então um conserto pode reusar ou trocar o especialista e a invariante se mantém.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/ledger.ts#L318" target="_blank" rel="noopener"><span class="evk">evidência</span> src/journey/ledger.ts:318</a></details><details open class="drow kind-deterministic"><summary><span class="badge kind-deterministic"><i>5</i></span><span class="dlabel">sessionId obsoleto forçado para fora → sessão NOVA</span><span class="kindtag">deterministic</span></summary><p class="note">Ao reabrir, o sessionId sticky é explicitamente limpo (presente-mas- undefined ⇒ &quot;limpa&quot;, não &quot;herda&quot;). Sem isso o re-dispatch faria no-op silencioso: o filtro de pendentes só pega uma unidade de sessão que esteja `dispatched` e SEM sessionId, então uma unidade ainda carregando o id ANTIGO nunca iniciaria uma sessão nova.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/ledger.ts#L410" target="_blank" rel="noopener"><span class="evk">evidência</span> src/journey/ledger.ts:410</a></details><details open class="drow kind-deterministic"><summary><span class="badge kind-deterministic"><i>6</i></span><span class="dlabel">dispatched (nova)</span><span class="kindtag">deterministic</span><span class="sttag" style="--stripe: rgb(var(--st-dispatched))">dispatched</span></summary><p class="note">Uma nova sessão de especialista assume a task de conserto. O pr/evidence da tentativa anterior já foram descartados (não são sticky), então o re-gate julga o trabalho novo, não um claim remanescente.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/ledger.ts#L400" target="_blank" rel="noopener"><span class="evk">evidência</span> src/journey/ledger.ts:400</a></details><details open class="drow kind-judgment"><summary><span class="badge kind-judgment"><i>7</i></span><span class="dlabel">verified (re-gate aprovou)</span><span class="kindtag">judgment</span><span class="sttag" style="--stripe: rgb(var(--st-verified))">verified</span></summary><p class="note">A entrega consertada passa no QA no re-gate e é liberada para o PE.</p><a class="evidence" href="https://github.com/blpsoares/aipe/blob/main/src/journey/types.ts#L12" target="_blank" rel="noopener"><span class="evk">evidência</span> src/journey/types.ts:12</a></details>
+</div>
+  <footer>
+    <a href="https://github.com/blpsoares/aipe" target="_blank" rel="noopener">github.com/blpsoares/aipe</a>
+    <a href="https://aipe.openvibes.tech" target="_blank" rel="noopener">aipe.openvibes.tech</a>
+  </footer>
+</div>
+<script>
+(function () {
+  var root = document.documentElement, cur = "en";
+  var langBtn = document.getElementById("langBtn"), themeBtn = document.getElementById("themeBtn");
+  function setLang(l) {
+    cur = l;
+    document.querySelectorAll(".view").forEach(function (v) { v.hidden = v.dataset.lang !== l; });
+    langBtn.textContent = l === "en" ? "PT" : "EN";   // shows the language you switch TO
+    root.setAttribute("lang", l);
+  }
+  function prefDark() { try { return matchMedia("(prefers-color-scheme: dark)").matches; } catch (e) { return false; } }
+  function setTheme(t) { root.setAttribute("data-theme", t); themeBtn.textContent = t === "dark" ? "Light" : "Dark"; }
+  langBtn.onclick = function () { setLang(cur === "en" ? "pt" : "en"); };
+  themeBtn.onclick = function () { setTheme(root.getAttribute("data-theme") === "dark" ? "light" : "dark"); };
+  window.__setLang = setLang; window.__setTheme = setTheme;  // for the screenshot pipeline
+  setLang("en"); setTheme(prefDark() ? "dark" : "light");
+})();
+</script>
+</body>
+</html>
