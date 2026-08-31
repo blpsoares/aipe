@@ -2,8 +2,10 @@
 // dispatch that carries a PR, and mark the ones GitHub reports as MERGED. Kept
 // pure — the PR-state fetcher is injected so tests can run without gh/network;
 // the CLI wires in the real `gh` via ghPrState.
-import { listJourneys, readLedger, recordDispatch } from "./ledger";
-import type { JourneyDispatch } from "./types";
+import { listJourneys, readLedger, writeLedger } from "./ledger";
+import { dedupeLedger } from "./dedupe";
+import { readPersonas } from "../hire-specialists/read-personas";
+import type { PersonaRegistryEntry } from "../hire-specialists/types";
 
 export type PrState = "MERGED" | "OPEN" | "CLOSED" | null;
 
@@ -13,6 +15,7 @@ export interface ReconcileResult {
   journey: string;
   checked: number; // delivered dispatches with a PR that we polled
   merged: string[]; // PR urls newly marked merged
+  collapsed: number; // duplicate/phantom rows dropped by the pre-merge cleanup (#97/#83)
 }
 
 // Reconcile one journey: any open-but-shipped dispatch whose PR is MERGED becomes
@@ -22,37 +25,64 @@ export interface ReconcileResult {
 // terminal here).
 const RECONCILABLE = new Set(["delivered", "verified"]);
 
+// #97 — mesclar fecha a UNIDADE inteira, não só a linha do dev. A merge is
+// detected here; closing it must also drop the phantoms the unit accumulated —
+// a QA `verified`/re-gate row sharing the PR, a case-variant (`mike` after
+// `Mike`), the coordinator's package/bare-repo split of one branch, and a stale
+// `redirected` sibling that never landed anything of its own. `dedupeLedger`
+// (branch-keyed, roster-canonical) already collapses each of these onto the
+// unit's most-advanced survivor; running it BEFORE marking merged is the order
+// the immutability rule demands (a `merged` survivor is kept byte-for-byte and
+// its stuck duplicates are reconciled away, never rewritten — #83's note that
+// "a limpeza tem que acontecer ANTES do merge"). Then every reconcilable
+// survivor whose PR is MERGED lands `merged`, and the whole ledger is written
+// once — so nothing is left `verified`/`delivered`/`redirected` to keep lying in
+// the "precisa de você" queue after the work has already landed.
 export async function reconcileJourney(
   workspaceDir: string,
   id: string,
   fetchState: PrStateFetcher,
+  roster?: PersonaRegistryEntry[],
 ): Promise<ReconcileResult> {
   const ledger = await readLedger(workspaceDir, id);
   const merged: string[] = [];
   let checked = 0;
-  if (!ledger) return { journey: id, checked, merged };
+  if (!ledger) return { journey: id, checked, merged, collapsed: 0 };
 
-  for (const d of ledger.dispatches) {
+  // Cleanup BEFORE the merge: collapse the duplicate/phantom rows so a re-gate or
+  // a case/package variant can never linger behind the merged unit.
+  const rs = roster ?? (await readPersonas(workspaceDir));
+  const dd = dedupeLedger(ledger, rs);
+  const collapsed = dd.merges.reduce((n, m) => n + m.dropped, 0);
+
+  // Mark merges on the (cleaned) rows in memory, then write the whole ledger once.
+  const dispatches = dd.ledger.dispatches.map((d) => ({ ...d }));
+  for (const d of dispatches) {
     if (!RECONCILABLE.has(d.status) || !d.pr) continue;
     checked++;
     const state = await fetchState(d.pr);
     if (state === "MERGED") {
-      const next: JourneyDispatch = { ...d, status: "merged" };
-      await recordDispatch(workspaceDir, id, next);
+      d.status = "merged";
       merged.push(d.pr);
     }
   }
-  return { journey: id, checked, merged };
+
+  if (dd.changed || merged.length > 0) {
+    await writeLedger(workspaceDir, { ...dd.ledger, dispatches });
+  }
+  return { journey: id, checked, merged, collapsed };
 }
 
-// Reconcile every journey in the workspace.
+// Reconcile every journey in the workspace. Reads the roster once and threads it
+// into each journey so the pre-merge cleanup canonicalizes names consistently.
 export async function reconcileAll(
   workspaceDir: string,
   fetchState: PrStateFetcher,
 ): Promise<ReconcileResult[]> {
+  const roster = await readPersonas(workspaceDir);
   const journeys = await listJourneys(workspaceDir);
   const out: ReconcileResult[] = [];
-  for (const j of journeys) out.push(await reconcileJourney(workspaceDir, j.id, fetchState));
+  for (const j of journeys) out.push(await reconcileJourney(workspaceDir, j.id, fetchState, roster));
   return out;
 }
 
