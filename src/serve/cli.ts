@@ -22,9 +22,19 @@ import {
   selectForWorkspace,
   statusExitCode,
   stopPlan,
+  newestForWorkspace,
   portHolder,
+  NOT_RUNNING_CODE,
 } from "./lifecycle";
-import { renderBanner, renderHelp, renderStatus, renderStop, liveLine, supportsColor } from "./present";
+import { renderBanner, renderHelp, renderStatus, renderStop, renderTailscale, liveLine, supportsColor, type ReachRow } from "./present";
+import {
+  detectLan,
+  detectTailscale,
+  tailscaleServesPort,
+  configureTailscaleServe,
+  type Address,
+  type ConfigureResult,
+} from "./reachability";
 import { VERSION } from "../cli";
 
 function getFlag(args: string[], name: string): string | undefined {
@@ -113,12 +123,57 @@ export function accessNotice(host: string, insecure: boolean, tokenEnv: string):
   }
   return [
     `aipe serve — bound to ${host} (reachable from the network), so a token is required.`,
-    `aipe serve — open the URL above; set ${tokenEnv} to pin your own token.`,
+    `aipe serve — open one of the URLs above; set ${tokenEnv} to pin your own token.`,
   ];
 }
 
 function print(lines: string[]): void {
   for (const line of lines) console.log(line);
+}
+
+export interface ReachDeps {
+  detectLan: typeof detectLan;
+  detectTailscale: typeof detectTailscale;
+  tailscaleServesPort: typeof tailscaleServesPort;
+}
+
+const realReachDeps: ReachDeps = { detectLan, detectTailscale, tailscaleServesPort };
+
+/**
+ * Every address this console can be reached at, given `host`/`port` and the
+ * URL suffix (`?token=…` or `""`). Loopback is the simple, always-true case:
+ * one row, `http://127.0.0.1:<port>`. Off loopback nothing is assumed — each
+ * candidate (LAN, Tailscale) is established independently via `deps`, and a
+ * candidate that can't be established says so instead of guessing an address
+ * (never `localhost`, which is what this replaces).
+ */
+export async function buildReach(host: string, port: number, suffix: string, deps: ReachDeps = realReachDeps): Promise<ReachRow[]> {
+  if (isLoopback(host)) {
+    return [{ label: "url", value: `http://127.0.0.1:${port}${suffix}`, established: true }];
+  }
+
+  const rows: ReachRow[] = [];
+
+  const lan = deps.detectLan();
+  rows.push(
+    lan.host
+      ? { label: "lan", value: `http://${lan.host}:${port}${suffix}`, established: true }
+      : { label: "lan", value: `not established — ${lan.reason ?? "no address found"}`, established: false },
+  );
+
+  const ts = await deps.detectTailscale();
+  if (ts.host) {
+    const served = await deps.tailscaleServesPort(port);
+    rows.push(
+      served
+        ? { label: "tailscale", value: `https://${ts.host}${suffix}`, established: true }
+        : { label: "tailscale", value: `tailscale detected (${ts.host}), but not yet reachable — run \`aipe serve tailscale\``, established: false },
+    );
+  } else {
+    rows.push({ label: "tailscale", value: `not established — ${ts.reason ?? "no address found"}`, established: false });
+  }
+
+  return rows;
 }
 
 // `aipe serve status` — is a console running for THIS workspace? Reports port,
@@ -157,6 +212,44 @@ export async function stopCommand(
   return 0;
 }
 
+export interface TailscaleDeps {
+  configure: (port: number) => Promise<ConfigureResult>;
+  detectTailscale: () => Promise<Address>;
+  tailscaleServesPort: (port: number) => Promise<boolean>;
+}
+
+const realTailscaleDeps: TailscaleDeps = {
+  configure: configureTailscaleServe,
+  detectTailscale: () => detectTailscale(),
+  tailscaleServesPort: (port) => tailscaleServesPort(port),
+};
+
+// `aipe serve tailscale` — point Tailscale Serve's HTTPS/443 at this
+// workspace's running console, and report the address that actually resulted
+// (never claim success the way `tailscale serve --bg` itself does on exit 0 —
+// confirm it in `tailscale serve status` before calling it done).
+export async function tailscaleCommand(
+  workspace: string,
+  out: (l: string[]) => void = print,
+  deps: TailscaleDeps = realTailscaleDeps,
+): Promise<number> {
+  const color = supportsColor(process.stdout, process.env);
+  const entry = newestForWorkspace(await runningServes(), workspace);
+  if (!entry) {
+    out(renderTailscale({ state: "no-console", workspace }, color));
+    return NOT_RUNNING_CODE;
+  }
+  const configured = await deps.configure(entry.port);
+  if (!configured.ok) {
+    out(renderTailscale({ state: "failed", workspace, reason: configured.error }, color));
+    return 1;
+  }
+  const ts = await deps.detectTailscale();
+  const served = ts.host ? await deps.tailscaleServesPort(entry.port) : false;
+  out(renderTailscale({ state: served ? "ready" : "unverified", workspace, host: ts.host, token: entry.token }, color));
+  return served ? 0 : 1;
+}
+
 export async function run(args: string[]): Promise<number> {
   const workspace = getFlag(args, "--workspace") ?? process.cwd();
 
@@ -171,6 +264,7 @@ export async function run(args: string[]): Promise<number> {
   const sub = serveSubcommand(args);
   if (sub === "status") return statusCommand(workspace);
   if (sub === "stop") return stopCommand(workspace);
+  if (sub === "tailscale") return tailscaleCommand(workspace);
 
   const port = Math.max(0, Number(getFlag(args, "--port") ?? "4317") || 4317);
   const host = getFlag(args, "--host") ?? "127.0.0.1";
@@ -216,10 +310,9 @@ export async function run(args: string[]): Promise<number> {
     ...(token !== "" ? { token } : {}),
     ...(insecure ? { insecure: true } : {}),
   });
-  const shown = host === "0.0.0.0" ? "localhost" : host;
   const suffix = guarded ? `/?token=${token}` : "";
-  const url = `http://${shown}:${server.port}${suffix}`;
-  print(renderBanner({ url, workspace, notice: accessNotice(host, insecure, TOKEN_ENV) }, color));
+  const reach = await buildReach(host, server.port ?? port, suffix);
+  print(renderBanner({ reach, workspace, notice: accessNotice(host, insecure, TOKEN_ENV) }, color));
   // The live line is the last thing printed, so it can be rewritten in place as
   // SSE clients connect/disconnect (TTY only; when piped we print it once).
   liveLinePrinted = true;

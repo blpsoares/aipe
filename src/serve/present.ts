@@ -86,8 +86,17 @@ function section(label: string, rows: Row[], color: boolean): string[] {
 
 // ── Banner (attached start) ────────────────────────────────────────────────
 
+/** One way this console can be reached: an established URL, or a declared non-establishment. */
+export interface ReachRow {
+  label: string;
+  /** The full URL when established; an explanation of why not, otherwise. Never a guess. */
+  value: string;
+  established: boolean;
+}
+
 export interface BannerInfo {
-  url: string;
+  /** Loopback: one row, always established. Off loopback: one row per address kind (lan, tailscale), each established or not — never `localhost`. */
+  reach: ReachRow[];
   workspace: string;
   /** Access notice lines (empty on loopback). */
   notice: string[];
@@ -96,7 +105,7 @@ export interface BannerInfo {
 export function renderBanner(info: BannerInfo, color: boolean): string[] {
   const out: string[] = ["", title("aipe serve", color), ""];
   out.push(...section("CONSOLE", [
-    { k: "url", v: info.url, dot: "up" },
+    ...info.reach.map((r): Row => ({ k: r.label, v: r.value, dot: r.established ? "up" : "down", muted: !r.established })),
     { k: "workspace", v: info.workspace, muted: true },
   ], color));
   out.push("");
@@ -160,6 +169,40 @@ export function renderStop(stopped: number[], workspace: string, color: boolean)
   return out;
 }
 
+// ── tailscale ─────────────────────────────────────────────────────────────
+
+export interface TailscaleReport {
+  /** no-console: nothing running for this workspace to point Serve at. failed: the CLI call itself errored. ready: Serve confirmed forwarding to our port. unverified: the config call succeeded but Serve doesn't show it forwarding yet. */
+  state: "no-console" | "failed" | "ready" | "unverified";
+  workspace: string;
+  reason?: string;
+  host?: string | null;
+  token?: string;
+}
+
+export function renderTailscale(info: TailscaleReport, color: boolean): string[] {
+  const out: string[] = ["", title("aipe serve tailscale", color), ""];
+  if (info.state === "no-console") {
+    out.push(...section("STATE", [
+      { k: "console", v: "not running for this workspace — start one first with `aipe serve`", dot: "down", muted: true },
+    ], color));
+    out.push(...section("WORKSPACE", [{ k: "path", v: info.workspace, muted: true }], color));
+  } else if (info.state === "failed") {
+    out.push(...section("STATE", [{ k: "tailscale serve", v: info.reason ?? "failed", dot: "down" }], color));
+  } else {
+    const established = info.state === "ready";
+    const url = info.host ? `https://${info.host}${info.token ? `/?token=${info.token}` : ""}` : "not established";
+    out.push(...section("STATE", [{ k: "tailscale", v: url, dot: established ? "up" : "warn" }], color));
+    if (!established) {
+      out.push(...section("NOTE", [
+        { k: "", v: "config applied, but `tailscale serve status` doesn't show it forwarding yet — check again in a moment", muted: true },
+      ], color));
+    }
+  }
+  out.push("");
+  return out;
+}
+
 // ── help ──────────────────────────────────────────────────────────────────
 
 export function renderHelp(color: boolean): string[] {
@@ -174,10 +217,12 @@ export function renderHelp(color: boolean): string[] {
     `${INDENT}${paint("aipe serve", C.white, color)} ${paint("[--port <n>] [--host <addr>] [--workspace <dir>] [--background] [--insecure]", C.dim, color)}`,
     `${INDENT}${paint("aipe serve status", C.white, color)}   ${paint("— is a console running for this workspace?", C.dim, color)}`,
     `${INDENT}${paint("aipe serve stop", C.white, color)}     ${paint("— stop the background console for this workspace", C.dim, color)}`,
+    `${INDENT}${paint("aipe serve tailscale", C.white, color)} ${paint("— point Tailscale Serve's HTTPS/443 at this workspace's console", C.dim, color)}`,
     "",
     `${MARGIN}${paint("Commands", C.dim, color)}`,
     cmd("status", "Report the running console (port, PID, workspace, uptime); exit 3 if none"),
     cmd("stop", "Stop the detached console for this workspace (idempotent)"),
+    cmd("tailscale", "Set up Tailscale Serve so the console is reachable at a stable https://…ts.net URL"),
     "",
     `${MARGIN}${paint("Options", C.dim, color)}`,
     opt("--port <n>", "Port to bind (default 4317)"),
