@@ -71,16 +71,15 @@ export function classifyGhChecks(code: number, stdout: string, stderr: string): 
 }
 
 // D2 (j-20260830-w0) — a merged PR's branch is routinely deleted; its NUMBER
-// never is. Parses the owner/repo/number out of a github.com PR URL so the
-// real resolver below can query `gh pr checks <number> --repo <owner/repo>`
-// explicitly, instead of handing gh the URL and trusting its own resolution —
-// the exact path that abstained "unresolvable" for a merged, branch-deleted
-// PR that `gh pr checks <number>` answered instantly (2026-08-30, PR #257 in
-// agentistics and PR #26 in openvibes-embark).
-export function parsePrUrl(prUrl: string): { owner: string; repo: string; number: string } | null {
-  const m = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(prUrl.trim());
-  return m ? { owner: m[1]!, repo: m[2]!, number: m[3]! } : null;
-}
+// never is. `parsePrUrl` (the shared forge resolver) reads owner/repo/number out
+// of a github.com PR URL so the real resolver below can query
+// `gh pr checks <number> --repo <owner/repo>` explicitly, instead of handing gh
+// the URL and trusting its own resolution — the exact path that abstained
+// "unresolvable" for a merged, branch-deleted PR that `gh pr checks <number>`
+// answered instantly (2026-08-30, PR #257 in agentistics and PR #26 in
+// openvibes-embark). Re-exported here so existing callers/tests keep their import.
+import { parsePrUrl } from "../forge/slug";
+export { parsePrUrl };
 
 // The gh args for `pr checks` (without the leading "gh"), BY NUMBER with an
 // explicit `--repo`, never by branch. A non-URL input (a bare number, a test

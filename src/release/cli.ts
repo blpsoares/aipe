@@ -18,6 +18,7 @@ import { join } from "node:path";
 import type { GitRun } from "./git";
 import { checkLockfileClean, type LockfileCheck } from "./lockfile";
 import { evaluatePublication, type PublicationVerdict, type PublishedFacts } from "./promote";
+import { resolveSlugFromRemote } from "../forge/slug";
 
 const realRun: GitRun = async (cmd) => {
   const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
@@ -65,13 +66,9 @@ export interface PromoteResult {
 
 // Resolve the forge slug from the repo's own remote, never from cwd inference —
 // `gh` resolving the wrong repo (onda5 #76) is avoided by always passing an
-// explicit owner/name derived here.
-export async function resolveSlugFromRemote(repoAbs: string, run: GitRun = realRun): Promise<string | null> {
-  const r = await run(["git", "-C", repoAbs, "remote", "get-url", "origin"]);
-  if (r.code !== 0 || !r.stdout) return null;
-  const m = r.stdout.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/);
-  return m ? m[1]! : null;
-}
+// explicit owner/name derived here. The implementation is the shared forge
+// resolver; re-exported so this module's callers and tests keep their import.
+export { resolveSlugFromRemote };
 
 // The target version is the one the bump job stamped onto the manifest at the
 // tip of the integration branch — read from the ref, not from the working tree,

@@ -410,7 +410,20 @@ async function specCommand(args: string[]): Promise<number> {
       console.log(`REJECT not-approvable ${ledger.spec.path} — fill the spec (replace every <...> placeholder) before approving`);
       return 1;
     }
-    await setJourneySpec(workspace, id, { ...ledger.spec, approved: true });
+    // Approval ESTABLISHES a baseline: "these exact bytes are the approved
+    // spec". So it must re-record the hash of the content it just validated,
+    // never leave whatever hash a scaffold or an intermediate edit last stamped.
+    // The bug (j-20260830-58): approve kept the stale template/intermediate hash
+    // while the file it approved hashed to something else, so the very next
+    // `journey spec` read the approved file, saw a hash it never recorded, and
+    // cried drift on a file nobody had touched — bumping the version and
+    // un-approving. Re-baselining here makes drift mean what it says: a change
+    // AFTER approval, not a hash that was never refreshed to match reality.
+    await setJourneySpec(workspace, id, {
+      ...ledger.spec,
+      approved: true,
+      contentHash: hashOrientationContent(md),
+    });
     console.log(`OK approved journey=${id} spec=v${ledger.spec.version}`);
     return 0;
   }

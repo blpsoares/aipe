@@ -53,6 +53,14 @@ async function readApproved(dir: string, id: string): Promise<boolean | undefine
   return (parse(raw) as { spec?: { approved?: boolean } }).spec?.approved;
 }
 
+async function readSpec(
+  dir: string,
+  id: string,
+): Promise<{ version?: number; approved?: boolean; contentHash?: string } | undefined> {
+  const raw = await readFile(join(dir, ".aipe", "journeys", `${id}.yaml`), "utf8");
+  return (parse(raw) as { spec?: { version?: number; approved?: boolean; contentHash?: string } }).spec;
+}
+
 test("--approve REFUSES the raw scaffold template — placeholders intact are not a filled spec (the real case)", async () => {
   const dir = await ws();
   try {
@@ -196,6 +204,40 @@ test("--show prints the normal SPEC line when the approved file is present", asy
     expect(code).toBe(0);
     expect(output).toContain("approved=true");
     expect(output).not.toContain("INCONSISTENT");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--approve re-baselines contentHash to the bytes it validated — no phantom drift on re-run (j-20260830-58)", async () => {
+  // The real case: scaffold records the TEMPLATE's hash; the coordinator fills
+  // the file (a different hash) and approves. Approval used to keep the stale
+  // template hash, so the very next `journey spec` read the filled file, saw a
+  // hash it never recorded, and cried drift — bumping the version and
+  // un-approving a spec nobody had touched (`diff` empty, contentHash flipped).
+  const dir = await ws();
+  try {
+    await run(["start", "--workspace", dir, "--id", "j1"]);
+    await run(["spec", "--workspace", dir, "--journey", "j1", "--units", "aipe"]);
+    await writeFile(join(dir, specPath("j1")), FILLED, "utf8");
+    await run(["spec", "--workspace", dir, "--journey", "j1", "--approve"]);
+
+    // Approval must have re-baselined the hash to the approved content.
+    const { hashOrientationContent } = await import("../spec");
+    const afterApprove = await readSpec(dir, "j1");
+    expect(afterApprove?.approved).toBe(true);
+    expect(afterApprove?.version).toBe(1);
+    expect(afterApprove?.contentHash).toBe(hashOrientationContent(FILLED));
+
+    // Coordinator re-runs `journey spec` WITHOUT editing the file — no drift.
+    const { output } = await capture(() =>
+      run(["spec", "--workspace", dir, "--journey", "j1", "--units", "aipe"]),
+    );
+    expect(output).not.toContain("drift-detected");
+    expect(output).toContain("v1");
+    const afterRerun = await readSpec(dir, "j1");
+    expect(afterRerun?.version).toBe(1); // version unchanged
+    expect(afterRerun?.approved).toBe(true); // approval survives
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

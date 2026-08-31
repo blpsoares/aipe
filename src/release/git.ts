@@ -46,11 +46,17 @@ async function isAncestor(run: GitRun, repo: string, a: string, b: string): Prom
   return r.code === 0;
 }
 
-// The highest semver release tag, or null. Only pure semver tags count as
-// releases (the same rule `update/check` uses to recognise a release), so a
-// stray annotated tag never poses as one.
-async function latestTag(run: GitRun, repo: string): Promise<string | null> {
-  const r = await run(["git", "-C", repo, "tag", "--list"]);
+// The highest semver release tag REACHABLE FROM `ref`, or null. Two rules:
+//   • Only pure semver tags count as releases (the same rule `update/check` uses),
+//     so a stray annotated tag never poses as one.
+//   • `git tag --merged <ref>` restricts to tags whose commit is an ancestor of
+//     the release ref — i.e. tags actually on THIS repo's lineage. A tag sitting
+//     only in the object pool (fetched from an `upstream` remote, never merged
+//     into main) is invisible, so it can never be chosen as a baseline the repo's
+//     own history does not contain (#75: the v1.5.0/v1.5.1 that came from
+//     `upstream` and produced the phantom "156/157 commits beyond").
+async function latestReachableTag(run: GitRun, repo: string, ref: string): Promise<string | null> {
+  const r = await run(["git", "-C", repo, "tag", "--list", "--merged", ref]);
   if (r.code !== 0) return null;
   const semvers = r.stdout
     .split("\n")
@@ -67,20 +73,43 @@ async function gatherFacts(run: GitRun, repo: RepoEntry, repoAbs: string): Promi
   const releaseBranch = pub.releaseBranch ?? "main";
   const integrationBranch = pub.integrationBranch ?? "dev";
 
-  const [mainRef, devRef, tag] = await Promise.all([
+  const [mainRef, devRef] = await Promise.all([
     resolveRef(run, repoAbs, releaseBranch),
     resolveRef(run, repoAbs, integrationBranch),
-    latestTag(run, repoAbs),
   ]);
+  // The baseline tag is chosen from tags REACHABLE from the release ref, not the
+  // object pool — so it needs mainRef. No release ref ⇒ no reachable-tag baseline.
+  const tag = mainRef ? await latestReachableTag(run, repoAbs, mainRef) : null;
   const hasRelease = tag !== null;
 
   // unreleasedOnMain: commits on the release branch beyond the PUBLISHED baseline.
-  // Baseline = the latest tag when the repo tags releases; otherwise the release
-  // branch head itself (a tag-less repo publishes AT main → 0, never "all of main").
+  //   • releaseVia "push": the branch head IS the published state → 0 (an old tag
+  //     on the lineage is not a backlog). The openvibes-embark aipe-site flow.
+  //   • no reachable tag: the repo has never tagged on this lineage → publishes at
+  //     head → 0 (a tag-less repo is never "all of main").
+  //   • main AT the tag (0 beyond): published.
+  //   • main BEYOND the tag AND releaseVia "tag": an established tag-release
+  //     backlog → the real count (REPRESADO).
+  //   • main BEYOND the tag but method UNESTABLISHED: a tag-release backlog and a
+  //     push-published repo are indistinguishable from git, so the count is NOT
+  //     asserted (unreleasedOnMain stays null) and mainBaselineUnverified carries
+  //     the honest detail → the derivation says "unknown", never a false REPRESADO
+  //     (#74). Registering publish.releaseVia resolves it either way.
+  const releaseVia = pub.releaseVia;
   let unreleasedOnMain: number | null;
+  let mainBaselineUnverified: { tag: string; ahead: number } | undefined;
   if (!mainRef) unreleasedOnMain = null;
+  else if (releaseVia === "push") unreleasedOnMain = 0;
   else if (!hasRelease) unreleasedOnMain = 0;
-  else unreleasedOnMain = await count(run, repoAbs, `${tag}..${mainRef}`);
+  else {
+    const ahead = await count(run, repoAbs, `${tag}..${mainRef}`);
+    if (ahead === null || ahead === 0) unreleasedOnMain = ahead;
+    else if (releaseVia === "tag") unreleasedOnMain = ahead;
+    else {
+      unreleasedOnMain = null;
+      mainBaselineUnverified = { tag: tag!, ahead };
+    }
+  }
 
   // Flow + the unpromoted (merged-into-dev-not-in-main) count. A brain override
   // pins the flow (the PE's explicit registration); otherwise it is auto-detected
@@ -122,7 +151,16 @@ async function gatherFacts(run: GitRun, repo: RepoEntry, repoAbs: string): Promi
     }
   }
 
-  return { flow, hasRelease, latestReleaseTag: tag, unreleasedOnMain, unpromotedOnDev, releaseBranch, integrationBranch };
+  return {
+    flow,
+    hasRelease,
+    latestReleaseTag: tag,
+    unreleasedOnMain,
+    unpromotedOnDev,
+    releaseBranch,
+    integrationBranch,
+    ...(mainBaselineUnverified ? { mainBaselineUnverified } : {}),
+  };
 }
 
 // Factory so the git runner can be injected; the default reads real local git.

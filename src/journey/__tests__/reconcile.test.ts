@@ -3,13 +3,40 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readLedger, recordDispatch, startJourney, writeLedger } from "../ledger";
-import { reconcileAll, reconcileJourney } from "../reconcile";
+import { buildGhPrViewArgs, reconcileAll, reconcileJourney } from "../reconcile";
 import type { PrState } from "../reconcile";
 import type { PersonaRegistryEntry } from "../../hire-specialists/types";
 
 async function ws(): Promise<string> {
   return mkdtemp(join(tmpdir(), "aipe-rec-"));
 }
+
+// #76 — the aipe must resolve the forge itself and pass `--repo` explicitly,
+// never hand gh a URL and trust its cwd-based resolution (inside
+// openvibes-embark, gh resolved the wrong repo and returned "Could not resolve
+// to a Repository"). ghPrState is the sibling of checks.ts's already-fixed
+// `gh pr checks <n> --repo …`; it must query BY NUMBER with an explicit --repo.
+test("buildGhPrViewArgs queries a github PR by number with an explicit --repo (#76)", () => {
+  expect(buildGhPrViewArgs("https://github.com/blpsoares/aipe/pull/100")).toEqual([
+    "pr",
+    "view",
+    "100",
+    "--repo",
+    "blpsoares/aipe",
+    "--json",
+    "state",
+  ]);
+});
+
+test("buildGhPrViewArgs never lets gh resolve owner/repo from cwd for a github URL (#76 — the opvibes/embark case)", () => {
+  const args = buildGhPrViewArgs("https://github.com/opvibes/openvibes-embark/pull/26");
+  expect(args).toContain("--repo");
+  expect(args[args.indexOf("--repo") + 1]).toBe("opvibes/openvibes-embark");
+});
+
+test("buildGhPrViewArgs passes a non-github input straight through (test fixtures, bare refs)", () => {
+  expect(buildGhPrViewArgs("http://pr/1")).toEqual(["pr", "view", "http://pr/1", "--json", "state"]);
+});
 
 test("reconcile marks a delivered dispatch merged when gh reports MERGED", async () => {
   const dir = await ws();
