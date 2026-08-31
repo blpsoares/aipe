@@ -104,6 +104,34 @@ test("REAL CASE 3 — a blocked unit is never listed to close, and --close leave
   expect(kills).toEqual(["s-dev"]); // only the merged dev; the blocked one is untouched
 });
 
+// REAL CASE: j-20260830-c5 — a session that died BEFORE ever opening a PR.
+// The old reaper called this "not-landed" and left it forever: no PR, nothing
+// to check against. agentop's own roster (`status: "exited"`) is the fact that
+// closes this hole, independent of the PR.
+
+test("REAL CASE c5 — a session with NO PR that has EXITED is reaped by process fact, not left as not-landed forever", async () => {
+  const dir = await ws(sess({ status: "delivered", sessionId: "s-dead", worktree: "/ws/aipe/wt1" })); // no pr recorded
+  const { runner, kills } = agentop([{ id: "s-dead", cwd: "/ws/aipe/wt1", status: "exited" }]);
+  const { output } = await capture(() =>
+    run(["reap", "--workspace", dir, "--journey", "j1", "--close"], { sessionRunner: runner, prState: mergedFor() }),
+  );
+  expect(output).toContain("WOULD-CLOSE session s-dead");
+  expect(output).toContain("CLOSED session s-dead");
+  expect(output).toContain("would-close=1");
+  expect(kills).toEqual(["s-dead"]);
+});
+
+test("a dispatched unit whose session is still RUNNING is protected; only EXITED overrides keep-alive", async () => {
+  const dir = await ws(sess({ status: "dispatched", sessionId: "s-live", worktree: "/ws/aipe/wt1" }));
+  const { runner, kills } = agentop([{ id: "s-live", cwd: "/ws/aipe/wt1", status: "running" }]);
+  const { output } = await capture(() =>
+    run(["reap", "--workspace", dir, "--journey", "j1", "--close"], { sessionRunner: runner, prState: mergedFor() }),
+  );
+  expect(output).toContain("PROTECTED");
+  expect(output).not.toContain("CLOSED");
+  expect(kills).toEqual([]);
+});
+
 test("a merged unit whose live session cannot be established is COULD-NOT-ESTABLISH, never guessed closed", async () => {
   const dir = await ws(sess({ status: "merged", pr: "http://pr/1", sessionId: "s-gone", worktree: "/ws/aipe/wt1" }));
   const { runner, kills } = agentop([{ id: "unrelated", cwd: "/ws/other" }]);
