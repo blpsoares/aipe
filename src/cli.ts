@@ -28,6 +28,7 @@ import { run as status } from "./status/cli";
 import { run as report } from "./report/cli";
 import { run as serve } from "./serve/cli";
 import { run as detectPackages } from "./detect-packages/cli";
+import { run as release } from "./release/cli";
 import { run as validatePersonas } from "./validate-personas/cli";
 import { run as model } from "./model/cli";
 import { run as capabilities } from "./capabilities/cli";
@@ -63,6 +64,7 @@ const SUBCOMMANDS: Record<string, Subcommand> = {
   workspace: workspaceCmd,
   dashboard: dashboard,
   serve: serve,
+  release: release,
   "detect-packages": detectPackages,
   "validate-personas": validatePersonas,
   model: model,
@@ -97,6 +99,7 @@ const HELP = [
   "  report             Delivery report — metrics, filters, groupings, --json/--csv",
   "  dashboard          Live terminal view of workers, pipeline & worktrees",
   "  serve              Responsive web console (org chart, pipeline, terminal)",
+  "  release            Promote dev→main→release as a command; verify publication",
   "  validate-personas  Preflight persona load-order readiness + live-check steps",
   "  model              Resolve model by tier + adjudicate authorization/volume gates",
   "  capabilities       Detect and record which harness binaries this machine has",
