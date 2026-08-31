@@ -11,7 +11,19 @@
 // pass — a gate that guesses green is worse than one that abstains loudly.
 export type CheckVerdict = "green" | "red" | "pending" | "none" | "unknown";
 
-export type PrChecksResolver = (prUrl: string) => Promise<CheckVerdict>;
+// D2 (j-20260830-w0) — a resolver may say only the verdict (every existing
+// caller/test does exactly this, and stays valid unchanged) OR say the verdict
+// PLUS a `detail` naming what was actually attempted and what came back. The
+// real resolver below always supplies `detail`; the ledger gate surfaces it on
+// an `unknown` verdict instead of a generic list of guesses (D2's second
+// finding: the REJECT message named four possible causes, none of them real).
+export type CheckResolution = CheckVerdict | { verdict: CheckVerdict; detail?: string };
+
+export type PrChecksResolver = (prUrl: string) => Promise<CheckResolution>;
+
+export function resolveVerdict(r: CheckResolution): { verdict: CheckVerdict; detail?: string } {
+  return typeof r === "string" ? { verdict: r } : r;
+}
 
 // `gh pr checks <pr> --json bucket,state` returns an array of check rows, each
 // with a `bucket` that categorises `state` into pass/fail/pending/skipping/cancel
@@ -58,21 +70,63 @@ export function classifyGhChecks(code: number, stdout: string, stderr: string): 
   return "green";
 }
 
-// The real resolver over the gh CLI. Any spawn failure (gh not installed) is
-// swallowed to `unknown` so the gate abstains rather than crashing.
-export const ghPrChecks: PrChecksResolver = async (prUrl: string): Promise<CheckVerdict> => {
-  try {
-    const proc = Bun.spawn(["gh", "pr", "checks", prUrl, "--json", "bucket,state"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [out, err] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    const code = await proc.exited;
-    return classifyGhChecks(code, out.trim(), err.trim());
-  } catch {
-    return "unknown";
-  }
+// D2 (j-20260830-w0) — a merged PR's branch is routinely deleted; its NUMBER
+// never is. Parses the owner/repo/number out of a github.com PR URL so the
+// real resolver below can query `gh pr checks <number> --repo <owner/repo>`
+// explicitly, instead of handing gh the URL and trusting its own resolution —
+// the exact path that abstained "unresolvable" for a merged, branch-deleted
+// PR that `gh pr checks <number>` answered instantly (2026-08-30, PR #257 in
+// agentistics and PR #26 in openvibes-embark).
+export function parsePrUrl(prUrl: string): { owner: string; repo: string; number: string } | null {
+  const m = /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(prUrl.trim());
+  return m ? { owner: m[1]!, repo: m[2]!, number: m[3]! } : null;
+}
+
+// The gh args for `pr checks` (without the leading "gh"), BY NUMBER with an
+// explicit `--repo`, never by branch. A non-URL input (a bare number, a test
+// fixture) falls back to passing it straight through — still never a branch
+// lookup, since the caller never had a branch to begin with.
+export function buildGhChecksArgs(prUrl: string): string[] {
+  const ref = parsePrUrl(prUrl);
+  return ref
+    ? ["pr", "checks", ref.number, "--repo", `${ref.owner}/${ref.repo}`, "--json", "bucket,state"]
+    : ["pr", "checks", prUrl, "--json", "bucket,state"];
+}
+
+export type GhRunner = (args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>;
+
+const realGhRunner: GhRunner = async (args) => {
+  const proc = Bun.spawn(["gh", ...args], { stdout: "pipe", stderr: "pipe" });
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const code = await proc.exited;
+  return { code, stdout: out.trim(), stderr: err.trim() };
 };
+
+// The resolver factory — injectable so the "query by number, not by branch"
+// fix is provable without a network call (tests below simulate gh failing on
+// anything but the number+--repo form, the exact regression this closes).
+// `detail` always names what was tried and, on `unknown`, what came back —
+// the fix for D2's second finding (a REJECT message that named four possible
+// causes, none of them the real one).
+export function makeGhPrChecks(runGh: GhRunner = realGhRunner): PrChecksResolver {
+  return async (prUrl: string) => {
+    const args = buildGhChecksArgs(prUrl);
+    const attempted = `gh ${args.join(" ")}`;
+    try {
+      const { code, stdout, stderr } = await runGh(args);
+      const verdict = classifyGhChecks(code, stdout, stderr);
+      if (verdict !== "unknown") return { verdict, detail: `${attempted} → exit ${code}` };
+      const came =
+        stderr ? `: ${stderr.split("\n")[0]}` : stdout ? `: ${stdout.slice(0, 200)}` : " (no output)";
+      return { verdict, detail: `${attempted} → exit ${code}${came}` };
+    } catch (e) {
+      return { verdict: "unknown", detail: `${attempted} → could not spawn gh (${e instanceof Error ? e.message : String(e)})` };
+    }
+  };
+}
+
+// The real resolver over the gh CLI, wired for production use.
+export const ghPrChecks: PrChecksResolver = makeGhPrChecks();

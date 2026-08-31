@@ -146,6 +146,12 @@ function waitingItems(l: JourneyLedger, policy: ModelPolicy, live: LiveSessions)
     if (d.status === "blocked") {
       out.push({ ...base, kind: "blocked", detail: d.blockedReason ?? "blocked — reason not recorded" });
     }
+    // D4 (j-20260830-w0) — surfaced distinctly from a QA `failed`: this unit's
+    // session ended with no verdict at all, so it needs a fresh dispatch, not
+    // a fix loop off a rejection that never happened.
+    if (d.status === "abandoned") {
+      out.push({ ...base, kind: "abandoned", detail: d.abandonedReason ?? "session ended with no verdict" });
+    }
     // A delivery/verification with no evidence to stand on (the ledger gate
     // rejects this for guarded writes, but a legacy or raw record can carry it).
     if ((d.status === "delivered" || d.status === "verified") && !hasEvidence(d)) {

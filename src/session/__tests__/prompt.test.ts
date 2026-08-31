@@ -12,6 +12,8 @@ const base = {
   workspace: "/w",
   fqid: "embark",
   intensity: "normal" as const,
+  specVersion: 1,
+  history: "",
 };
 
 test("the prompt carries persona, spec slice and the return contract", () => {

@@ -2,6 +2,20 @@
 // specification for a demand, written before any dispatch. Lightweight and
 // cross-package by design (the implementation detail is the specialist's own SDD,
 // scoped to its package and committed into its PR). Pure template + validator.
+import { createHash } from "node:crypto";
+
+// D1 (j-20260830-w0) — the ORIGIN of a spec's version, so it tracks CONTENT
+// rather than a hand-typed counter. A coordinator who edits orientation.md
+// directly (no `--amend`) used to leave `spec.version` frozen at whatever it
+// was, so nothing downstream could tell the file had changed. This hash is
+// the ground truth the write path (journey/cli.ts specCommand) and the
+// dispatch path (session/cli.ts dispatchCommand) both compare the CURRENT
+// file against, bumping the recorded version only when it genuinely differs.
+// Whitespace-only edits do not count as content change (trimmed first).
+export function hashOrientationContent(md: string): string {
+  return createHash("sha256").update(md.trim()).digest("hex").slice(0, 8);
+}
+
 export const SPEC_SECTIONS = [
   "Problem",
   "Cross-package contracts",
