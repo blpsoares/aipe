@@ -198,6 +198,35 @@ test("<App> clicking the old '#/activity' hash while already on /board keeps the
   expect(view.querySelector(".zone-needs")).toBeNull();
 });
 
+// #84, the other half: a popstate that lands on the ALREADY-current route (a
+// real browser fires one for a raw `<a href="#/board">` clicked while already
+// on /board — the previous test's hashchange-guard fix does nothing here,
+// because the hash string never actually changes, so hashchange never even
+// fires). preact-iso's LocationProvider (main.tsx) listens for popstate
+// globally and recomputes its own internal route from
+// `location.pathname + search` — always "/", since the server only answers
+// GET / (see runtime/router.ts). Because the target equals the current route,
+// currentPath.value never changes, so a fix that only remounts on a
+// currentPath.value change never fires here — this is exactly the case
+// runtime/router.ts's navEpoch/popstate listener covers.
+test("#84: a same-route popstate does not strand the view on the Floor/Agora", () => {
+  act(() => navigate("/board"));
+  const { container } = render(<App />);
+  const view = container.querySelector("#view")!;
+  expect(view.querySelector(".aboard")).toBeTruthy();
+
+  act(() => {
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+
+  // currentPath/location.hash were never wrong — only the LocationProvider's
+  // internal reducer state was. Both assertions must hold: the signal was
+  // already fine, and now the DOM has to match it too.
+  expect(currentPath.value).toBe("/board");
+  expect(view.querySelector(".zone-needs")).toBeNull(); // did NOT fall back to Agora
+  expect(view.querySelector(".aboard")).toBeTruthy();
+});
+
 test("<App> switches the rendered #view content when navigate() changes the route", () => {
   navigate("/");
   const { container } = render(<App />);
