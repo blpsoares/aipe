@@ -1,0 +1,3 @@
+# The render is derived; the spec is the source. The renderer emits here and it
+# is never committed — see ../README.md ("Nothing is rendered in this repo").
+out/
