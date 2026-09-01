@@ -10,7 +10,7 @@ const row = (over: Partial<UnitRow>): UnitRow => ({
   status: "dispatched", mode: null, sessionId: null, liveness: null,
   hasEvidence: false, publishState: null, harness: null, model: null, tier: null,
   intensity: null, worktree: "/wt", ciBypass: null,
-  base: null, title: null, description: null, at: null,
+  base: null, title: null, description: null, at: null, round: null,
   ...over,
 });
 
@@ -46,13 +46,56 @@ test("the status is the FURTHEST any row reached — a QA approval is not the de
 });
 
 test("a roster that names no role never silently promotes the QA row", () => {
+  // This test's TITLE was right and its assertion was wrong: it expected "Getz",
+  // which is the QA row, and so it certified the very defect it is named after.
+  // An independent QA found it by deleting personas.yaml and watching the table
+  // print `não registrado` over the dev's recorded base/title/description.
+  //
+  // With no roles, the builder is identified by what the ledger records — a row
+  // that did not file a QA verdict — not by rank and not by a name.
   const lines = taskLines([
-    row({ specialist: "Jesse", role: null, status: "delivered" }),
-    row({ specialist: "Getz", role: null, status: "verified" }),
+    row({ specialist: "Jesse", role: null, status: "delivered", base: "dev", title: "T" }),
+    row({ specialist: "Getz", role: null, status: "verified", hasEvidence: true }),
   ]);
-  // no role information ⇒ fall back to the furthest row rather than guessing a
-  // role from a name
-  expect(lines[0]!.specialist).toBe("Getz");
+  expect(lines[0]!.specialist).toBe("Jesse");
+  expect(lines[0]!.base).toBe("dev"); // recorded, and printed
+  expect(lines[0]!.title).toBe("T");
+});
+
+test("no column is borrowed from another row — a fact on the wrong line reads like a fact", () => {
+  // The QA row recorded a base and a title of its own; the line names the dev,
+  // so it must show the DEV's (absent) values, not the QA's.
+  const lines = taskLines([
+    row({ specialist: "Jesse", role: "dev-fullstack", status: "delivered" }),
+    row({ specialist: "Getz", role: "qa", status: "verified", base: "MINHA-BRANCH-DE-QA", title: "titulo do QA", hasEvidence: true }),
+  ]);
+  expect(lines[0]!.specialist).toBe("Jesse");
+  expect(lines[0]!.base).toBeNull();
+  expect(lines[0]!.title).toBeNull();
+});
+
+test("a REJECTED task says Reprovado — a rejection is a verdict on the delivery, not a step behind it", () => {
+  // `delivered` outranked `failed`, so a rejected task rendered "Entregue" while
+  // the queue said "nada esperando você". The table introduced to stop
+  // rejections being MIScounted was leaving them UNcounted.
+  const rejected = taskLines([
+    row({ specialist: "Jesse", role: "dev-fullstack", status: "delivered", round: 1 }),
+    row({ specialist: "Getz", role: "qa", status: "failed", round: 1, hasEvidence: true }),
+  ]);
+  expect(rejected[0]!.status).toBe("failed");
+
+  // …and it stops speaking once the fix is delivered into the next round.
+  const refixed = taskLines([
+    row({ specialist: "Jesse", role: "dev-fullstack", status: "delivered", round: 2 }),
+    row({ specialist: "Getz", role: "qa", status: "failed", round: 1, hasEvidence: true }),
+  ]);
+  expect(refixed[0]!.status).toBe("delivered");
+});
+
+test("`unknown` publication is not asserted as unpublished — there are three states", () => {
+  expect(taskStatusCell("merged", "unknown")).toBe("Integrado·publicação não estabelecida");
+  expect(taskStatusCell("merged", "merged-unpublished")).toBe("Integrado·não publicado");
+  expect(taskStatusCell("merged", "published")).toBe("Integrado");
 });
 
 test("status words are the PE's, not the ledger's", () => {

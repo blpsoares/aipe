@@ -278,7 +278,20 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   const evidence: DispatchEvidence | undefined =
     evSummary || evCmds.length > 0 || verifyItems.length > 0
       ? {
-          by: evByFlag === "qa" || evByFlag === "dev" ? evByFlag : status === "verified" ? "qa" : "dev",
+          // `failed` is a VERDICT, like `verified` — so its default author is
+          // the QA, not the builder. It used to default to "dev", which meant a
+          // reviewer who simply omitted `--evidence-by` filed a rejection the
+          // reviewer-cannot-build gate could not see, and then delivered the fix
+          // itself. No skill file documents `--status failed` at all, so the
+          // omission was the NORMAL path. Silence now falls on the side that
+          // keeps the gate working; a builder self-reporting a failure says so
+          // explicitly with `--evidence-by dev`.
+          by:
+            evByFlag === "qa" || evByFlag === "dev"
+              ? evByFlag
+              : status === "verified" || status === "failed"
+                ? "qa"
+                : "dev",
           commands: evCmds,
           summary: evSummary ?? "",
           ...(evArtifact ? { artifact: evArtifact } : {}),

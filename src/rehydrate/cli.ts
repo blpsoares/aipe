@@ -40,8 +40,13 @@ export async function run(args: string[]): Promise<number> {
   // Keep what we are about to write out of the PE's git status: `.claude/` goes
   // into each repo's local exclude BEFORE anything is written there, so no repo
   // — and no live session's worktree — is ever dirtied by this command.
-  const excluded = await ensureReposExcludeClaude(workspace);
-  for (const repoAbs of excluded) console.log(`EXCLUDED .claude/ ${repoAbs}`);
+  const ex = await ensureReposExcludeClaude(workspace);
+  for (const repoAbs of ex.excluded) console.log(`EXCLUDED .claude/ ${repoAbs}`);
+  // Say it out loud. A failure here leaves `.claude/` visible to git in that
+  // repo, which is the state the exclusion exists to prevent — reporting "done"
+  // over it is the shape of defect this repo keeps paying for.
+  for (const f of ex.failed) console.log(`WARN exclude ${f.repo} — could not write .git/info/exclude (${f.reason}); .claude/ stays visible to git there`);
+  for (const t of ex.tracked) console.log(`WARN tracked ${t} — this repo already TRACKS files under .claude/, so excluding does nothing for them and AIPe writes into version control here`);
 
   const personas = await rehydratePersonas(workspace);
   for (const r of personas) console.log(`${r.status.toUpperCase()} persona ${r.repo} ${r.slug}`);

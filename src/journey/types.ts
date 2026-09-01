@@ -224,6 +224,17 @@ export interface JourneyDispatch {
   // marked here and `journey verify` fails on it. The gate on the WRITE path
   // (merge-needs-qa) prevents the gap; this records the ones that got in through
   // the forge anyway.
+  // This specialist filed a QA verdict on this task at some point. STICKY and
+  // write-once: it is a fact about a person, and a fact cannot be un-happened by
+  // a later write.
+  //
+  // The gate used to read the row's CURRENT status and evidence, which a
+  // re-dispatch overwrites — so the documented fix loop (`--status dispatched
+  // --reason …`) erased the verdict and the reviewer could then deliver its own
+  // fix. An independent QA walked that route through the real CLI: the final
+  // ledger showed the reviewer as `delivered` with `by: dev`, carrying no trace
+  // it had ever judged the work.
+  filedQaVerdict?: true;
   qaGap?: true;
   // Model-policy audit (optional; absent on legacy ledgers): the tier the
   // coordinator assigned and the concrete model the specialist ran on.

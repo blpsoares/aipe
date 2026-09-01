@@ -342,7 +342,7 @@ const FIELD_FLAGS = {
   // bookkeeping of the fix loop, not operator input. A flag that let a caller
   // set its own round would let a stale QA pass be re-declared current, which is
   // the exact thing the round exists to make impossible.
-} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason" | "blockedReason" | "abandonedReason" | "ciBypass" | "round" | "verifiedRound" | "qaGap" | "at">, string>;
+} satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason" | "blockedReason" | "abandonedReason" | "ciBypass" | "round" | "verifiedRound" | "qaGap" | "at" | "filedQaVerdict">, string>;
 
 function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: JourneyDispatch, sessionId: string): string {
   const parts = ["aipe journey record", `--journey ${shQuote(journeyId)}`, `--workspace ${shQuote(workspace)}`];
