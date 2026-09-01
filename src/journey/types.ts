@@ -158,6 +158,15 @@ export interface JourneyDispatch {
   // recordDispatchGuarded in ledger.ts); absent on legacy ledgers written
   // before this field existed.
   redirectReason?: string;
+  // WHO changed the direction. `redirected` exists for the case where the PE
+  // steered a specialist outside its brief, so the coordinator must reconcile
+  // the Orientation Spec against it. When the COORDINATOR is the one who
+  // redirected, it is the origin of the change and there is nothing for anyone
+  // to reconcile — but both cases used the same word and produced the same
+  // "waiting on you" line, handing the coordinator its own decision back as a
+  // pending item (#106). Absent ⇒ origin not established, which SURFACES: an
+  // unrecorded origin must not buy a way out of the queue.
+  redirectOrigin?: "pe" | "coordinator";
   // Why a specialist declared itself `blocked` — what it is stuck on and what it
   // needs from the coordinator. Required by the ledger gate whenever
   // `status: "blocked"` is recorded (recordDispatchGuarded), so a blocked record
@@ -182,6 +191,31 @@ export interface JourneyDispatch {
   // `round` ⇒ the current work has been QA-tested. Less than `round` ⇒ the unit
   // was reworked after its last pass and owes a RE-TEST. Absent ⇒ never verified.
   verifiedRound?: number;
+  // When this row was last written, ISO-8601 UTC. Stamped by the ledger on every
+  // accepted write; no flag sets it.
+  //
+  // It exists because a table said `~1h`, then `~1h30` for the same item minutes
+  // later, and the real answer was 23 minutes. Both numbers were estimates from
+  // memory, in the one column whose whole job is to expose a stale request — so
+  // it read as precision over something nobody had measured, and it grew on its
+  // own. `status` now renders an ABSOLUTE time from this field, or the words
+  // "não registrado". It never estimates: either it knows, or it says it does
+  // not. Absent ⇒ the row predates this field, which is "not recorded", never
+  // "just now".
+  at?: string;
+  // The DESTINATION branch — the base of the PR, `dev` or `main`. Distinct from
+  // `branch`, which is where the specialist commits. This is the one that answers
+  // "does this reach me?", and conflating the two is the origin of #94: work
+  // merged into `dev` read as done when it was not published. Recorded, never
+  // guessed — absent ⇒ unknown, and the table says so.
+  base?: string;
+  // A human title and one-line description of what this task is, in the language
+  // of someone who did not build it. The `task` field is a slug
+  // (`onda5-mostradores-que-mentem`) and a slug is not a description. Absent ⇒
+  // the renderer falls back to the unit's section in the Orientation Spec, and
+  // failing that says nothing rather than dressing the slug up as prose.
+  title?: string;
+  description?: string;
   // Stamped when a unit reached `merged` WITHOUT a QA pass for its current round.
   // The forge is the authority on whether a PR merged, so `aipe journey
   // reconcile` must record that truth even when the QA never signed off —

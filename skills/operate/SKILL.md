@@ -489,6 +489,7 @@ digraph operate {
      --specialist <persona> --branch <branch> --worktree <path> \
      --status dispatched --mode session --intensity <normal|ultracode> \
      --size <small|medium|large> [--task-type <type>] \
+     --base <dev|main> --title "<uma linha>" --description "<uma frase>" \
      --harness claude-code --workspace <workspace>
 
    aipe session dispatch --journey <id> --workspace <workspace>
@@ -524,6 +525,22 @@ digraph operate {
    The path travels to the specialist, never the text: the spec is read at work
    time, so an amendment reaches whoever is already working. Amend it and the PE
    re-approves — the dispatch refuses a spec edited after approval.
+
+   **`--base`, `--title` e `--description` alimentam a tabela do `aipe status`
+   (#109), e sem eles as colunas nascem "não registrado".**
+
+   - `--base` é o **destino** da PR (`dev` ou `main`), não a branch de trabalho.
+     É o que responde "isso chega em mim?" — e ler `Integrado` como "chegou" é a
+     origem do #94. Se ainda não souber, deixe fora: a tabela diz que não foi
+     registrado, o que é verdade. Nunca preencha por suposição.
+   - `--title` e `--description` são para quem **não construiu** a coisa. O
+     `--task` é um slug (`onda5-mostradores-que-mentem`) e slug não é descrição.
+     Escreva o que muda para uma pessoa, não o mecanismo.
+
+   O critério do PE para a tabela inteira: *um humano que nunca ouviu a palavra
+   "dispatch" abre `aipe status` e sabe, sem perguntar, quem está fazendo o quê e
+   em que pé está.* Se precisar de tradutor, não está pronto — e esses três
+   campos são metade do que a torna legível.
 
    **Dispatching the QA.** Its record carries the **same `--task` as the delivery**
    (a verdict is paired with the delivery by `(repo, package, task)`; under a task

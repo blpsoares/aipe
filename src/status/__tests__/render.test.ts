@@ -24,6 +24,10 @@ const unit = (over: Partial<UnitRow> = {}): UnitRow => ({
   intensity: "normal",
   worktree: "/ws/aipe/.worktrees/j-1-jesse",
   ciBypass: null,
+  base: null,
+  title: null,
+  description: null,
+  at: null,
   ...over,
 });
 
@@ -75,29 +79,32 @@ test("clip flattens whitespace and caps a long reason so the table stays pasteab
 
 test("detailed table carries branch + PR columns; compact drops them", () => {
   const det = renderTable(report(), "detailed", false).join("\n");
-  expect(det).toContain("BRANCH");
-  expect(det).toContain("#29");
+  expect(det).toContain("DESCRIÇÃO"); // the wide free-text column
+  // #109's consolidated format carries the DESTINATION (the PR's base), not the
+  // PR link: "does this reach me?" is the question the table answers. The PR url
+  // stays in --json and in `journey show`.
+  expect(det).toContain("DESTINO");
   const comp = renderTable(report(), "compact", false).join("\n");
-  expect(comp).not.toContain("BRANCH");
-  expect(comp).toContain("WHO");
+  expect(comp).not.toContain("DESCRIÇÃO");
+  expect(comp).toContain("ESPECIALISTA");
 });
 
 test("detailed table shows a compact ENV column: model short, effort only when it deviates", () => {
   // Envelope is near-constant (claude-code+opus+reasoning); the table shows the
   // model short and highlights only the exception (ultracode / non-default harness).
   const normal = renderTable(report({ units: [unit()] }), "detailed", false).join("\n");
-  expect(normal).toContain("ENV");
+  expect(normal).toContain("MODELO"); // the envelope now reads as MODELO + EFFORT
   expect(normal).toContain("opus-4-8"); // "claude-" prefix stripped
   expect(normal).not.toContain("ultra");
   const ultra = renderTable(report({ units: [unit({ intensity: "ultracode" })] }), "detailed", false).join("\n");
   expect(ultra).toContain("ultra");
   const compact = renderTable(report(), "compact", false).join("\n");
-  expect(compact).not.toContain("ENV");
+  expect(compact).toContain("EFFORT"); // effort survives compact; only DESCRIÇÃO is dropped
 });
 
 test("a legacy unit with no envelope renders '-' in ENV, never an invented value", () => {
   const legacy = renderTable(report({ units: [unit({ harness: null, model: null, tier: null, intensity: null })] }), "detailed", false).join("\n");
-  expect(legacy).toContain("ENV");
+  expect(legacy).toContain("MODELO");
   expect(legacy).not.toContain("opus");
 });
 
@@ -109,7 +116,7 @@ test("the elision line is printed when journeys were hidden (item 4)", () => {
 
 test("the waiting section clips a paragraph-long reason (pasteable width)", () => {
   const r = report({
-    waiting: [{ kind: "redirected", journey: "j-1", fqid: "aipe", specialist: "Jesse", detail: "x".repeat(300) }],
+    waiting: [{ kind: "redirected", journey: "j-1", fqid: "aipe", specialist: "Jesse", detail: "x".repeat(300), sessionId: null, blocks: "aipe", since: null }],
   });
   const text = renderTable(r, "detailed", false);
   expect(text.every((l) => l.length < 200)).toBe(true);

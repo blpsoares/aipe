@@ -76,10 +76,10 @@ test("the represado section lists unpublished + unknown repos, and is silent on 
 
 test("the merged unit's status cell is decorated for unpublished, plain for published", () => {
   const unpub = build([merged], new Map([["aipe", rel("aipe", { state: "merged-unpublished", reason: "x" })]]));
-  expect(renderTable(unpub, "compact", false).join("\n")).toContain("merged·unpublished");
+  expect(renderTable(unpub, "compact", false).join("\n")).toContain("Integrado·não publicado");
   const pub = build([merged], new Map([["aipe", rel("aipe", { state: "published" })]]));
   const pubTable = renderTable(pub, "compact", false).join("\n");
-  expect(pubTable).not.toContain("merged·unpublished");
+  expect(pubTable).not.toContain("Integrado·não publicado");
 });
 
 test("the JSON carries releases and per-unit publishState for the coordinator's chat table", () => {
