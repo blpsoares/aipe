@@ -481,23 +481,35 @@ digraph operate {
    aipe journey record --journey <id> --repo <repo> [--package <pkg>] \
      --specialist <persona> --branch <branch> --worktree <path> \
      --status dispatched --mode session --intensity <normal|ultracode> \
-     --sdd <spec-kit|sdd-lite> \
+     --size <small|medium|large> [--task-type <type>] \
      --harness claude-code --workspace <workspace>
 
    aipe session dispatch --journey <id> --workspace <workspace>
    ```
 
-   **`--sdd <kit>` is the SDD route, and it MUST be the `ROUTE sdd=<kit>` line
-   `aipe skill match --task-type <t> --size <s>` printed for this unit — not a
-   guess.** Recording it is what gives the SDD its teeth (#118): when the route is
-   `spec-kit`, the ledger REFUSES this unit's later `--status delivered` unless a
-   spec (`specs/**/spec.md`) **and** a plan (`specs/**/plan.md`) are committed in
-   its worktree — exactly as it already refuses a `delivered` with no evidence.
-   Leave `--sdd` off and the gate cannot bite, so a non-trivial unit slips through
-   spec-less — the precise failure that shipped 7/7 PRs with no spec in a day. If
-   `skill match` says `ROUTE sdd=none — spec-kit is NOT installed`, STOP and run
-   `aipe skill preset` (or `aipe rehydrate`): the flow is unreachable, not absent
-   by choice.
+   **`--size` is how hard this unit is, and it is the input the SDD route is
+   derived from** — the same router `aipe skill match --task-type <t> --size <s>`
+   prints as `ROUTE sdd=<kit>`, so the two can never disagree. Recording it is
+   what gives the SDD its teeth (#118): when the size routes to `spec-kit`, the
+   ledger REFUSES this unit's later `--status delivered` unless a spec
+   (`specs/**/spec.md`) **and** a plan (`specs/**/plan.md`) are committed in its
+   worktree — exactly as it already refuses a `delivered` with no evidence. The
+   specialist does not have to pass anything: the obligation lives on the ledger,
+   not in a flag someone has to remember at the end.
+
+   **Leaving `--size` off does not buy the floor — it routes to the FULL flow.**
+   Undeclared is not established as trivial, and treating it as trivial is
+   precisely what shipped 7/7 PRs with no spec in one day. If a unit really is
+   trivial, say so on the record (`--size small`, or `--sdd sdd-lite` to name the
+   tier outright) — a signed `--sdd` outranks the derived route, and the claim is
+   kept on the ledger where an audit can see someone made it.
+
+   If `skill match` says `ROUTE sdd=none — spec-kit is NOT installed`, STOP and
+   run `aipe skill preset` (or `aipe rehydrate`): the flow is unreachable, not
+   absent by choice. A workspace with no spec-kit is never gated — AIPe does not
+   demand an artifact from a flow the repo cannot run — so an uninstalled kit
+   silently disables the whole discipline. That is the state #118 removes at
+   onboarding, and the one to never let return.
 
    `aipe session dispatch` composes each specialist's prompt from its persona,
    its slice of the approved spec, and the return contract; writes it to

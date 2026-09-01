@@ -89,3 +89,33 @@ export function routeSdd(toolbox: Toolbox, task: TaskShape): SddRoute {
   }
   return floorOr(`size ${task.size} < the ${threshold} threshold for ${FULL_SDD_KIT} → the light ${FLOOR_SDD_KIT} floor`);
 }
+
+// The route the DELIVERY GATE uses — same contract as `routeSdd`, with one
+// deliberate difference, and it is the whole point of #118.
+//
+// `routeSdd` answers an ADVISORY question ("what should I reach for?"), so when
+// no `--size` was given it refuses to affirm and falls to the floor. Correct
+// there: it must not claim a threshold was met when nothing was compared.
+//
+// The gate answers a DIFFERENT question ("may this delivery land?"), and there
+// the same silence means the opposite. A unit whose difficulty nobody ever
+// declared is not a unit established as trivial — it is a unit nobody decided
+// on, which is exactly how 7 of 7 deliveries on 2026-08-31 carried no spec and
+// no plan. Defaulting THAT to the floor is what made the gate inert. So here,
+// an undeclared size routes to the FULL kit: rigor is the default, and the
+// trivial case is the one that must say so on the record (`--size small`, or
+// `--sdd sdd-lite`) — a claim the ledger keeps, instead of silence nobody signed.
+export function routeSddForGate(toolbox: Toolbox, task: TaskShape): SddRoute {
+  const fullInstalled = toolbox.skills.some((s) => s.name === FULL_SDD_KIT);
+  const contract = resolveKit(FULL_SDD_KIT)?.routing;
+  const skipped =
+    task.taskType && contract?.skipFor?.some((t) => t.toLowerCase() === task.taskType!.toLowerCase());
+
+  if (fullInstalled && !task.size && !skipped && contract?.minSize) {
+    return {
+      kit: FULL_SDD_KIT,
+      reason: `no size was declared for this unit — undeclared is NOT established as trivial, so the full ${FULL_SDD_KIT} flow is the default. If it really is trivial, record it (\`--size small\`, or \`--sdd ${FLOOR_SDD_KIT}\`) and the claim lands on the ledger`,
+    };
+  }
+  return routeSdd(toolbox, task);
+}

@@ -6,8 +6,11 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
-import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney, type SddArtifactResolver } from "./ledger";
+import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney, type SddArtifactResolver, type SddRouter } from "./ledger";
 import { resolveSddArtifactsGit } from "./sdd-artifacts";
+import { readToolbox } from "../toolbox/catalog";
+import { routeSddForGate } from "../toolbox/routing";
+import type { TaskSize } from "../toolbox/types";
 import { ghPrState, reconcileAll, reconcileJourney, type PrStateFetcher } from "./reconcile";
 import { normalizeRepo, normalizeSpecialist } from "./normalize";
 import { dedupeAll } from "./dedupe-run";
@@ -44,6 +47,9 @@ export interface JourneyDeps {
   // The SDD delivery gate's artifact resolver (#118): does the worktree carry a
   // committed spec+plan? Defaults to the real git reader; tests inject a fake.
   resolveSddArtifacts?: SddArtifactResolver;
+  // The SDD route derivation (#118): which tier does this unit's declared
+  // difficulty fall under? Defaults to the workspace's own catalog; tests inject.
+  routeSdd?: SddRouter;
 }
 
 // Resolve the release state for the repos a ledger touches, from local git. A
@@ -193,6 +199,20 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   // floor). Sticky on the ledger, so a later plain `--status delivered` inherits
   // it. Comes from `aipe skill match`'s ROUTE line.
   const sddKit = getFlag(args, "--sdd");
+  // The route's INPUTS, recorded as ledger facts (#118). `aipe skill match
+  // --size/--task-type` decides which SDD tier a task falls under; recording the
+  // same two values on the dispatch is what lets the delivery gate DERIVE that
+  // decision later instead of depending on someone remembering `--sdd`. An
+  // invalid --size is refused rather than silently dropped: a size the router
+  // cannot read would route as "undeclared", and a flag accepted-and-ignored is
+  // the exact defect #118 exists to remove.
+  const sizeFlag = getFlag(args, "--size");
+  if (sizeFlag !== undefined && !isTaskSize(sizeFlag)) {
+    console.log(`ERROR size: "${sizeFlag}" is not a task size — use small, medium or large`);
+    return 1;
+  }
+  const size = sizeFlag as TaskSize | undefined;
+  const taskType = getFlag(args, "--task-type");
 
   // Session-mode dispatch metadata (optional; absent ⇒ absent on the ledger,
   // never present-and-undefined — legacy ledgers and subagent dispatches must
@@ -256,6 +276,8 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ...(tier ? { tier } : {}),
       ...(model ? { model } : {}),
       ...(sddKit ? { sddKit } : {}),
+      ...(size ? { size } : {}),
+      ...(taskType ? { taskType } : {}),
       ...(mode ? { mode } : {}),
       ...(intensity ? { intensity } : {}),
       ...(harness ? { harness } : {}),
@@ -263,7 +285,14 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ...(evidence ? { evidence } : {}),
       status,
     },
-    { ...(reason ? { reason } : {}), resolveChecks, ciNone, ciVerifiedPreMerge, resolveSddArtifacts: deps.resolveSddArtifacts ?? resolveSddArtifactsGit },
+    {
+      ...(reason ? { reason } : {}),
+      resolveChecks,
+      ciNone,
+      ciVerifiedPreMerge,
+      resolveSddArtifacts: deps.resolveSddArtifacts ?? resolveSddArtifactsGit,
+      routeSdd: deps.routeSdd ?? (await workspaceSddRouter(workspace)),
+    },
   );
 
   if (!result.ok) {
@@ -723,4 +752,20 @@ if (import.meta.main) {
       console.log(`ERROR ${err}`);
       process.exit(1);
     });
+}
+
+// `--size` is only meaningful in the router's own three values; anything else is
+// refused at the flag rather than stored and quietly ignored.
+function isTaskSize(v: string): v is TaskSize {
+  return v === "small" || v === "medium" || v === "large";
+}
+
+// Binds the delivery gate's route derivation to THIS workspace's toolbox: what
+// is actually installed decides what can be demanded. A workspace with no
+// spec-kit installed cannot have a spec-kit delivery refused — the gate never
+// demands an artifact from a flow the repo cannot run (that state is what #118
+// removes at onboarding, but the gate must stay honest if it is ever seen).
+async function workspaceSddRouter(workspace: string): Promise<SddRouter> {
+  const toolbox = await readToolbox(workspace);
+  return (task) => routeSddForGate(toolbox, task).kit;
 }

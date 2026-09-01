@@ -24,6 +24,11 @@
 // It is NOT a rejection — the unit is simply unfinished and needs a fresh
 // dispatch — and `aipe status` must never render it the way it renders a real
 // QA `failed`.
+// The unit's difficulty vocabulary is the toolbox router's, not a second one:
+// `aipe skill match --size` and the ledger's recorded size must be the SAME
+// three values, or the gate would route on a scale the router does not speak.
+import type { TaskSize } from "../toolbox/types";
+
 export type DispatchStatus =
   | "dispatched"
   | "delivered"
@@ -155,6 +160,15 @@ export interface JourneyDispatch {
   // unit was never routed to an SDD kit (legacy rows and non-SDD units
   // round-trip untouched).
   sddKit?: string;
+  // The `aipe skill match` INPUTS, recorded as ledger facts (#118). The route
+  // used to depend on someone remembering `--sdd` at delivery time, so in the
+  // real dispatch path nobody ever typed it and the gate never fired. Recording
+  // the unit's difficulty at DISPATCH instead lets the gate derive the route
+  // itself, from the same router `aipe skill match` prints. Sticky like the
+  // rest: declared once, honoured by every later plain write. Absent `size` is
+  // NOT read as trivial — see routeSddForGate.
+  size?: TaskSize;
+  taskType?: string;
   // Session-mode dispatch (absent on subagent dispatches and legacy ledgers).
   // `sessionId` is what `aipe session collect` cross-references against
   // `agentop session list --json` to tell "still working" from "died silently".
