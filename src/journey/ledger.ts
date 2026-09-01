@@ -402,7 +402,15 @@ export async function recordDispatchGuarded(
   // the QA standing is the furthest round any of them has PASSED. Reading both
   // as a MAX is what lets the dev's redispatch invalidate the QA's older pass.
   const gateRound = Math.max(1, ...gateRows.map((d) => d.round ?? 1));
-  const gateVerifiedRound = Math.max(0, ...gateRows.map((d) => d.verifiedRound ?? 0));
+  // Only rows that are STILL `verified` count. `verifiedRound` is sticky by
+  // design — a plain write must not erase the history — but that made a
+  // RETRACTED pass keep clearing the merge gate: a QA that verified and then
+  // recorded `failed` ("retracting: it is broken") left its verifiedRound behind,
+  // and the merge landed on a task whose only standing verdict was a failure.
+  const gateVerifiedRound = Math.max(
+    0,
+    ...gateRows.filter((d) => d.status === "verified").map((d) => d.verifiedRound ?? 0),
+  );
 
   // The row this write will actually upsert onto — same identity recordDispatch
   // matches by. The round MUST be read from here and never from `current`:
@@ -500,7 +508,7 @@ export async function recordDispatchGuarded(
     return {
       ok: false,
       code: "verify-needs-delivery",
-      message: `unit ${unitName} has nothing delivered to verify — a QA verdict judges a DELIVERY, and no row on this unit is currently "delivered". Have the specialist record \`--status delivered\` first; a pass recorded over nothing is not a pass.`,
+      message: `unit ${unitName}${dispatch.task ? ` (task ${dispatch.task})` : " (no --task)"} has nothing delivered to verify — a QA verdict judges a DELIVERY, and no row with THIS task identity is currently "delivered". A verdict is paired with the delivery by (repo, package, task), so record it with the SAME --task the delivery used${dispatch.task ? "" : " — if the delivery carries one, this write must carry it too"}. A pass recorded over nothing is not a pass.`,
     };
   }
 
@@ -607,15 +615,12 @@ export async function recordDispatchGuarded(
   // which is why the gate previously "worked" only when the QA was filed under a
   // task of its own, where its verdict paired with nothing.
   const reopening =
-    dispatch.status === "dispatched" &&
-    !!current &&
-    (current.status === "delivered" || current.status === "verified") &&
-    (selfRow !== undefined || current.status === "verified");
+    dispatch.status === "dispatched" && !!current && (current.status === "delivered" || current.status === "verified");
   if (reopening && !opts.reason?.trim()) {
     return {
       ok: false,
       code: "redispatch-needs-reason",
-      message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} was already "${current!.status}" — re-dispatching it needs --reason (a fix loop or a deliberate redo), so finished work is never silently redone.`,
+      message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} was already "${current!.status}" — dispatching onto it needs --reason, so finished work is never silently redone. A fix loop or a deliberate redo says which; the QA arriving to gate this delivery says so too (--reason "QA gate"). Keying this on "has no row yet" instead of a reason was tried and let a DIFFERENT specialist silently redo finished work.`,
     };
   }
   // 4 — no-reasonless-redirect: the whole value of a `redirected` record is
@@ -729,8 +734,14 @@ export async function recordDispatchGuarded(
   // still carrying its OLD session id would never be picked up for a NEW
   // `aipe session dispatch` call. Force it out explicitly (present-but-
   // `undefined` — mergeDispatch treats that as "clear", not "inherit").
+  // Clearing the session id is for a STALE one: this specialist's previous
+  // session, which `dispatchCommand`'s pending filter would otherwise skip
+  // (`status === "dispatched" && !sessionId`). It must not fire when the row is
+  // NEW — the QA arriving to gate a delivered task is a reopening write by the
+  // reason rule, and blanking its id threw away the session it had just been
+  // given, leaving `collect` and the close path blind to it.
   const toWrite: JourneyDispatch = reopening
-    ? { ...dispatch, sessionId: undefined, redispatchReason: opts.reason!.trim() }
+    ? { ...dispatch, ...(selfRow ? { sessionId: undefined } : {}), redispatchReason: opts.reason!.trim() }
     : dispatch.status === "redirected"
       ? { ...dispatch, redirectReason: opts.reason!.trim() }
       : dispatch.status === "blocked"
@@ -751,7 +762,18 @@ export async function recordDispatchGuarded(
   // already names. A failed→dispatched fix loop counts too: the QA rejected it,
   // the code changes, and the old pass must not survive that.
   const restarting = reopening || (dispatch.status === "dispatched" && current?.status === "failed");
-  const withRound: JourneyDispatch = restarting
+
+  // A round also opens when work is re-DELIVERED onto a task that already
+  // carries a verdict for the current round. The round used to move only on the
+  // `dispatched` transition, so a dev who simply recorded `delivered` again —
+  // which operate/SKILL.md itself documents, to attach the PR url — kept round 1
+  // and inherited the QA's round-1 pass for a rewrite nobody re-tested. The
+  // verdict is what closes a round; delivering after one starts the next.
+  const hasVerdictThisRound = gateRows.some(
+    (d) => (d.status === "verified" || d.status === "failed") && (d.round ?? 1) >= gateRound,
+  );
+  const bumpsRound = restarting || (dispatch.status === "delivered" && hasVerdictThisRound);
+  const withRound: JourneyDispatch = bumpsRound
     ? { ...toWrite, round: gateRound + 1 }
     : dispatch.status === "verified"
       ? { ...toWrite, round: gateRound, verifiedRound: gateRound }

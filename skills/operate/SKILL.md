@@ -525,6 +525,12 @@ digraph operate {
    time, so an amendment reaches whoever is already working. Amend it and the PE
    re-approves — the dispatch refuses a spec edited after approval.
 
+   **Dispatching the QA.** Its record carries the **same `--task` as the delivery**
+   (a verdict is paired with the delivery by `(repo, package, task)`; under a task
+   of its own it gates nothing) and, because the task is already `delivered`, its
+   dispatch needs `--reason "QA gate"` — every dispatch onto finished work says
+   why, which is what stops a different specialist silently redoing it.
+
    **`--size` is how hard this unit is, and it is the input the SDD route is
    derived from** — the same router `aipe skill match --task-type <t> --size <s>`
    prints as `ROUTE sdd=<kit>`, so the two can never disagree. Recording it is

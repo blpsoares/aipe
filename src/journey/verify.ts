@@ -82,18 +82,26 @@ export function verifyJourney(
   // on GitHub before the QA signed off lands here, stamped, instead of being
   // silently absorbed. Critical, not a warning: "every finished task is tested"
   // is the invariant, and this is a unit that broke it.
-  for (const [unit, rows] of byUnit) {
+  // Grouped by TASK, like the stamp in reconcile.ts and the write gate. Reading
+  // the rounds by UNIT made this message lie: with a sibling task's pass in
+  // scope it reported "reworked after that pass" for a task whose round and pass
+  // were equal — a signal that asserted something it had not established, which
+  // is the defect class this file exists to catch.
+  for (const [, rows] of groupByTask(ledger.dispatches)) {
     const gapped = rows.filter((d) => d.qaGap);
     if (gapped.length === 0) continue;
-    const passed = Math.max(0, ...rows.map((d) => d.verifiedRound ?? 0));
+    const unit = packageFqid(gapped[0]!.repo, gapped[0]!.package);
+    // A retracted pass does not count, exactly as the write gate reads it.
+    const passed = Math.max(0, ...rows.filter((d) => d.status === "verified").map((d) => d.verifiedRound ?? 0));
     const round = Math.max(1, ...rows.map((d) => d.round ?? 1));
+    const prs = gapped.map((d) => d.pr ?? "?").join(", ");
     findings.push({
       severity: "critical",
       code: "merged-without-qa",
       unit,
       detail: passed === 0
-        ? `merged (${gapped.map((d) => d.pr ?? "?").join(", ")}) without any QA verification — the PR landed on the forge before the gate ran. Have the QA verify it against its Task Spec now, and treat the merge as unreviewed until then.`
-        : `merged (${gapped.map((d) => d.pr ?? "?").join(", ")}) on round ${round}, but the last QA pass was round ${passed} — the code was reworked after that pass and landed without a re-test.`,
+        ? `merged (${prs}) without any standing QA verification — the PR landed on the forge before the gate ran (or its pass was later retracted). Have the QA verify it against its Task Spec now, and treat the merge as unreviewed until then.`
+        : `merged (${prs}) on round ${round}, but the last QA pass was round ${passed} — the code was reworked after that pass and landed without a re-test.`,
     });
   }
 

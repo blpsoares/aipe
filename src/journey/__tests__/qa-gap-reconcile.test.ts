@@ -42,7 +42,7 @@ test("a PR merged on the forge with NO QA pass is recorded merged AND stamped as
     const findings = verifyJourney((await readLedger(dir, "j1"))!, []);
     const gap = findings.find((f) => f.code === "merged-without-qa");
     expect(gap?.severity).toBe("critical");
-    expect(gap?.detail).toContain("without any QA verification");
+    expect(gap?.detail).toContain("without any standing QA verification");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -54,8 +54,11 @@ test("a merge WITH a current-round QA pass is stamped with no gap", async () => 
       status: "delivered", pr: "http://pr/1", round: 1,
       evidence: { by: "dev", commands: ["bun test"], summary: "green" },
     });
+    // Same TASK as the delivery (both unset here), different specialist — the
+    // verdict is paired with the delivery by (repo, package, task), so a QA row
+    // filed under a task of its own would gate nothing.
     await recordDispatch(dir, "j1", {
-      repo: "aipe", specialist: "Mike", task: "gate", branch: "bq", worktree: "/wq",
+      repo: "aipe", specialist: "Mike", branch: "bq", worktree: "/wq",
       status: "verified", round: 1, verifiedRound: 1,
       evidence: { by: "qa", commands: ["drove it"], summary: "typing works" },
     });
@@ -72,7 +75,7 @@ test("a merge whose QA pass is from an EARLIER round is a gap — the re-test ne
   try {
     // round 1 passed, then the unit was reworked to round 2 and merged
     await recordDispatch(dir, "j1", {
-      repo: "aipe", specialist: "Mike", task: "gate", branch: "bq", worktree: "/wq",
+      repo: "aipe", specialist: "Mike", branch: "bq", worktree: "/wq",
       status: "verified", round: 1, verifiedRound: 1,
       evidence: { by: "qa", commands: ["drove it"], summary: "ok" },
     });

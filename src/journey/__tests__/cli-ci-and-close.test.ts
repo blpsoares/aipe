@@ -330,10 +330,15 @@ test("a QA verified from a DIFFERENT specialist closes the DEV's delivered sessi
     "--status", "delivered", "--pr", "http://pr/impl", ...evArgs,
   ], { resolveChecks: async () => "green" as CheckVerdict });
   // QA is dispatched on the SAME task, as its own specialist — its own session live too.
+  // The QA's own dispatch lands on a task that is already `delivered`, so it
+  // needs a --reason like any other dispatch onto finished work. Exempting "a
+  // specialist with no row yet" was tried and let a different dev silently redo
+  // finished work, so the reason is the price and it is a cheap one.
   await run([
     "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Mike",
     "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "impl",
     "--status", "dispatched", "--mode", "session", "--session-id", "sess-qa",
+    "--reason", "QA gate",
   ]);
   const { runner, kills } = agentop({ live: ["sess-dev", "sess-qa"] });
   const { code, output } = await capture(() =>

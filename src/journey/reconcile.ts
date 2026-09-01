@@ -63,13 +63,18 @@ export async function reconcileJourney(
   // A unit's QA standing, by unit rather than by row: the dev delivers on its
   // own row and the QA records its verdict on a separate one, so both the round
   // reached and the round passed are a MAX across the unit's rows.
-  const unitKey = (d: JourneyDispatch): string => `${d.repo}\u0000${d.package ?? ""}`;
+  // Keyed by (repo, package, TASK) — the same identity the write gate scopes to.
+  // Unit scope here reopened, on the forge path, exactly the leak this stamp was
+  // written to close: task t1's QA pass covered task t2's merge, and t2 was never
+  // verified by anyone. The write gate refused it; reconcile stamped nothing.
+  const unitKey = (d: JourneyDispatch): string => `${d.repo}\u0000${d.package ?? ""}\u0000${d.task ?? ""}`;
   const roundBy = new Map<string, number>();
   const passedBy = new Map<string, number>();
   for (const d of dispatches) {
     const k = unitKey(d);
     roundBy.set(k, Math.max(roundBy.get(k) ?? 1, d.round ?? 1));
-    passedBy.set(k, Math.max(passedBy.get(k) ?? 0, d.verifiedRound ?? 0));
+    if (d.status === "verified") passedBy.set(k, Math.max(passedBy.get(k) ?? 0, d.verifiedRound ?? 0));
+    else passedBy.set(k, passedBy.get(k) ?? 0);
   }
 
   for (const d of dispatches) {

@@ -86,6 +86,7 @@ Each thought means **STOP — you are rubber-stamping, not gating:**
      evidence so the coordinator can record `--status verified` (the ledger requires it):
      ```bash
      aipe journey record --journey <id> --repo <repo> [--package <pkg>] \
+       --task <THE SAME --task the delivery used> \
        --specialist <qa> --branch <branch> --worktree <path> --status verified \
        --evidence-by qa \
        --verify-item A1 --verify-cmd "drove the flow in a browser" \
@@ -97,6 +98,15 @@ Each thought means **STOP — you are rubber-stamping, not gating:**
      per-criterion evidence **is** the evidence — you do not also owe a blanket
      `--evidence-summary`. Record it under **your own** persona: the ledger refuses a
      verification signed by whoever made the delivery.
+
+     **`--task` must match the delivery's.** A verdict is paired with the delivery
+     it judges by `(repo, package, task)` — file it under a task of its own and it
+     gates nothing, which is how a merge once landed on work no one had verified.
+     If the delivery carried no `--task`, yours carries none either.
+
+     If you were dispatched onto a task that is already `delivered`, your own
+     dispatch record needs `--reason "QA gate"`: any dispatch onto finished work
+     states why, so a silent redo by a different specialist is impossible.
 
 ## Common mistakes
 
