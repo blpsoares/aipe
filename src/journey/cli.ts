@@ -6,7 +6,8 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
-import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney, type SddArtifactResolver, type SddRouter } from "./ledger";
+import { recordDispatchGuarded, readLedger, setJourneySpec, setJourneyTaskSpec, startJourney, type AcceptanceResolver, type SddArtifactResolver, type SddRouter } from "./ledger";
+import { hashTaskSpecContent, parseAcceptanceItems, renderTaskSpecTemplate, taskSpecRelPath, validateTaskSpec } from "./task-spec";
 import { resolveSddArtifactsGit } from "./sdd-artifacts";
 import { readToolbox } from "../toolbox/catalog";
 import { routeSddForGate } from "../toolbox/routing";
@@ -50,6 +51,9 @@ export interface JourneyDeps {
   // The SDD route derivation (#118): which tier does this unit's declared
   // difficulty fall under? Defaults to the workspace's own catalog; tests inject.
   routeSdd?: SddRouter;
+  // The acceptance criteria a `verified` must answer one by one (#116/R5).
+  // Defaults to the unit's APPROVED Task Spec; tests inject.
+  resolveAcceptance?: AcceptanceResolver;
 }
 
 // Resolve the release state for the repos a ledger touches, from local git. A
@@ -244,13 +248,22 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   const evCmds = getAllFlags(args, "--evidence-cmd");
   const evArtifact = getFlag(args, "--evidence-artifact");
   const evByFlag = getFlag(args, "--evidence-by");
+  // R5 — per-criterion coverage: `--verify-item A1 --verify-cmd "..."
+  // --verify-summary "..."`, repeated. Grouped by SCAN ORDER (each --verify-item
+  // opens a group the following flags attach to) rather than by zipping three
+  // parallel arrays: a caller who omits one flag in the middle would silently
+  // shift every later pairing, quietly attributing one criterion's proof to
+  // another. Mis-attributed evidence is worse than missing evidence, because it
+  // reads as covered.
+  const verifyItems = parseVerifyItems(args);
   const evidence: DispatchEvidence | undefined =
-    evSummary || evCmds.length > 0
+    evSummary || evCmds.length > 0 || verifyItems.length > 0
       ? {
           by: evByFlag === "qa" || evByFlag === "dev" ? evByFlag : status === "verified" ? "qa" : "dev",
           commands: evCmds,
           summary: evSummary ?? "",
           ...(evArtifact ? { artifact: evArtifact } : {}),
+          ...(verifyItems.length > 0 ? { items: verifyItems } : {}),
         }
       : undefined;
 
@@ -292,6 +305,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ciVerifiedPreMerge,
       resolveSddArtifacts: deps.resolveSddArtifacts ?? resolveSddArtifactsGit,
       routeSdd: deps.routeSdd ?? (await workspaceSddRouter(workspace)),
+      resolveAcceptance: deps.resolveAcceptance ?? approvedAcceptanceResolver(workspace, id),
     },
   );
 
@@ -397,8 +411,14 @@ async function showCommand(args: string[], deps: JourneyDeps = {}): Promise<numb
 //   • `journey spec --check` (here) — always read the FILE; also rejects a raw
 //     template now that validateOrientation flags placeholders.
 //   • `session dispatch` (session/cli.ts) — reads the orientation.md FILE
-//     (refuses missing/empty) before writing any prompt. Already correct: it
-//     never trusts the ledger record without the artifact.
+//     (refuses missing/empty) AND now refuses an unapproved one, drift included
+//     (R4). This line used to say "already correct: it never trusts the ledger
+//     record without the artifact" — true, and beside the point: the question
+//     this list asks is who consults APPROVAL, and dispatch consulted it
+//     nowhere. It detected post-approval drift, recorded `approved:false`, and
+//     dispatched anyway with a NOTE. An audit note that answers an easier
+//     question than the one in its own heading reads as reassurance; that is
+//     how this gap survived in plain sight.
 //   • `execution propose` (execution/cli.ts) — reads the spec FILE to price its
 //     units; pre-approval by design, so it must NOT require `approved`. Correct.
 //   • `serve` floor.ts + `status` assemble.ts — DISPLAY `spec.approved` to derive
@@ -719,6 +739,128 @@ async function reapCommand(args: string[], deps: JourneyDeps = {}): Promise<numb
   return 0;
 }
 
+// The per-unit TASK SPEC (layer 2): scaffold → the spec writer fills it → the PE
+// checks and approves → only then may the unit be dispatched.
+//
+// It mirrors specCommand deliberately, including the rule that cost the most to
+// learn: every gate ESTABLISHES the artifact before trusting the ledger record.
+// A record saying `approved: true` over a file that is gone, blank, or edited
+// since is not approval — it is a stale claim, and this is the layer whose whole
+// purpose is that a human actually read the thing.
+async function taskSpecCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const id = getFlag(args, "--journey");
+  const unit = getFlag(args, "--unit");
+  if (!id || !unit) {
+    console.log("ERROR args: --journey <id> and --unit <fqid> are required");
+    return 1;
+  }
+  const relPath = taskSpecRelPath(id, unit);
+  const absPath = join(workspace, relPath);
+
+  // Reports what is wrong in the CALLER'S terms, each class named as itself. The
+  // measured trap: a single "replace every placeholder" line printed when what
+  // was actually absent was a required SECTION, sending the operator hunting for
+  // chevrons that did not exist. Missing sections, leftover placeholders,
+  // mechanism-shaped criteria and untested criteria are four different problems
+  // and each gets its own line.
+  const report = (check: ReturnType<typeof validateTaskSpec>): void => {
+    for (const sec of check.missingSections) console.log(`REJECT missing-section ${sec}`);
+    for (const p of check.placeholders) console.log(`REJECT placeholder ${p}`);
+    if (check.noAcceptance) console.log("REJECT no-acceptance — the Acceptance section has no items; a heading is not a criterion");
+    for (const m of check.mechanismOnly) {
+      console.log(`REJECT mechanism-only ${m.label} — is missing ${m.missing.join(" and ")}. Acceptance states what someone DOES and what they OBSERVE; a criterion with no observable effect is a mechanism, and a QA can only transcribe it.`);
+    }
+    for (const u of check.untestedItems) {
+      console.log(`REJECT untested-criterion ${u} — no entry under "Tests the QA runs". Every criterion carries the test the QA will execute, agreed before the code, so the QA never invents its own.`);
+    }
+  };
+
+  if (args.includes("--scaffold")) {
+    await mkdir(dirname(absPath), { recursive: true });
+    try {
+      await readFile(absPath, "utf8");
+      console.log(`OK exists ${relPath} (left untouched)`);
+      return 0;
+    } catch {
+      await writeFile(absPath, renderTaskSpecTemplate(id, unit), "utf8");
+    }
+    await setJourneyTaskSpec(workspace, id, unit, { path: relPath, version: 1, approved: false });
+    console.log(`OK scaffolded ${relPath}`);
+    return 0;
+  }
+
+  if (args.includes("--check")) {
+    let md: string;
+    try {
+      md = await readFile(absPath, "utf8");
+    } catch {
+      console.log(`REJECT missing-file ${relPath} — no Task Spec for ${unit}; scaffold it first`);
+      return 1;
+    }
+    const check = validateTaskSpec(md);
+    if (!check.ok) {
+      report(check);
+      return 1;
+    }
+    console.log(`OK checkable ${relPath}`);
+    return 0;
+  }
+
+  if (args.includes("--approve")) {
+    let md: string;
+    try {
+      md = await readFile(absPath, "utf8");
+    } catch {
+      console.log(`REJECT missing-file ${relPath} — nothing to approve`);
+      return 1;
+    }
+    if (md.trim() === "") {
+      console.log(`REJECT empty-file ${relPath} — the Task Spec is blank; fill it before approving`);
+      return 1;
+    }
+    const check = validateTaskSpec(md);
+    if (!check.ok) {
+      report(check);
+      console.log(`REJECT not-approvable ${relPath}`);
+      return 1;
+    }
+    const ledger = await readLedger(workspace, id);
+    const prior = ledger?.taskSpecs?.[unit];
+    await setJourneyTaskSpec(workspace, id, unit, {
+      path: relPath,
+      version: prior?.version ?? 1,
+      approved: true,
+      contentHash: hashTaskSpecContent(md),
+    });
+    console.log(`OK approved journey=${id} unit=${unit} task-spec=v${prior?.version ?? 1}`);
+    return 0;
+  }
+
+  // default: --show
+  const ledger = await readLedger(workspace, id);
+  const rec = ledger?.taskSpecs?.[unit];
+  if (!rec) {
+    console.log(`STATE task-spec journey=${id} unit=${unit} none`);
+    return 0;
+  }
+  let approved = rec.approved;
+  let note = "";
+  // Never parrot the record over a file that is gone or has changed since.
+  try {
+    const md = await readFile(join(workspace, rec.path), "utf8");
+    if (rec.contentHash !== undefined && rec.contentHash !== hashTaskSpecContent(md)) {
+      approved = false;
+      note = " (file changed since approval — needs re-approval)";
+    }
+  } catch {
+    approved = false;
+    note = " (file is missing)";
+  }
+  console.log(`STATE task-spec journey=${id} unit=${unit} v${rec.version} approved=${approved}${note}`);
+  return 0;
+}
+
 export async function run(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -730,6 +872,8 @@ export async function run(args: string[], deps: JourneyDeps = {}): Promise<numbe
       return showCommand(rest, deps);
     case "spec":
       return specCommand(rest);
+    case "task-spec":
+      return taskSpecCommand(rest);
     case "reconcile":
       return reconcileCommand(rest);
     case "dedupe":
@@ -740,7 +884,7 @@ export async function run(args: string[], deps: JourneyDeps = {}): Promise<numbe
       return reapCommand(rest, deps);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
-      console.log("Usage: aipe journey <start|record|show|spec|reconcile|dedupe|verify|reap> [options]");
+      console.log("Usage: aipe journey <start|record|show|spec|task-spec|reconcile|dedupe|verify|reap> [options]");
       return 1;
   }
 }
@@ -768,4 +912,55 @@ function isTaskSize(v: string): v is TaskSize {
 async function workspaceSddRouter(workspace: string): Promise<SddRouter> {
   const toolbox = await readToolbox(workspace);
   return (task) => routeSddForGate(toolbox, task).kit;
+}
+
+// Groups the repeatable verification flags by scan order: every `--verify-item`
+// opens a group, and the `--verify-cmd` / `--verify-summary` that follow attach
+// to it. Flags appearing before any `--verify-item` belong to no criterion and
+// are ignored rather than guessed at.
+function parseVerifyItems(args: string[]): { label: string; commands: string[]; summary: string }[] {
+  const items: { label: string; commands: string[]; summary: string }[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith("--")) continue;
+    if (args[i] === "--verify-item") items.push({ label: value, commands: [], summary: "" });
+    else if (args[i] === "--verify-cmd") items[items.length - 1]?.commands.push(value);
+    else if (args[i] === "--verify-summary") {
+      const last = items[items.length - 1];
+      if (last) last.summary = last.summary ? `${last.summary} ${value}` : value;
+    }
+  }
+  return items;
+}
+
+// The acceptance criteria a QA verdict must answer, read from the unit's
+// APPROVED Task Spec. Returns null — "nothing enumerated to cover" — when there
+// is no Task Spec, when it is not approved, or when the file changed since
+// approval: in all three the criteria are not established, and a gate must not
+// demand coverage of a list nobody signed. It also never demands coverage of a
+// list it could not read, which keeps the refusal about the QA's work rather
+// than about the workspace's state.
+function approvedAcceptanceResolver(workspace: string, journeyId: string): AcceptanceResolver {
+  return async (unit) => {
+    const ledger = await readLedger(workspace, journeyId);
+    const fqid = unit.package ? `${unit.repo}/${unit.package}` : unit.repo;
+    const rec = ledger?.taskSpecs?.[fqid];
+    // Never written ⇒ nothing enumerated. This is the ONLY skip.
+    if (!rec) return { kind: "none" };
+    // Recorded but never approved: the criteria exist and a human has not signed
+    // them, which is not the same as no criteria at all — and it is not a state a
+    // verdict should slip through, since the dispatch gate would have refused it.
+    if (!rec.approved) {
+      return { kind: "unestablished", why: `its Task Spec (${rec.path}) is not approved` };
+    }
+    try {
+      const md = await readFile(join(workspace, rec.path), "utf8");
+      if (rec.contentHash !== undefined && rec.contentHash !== hashTaskSpecContent(md)) {
+        return { kind: "unestablished", why: `${rec.path} changed after it was approved` };
+      }
+      return { kind: "criteria", labels: parseAcceptanceItems(md).map((i) => i.label) };
+    } catch {
+      return { kind: "unestablished", why: `${rec.path} is recorded as approved but cannot be read` };
+    }
+  };
 }

@@ -385,7 +385,14 @@ digraph operate {
    wave). A subagent-mode unit needs no model — it binds per unit. Record this
    before moving to step 4a so `plan` has complete envelopes to group into waves.
 
-   Do **not** dispatch until `--show` reports `approved=true`. If an escalation
+   Do **not** dispatch until `--show` reports `approved=true`. This is no longer
+   only an instruction to you: `aipe session dispatch` **refuses** a journey whose
+   Orientation Spec is unapproved, and refuses before writing any prompt or
+   starting any session, so a refused dispatch leaves nothing behind. Editing
+   `orientation.md` after approval counts as unapproved — the edit bumps the
+   version and clears approval, and the PE must review the amendment and approve
+   again. That is the Lawson incident: previously the drift was detected, noted,
+   and dispatched anyway. If an escalation
    later changes the cross-package shape, `--amend` (bumps the version), edit, and
    get re-approval before the next wave.
 
@@ -486,6 +493,43 @@ digraph operate {
 
    aipe session dispatch --journey <id> --workspace <workspace>
    ```
+
+   **Between those two commands, every unit routed to the full flow needs an
+   APPROVED TASK SPEC — `aipe session dispatch` refuses without one.**
+
+   ```bash
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --scaffold
+   # the spec writer fills it in; then:
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --check
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --approve   # PE
+   ```
+
+   The specialist does **not** write this. That is the whole point: whoever builds
+   a thing decides what "done" means for it, and before this existed that decision
+   happened *after* dispatch — so nothing a human approved ever said what the work
+   was for. A dev and a QA both read `disableStdin: true`, agreed it was
+   "pre-existing design, not a regression", and shipped, because no approved
+   document said that being able to TYPE was the objective. The PE reported it five
+   times.
+
+   Two things the validator refuses, so write for them:
+   - **Acceptance by CONSEQUENCE, never mechanism.** Each criterion names the
+     **Action** exercised and the **Effect** observed. *"use the `--st-escalated`
+     token"* is refused — it has no observable effect to write down. *"a task in
+     progress is distinguishable from a stopped one — prove it by alternating"* is
+     the shape that works.
+   - **Every criterion carries the test the QA will run**, matched by its label, in
+     `## Tests the QA runs`. The QA executes those; it does not author its own.
+
+   The path travels to the specialist, never the text: the spec is read at work
+   time, so an amendment reaches whoever is already working. Amend it and the PE
+   re-approves — the dispatch refuses a spec edited after approval.
+
+   **Dispatching the QA.** Its record carries the **same `--task` as the delivery**
+   (a verdict is paired with the delivery by `(repo, package, task)`; under a task
+   of its own it gates nothing) and, because the task is already `delivered`, its
+   dispatch needs `--reason "QA gate"` — every dispatch onto finished work says
+   why, which is what stops a different specialist silently redoing it.
 
    **`--size` is how hard this unit is, and it is the input the SDD route is
    derived from** — the same router `aipe skill match --task-type <t> --size <s>`

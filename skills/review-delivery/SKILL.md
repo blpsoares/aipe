@@ -45,12 +45,27 @@ Each thought means **STOP — you are rubber-stamping, not gating:**
 ## Flow
 
 1. **Get the artifact, not the story.** Read the **diff** on the dev's branch and the
-   unit's **Orientation-Spec slice** (its Scope + Acceptance). These two — not the
-   report — are your ground truth.
+   unit's **Task Spec** (`.aipe/journeys/<id>/task-specs/<unit>.md`) — the one the PE
+   approved before any code was written. Its `## Acceptance` and `## Tests the QA runs`
+   sections are your ground truth, and they are **not yours to author**: they were
+   agreed before the implementation existed precisely so you execute them instead of
+   inventing your own. Fall back to the Orientation-Spec slice only for a unit that
+   has no Task Spec. Never the dev's report.
 
-2. **Check coverage against acceptance.** For each acceptance criterion, find where in
-   the diff it is satisfied. A criterion with no corresponding change is a **gap**, not
-   a pass. Note anything the diff does that the spec did **not** ask for (scope creep).
+2. **Run the tests the spec names, criterion by criterion.** Each `## Acceptance` item
+   names an **Action** and an **Effect**; `## Tests the QA runs` names how to exercise
+   it. Do that, and record what you observed **per criterion** — the ledger refuses a
+   `verified` that leaves any criterion unanswered, and names it `!NO-EVIDENCE <label>`.
+
+   This is the rule that exists because of a measured failure: when acceptance was free
+   prose, QAs proved a **proxy** for it — that a stream connected, that a header summary
+   changed — while the thing the PE actually asked for went untested through six
+   approved gates. A criterion you did not exercise is untested, not passed. If a
+   criterion cannot be exercised as written, that is a **failed** verdict with the
+   reason, never a pass with a caveat.
+
+   A criterion with no corresponding change in the diff is a **gap**, not a pass. Note
+   anything the diff does that the spec did **not** ask for (scope creep).
 
 3. **Exercise it independently.** Run the tests **yourself** and, when the change has a
    runtime surface, **drive the feature** — reproduce the behavior the spec requires.
@@ -71,10 +86,27 @@ Each thought means **STOP — you are rubber-stamping, not gating:**
      evidence so the coordinator can record `--status verified` (the ledger requires it):
      ```bash
      aipe journey record --journey <id> --repo <repo> [--package <pkg>] \
+       --task <THE SAME --task the delivery used> \
        --specialist <qa> --branch <branch> --worktree <path> --status verified \
-       --evidence-by qa --evidence-cmd "bun test" --evidence-cmd "drove the flow" \
-       --evidence-summary "all acceptance criteria met; split totals correct"
+       --evidence-by qa \
+       --verify-item A1 --verify-cmd "drove the flow in a browser" \
+                        --verify-summary "typed `ls`, the output appeared in the pane" \
+       --verify-item A2 --verify-cmd "opened a finished session" \
+                        --verify-summary "the final frame stayed populated"
      ```
+     One `--verify-item` per acceptance criterion, using the spec's own labels. The
+     per-criterion evidence **is** the evidence — you do not also owe a blanket
+     `--evidence-summary`. Record it under **your own** persona: the ledger refuses a
+     verification signed by whoever made the delivery.
+
+     **`--task` must match the delivery's.** A verdict is paired with the delivery
+     it judges by `(repo, package, task)` — file it under a task of its own and it
+     gates nothing, which is how a merge once landed on work no one had verified.
+     If the delivery carried no `--task`, yours carries none either.
+
+     If you were dispatched onto a task that is already `delivered`, your own
+     dispatch record needs `--reason "QA gate"`: any dispatch onto finished work
+     states why, so a silent redo by a different specialist is impossible.
 
 ## Common mistakes
 

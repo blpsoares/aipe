@@ -82,6 +82,13 @@ export interface DispatchEvidence {
   commands: string[];
   summary: string;
   artifact?: string; // optional: a PR url, a log path, a screenshot ref
+  // R5 — per-criterion coverage, one entry per acceptance criterion in the
+  // unit's approved Task Spec. A single blanket summary is what let a QA "pass"
+  // a feature by proving a proxy (the stream connects) while the criterion the
+  // PE cared about (you can type into it) went untested. Answering criterion by
+  // criterion is what makes an untested one visible as a hole instead of
+  // vanishing into an average.
+  items?: { label: string; commands: string[]; summary: string }[];
 }
 
 // The single definition of "which of these evidence commands was actually run".
@@ -98,7 +105,24 @@ export function realEvidenceCommands(ev: DispatchEvidence | undefined): string[]
 // non-empty array) plus a non-blank summary; otherwise `--evidence-cmd ""` dresses
 // a bare self-report as evidence and clears the gate.
 export function hasRealEvidence(ev: DispatchEvidence | undefined): ev is DispatchEvidence {
-  return !!ev && realEvidenceCommands(ev).length > 0 && !!ev.summary?.trim();
+  if (!ev) return false;
+  // Per-criterion coverage IS proof, and better proof than the blanket kind: a
+  // QA that answered each criterion with what it ran and what it saw has done
+  // strictly more than one that wrote a single confident sentence. Requiring a
+  // top-level summary on top of that would push the QA back toward the blanket
+  // claim this design exists to replace.
+  if (realVerifiedItems(ev).length > 0) return true;
+  return realEvidenceCommands(ev).length > 0 && !!ev.summary?.trim();
+}
+
+// The evidence items that actually prove something: a criterion whose entry has
+// no real command, or no summary of what the output showed, is a label — not a
+// test that was run. Shared by the write gate and any reader, for the same
+// reason realEvidenceCommands is: two definitions of "proof" would drift.
+export function realVerifiedItems(ev: DispatchEvidence | undefined): NonNullable<DispatchEvidence["items"]> {
+  return (ev?.items ?? []).filter(
+    (i) => i.commands.some((c) => !!c?.trim()) && !!i.summary?.trim(),
+  );
 }
 
 export interface JourneyDispatch {
@@ -147,6 +171,26 @@ export interface JourneyDispatch {
   // `blockedReason`/`redirectReason`: the whole value of the status is saying
   // WHY it is not a verdict, so a reasonless one is refused.
   abandonedReason?: string;
+  // The fix-loop round this unit is on, starting at 1 and incremented by the
+  // ledger itself every time finished work is reopened (delivered/verified/
+  // failed → dispatched). It exists so a QA pass can be tied to the DELIVERY it
+  // actually examined: without it, a `verified` recorded in round 1 still looks
+  // like a pass after round 2 rewrote the code, which is precisely how "QA
+  // approved it" survives a change nobody re-tested.
+  round?: number;
+  // The round whose delivery the last accepted `verified` examined. Equal to
+  // `round` ⇒ the current work has been QA-tested. Less than `round` ⇒ the unit
+  // was reworked after its last pass and owes a RE-TEST. Absent ⇒ never verified.
+  verifiedRound?: number;
+  // Stamped when a unit reached `merged` WITHOUT a QA pass for its current round.
+  // The forge is the authority on whether a PR merged, so `aipe journey
+  // reconcile` must record that truth even when the QA never signed off —
+  // rewriting the status to something friendlier would make the ledger lie about
+  // the world. What it must NOT do is let the gap pass unremarked, so it is
+  // marked here and `journey verify` fails on it. The gate on the WRITE path
+  // (merge-needs-qa) prevents the gap; this records the ones that got in through
+  // the forge anyway.
+  qaGap?: true;
   // Model-policy audit (optional; absent on legacy ledgers): the tier the
   // coordinator assigned and the concrete model the specialist ran on.
   tier?: string;
@@ -219,5 +263,13 @@ export interface JourneyLedger {
   id: string;
   dispatches: JourneyDispatch[];
   spec?: JourneySpec;
+  // Layer 2 of the spec-writer design: one approved Task Spec PER UNIT, keyed by
+  // the unit's fqid (`repo` or `repo/package`). Keyed on the ledger rather than
+  // stored on each dispatch row because a unit outlives its rows — a redispatch,
+  // a fix loop and the QA all work against the SAME approved spec, and copying
+  // it per row is how two rows would end up disagreeing about what was approved.
+  // Absent ⇒ no Task Spec was ever written for any unit (every journey before
+  // this existed), which reads as "not required", never as "approved".
+  taskSpecs?: Record<string, JourneySpec>;
   authorizations?: JourneyAuthorization[];
 }

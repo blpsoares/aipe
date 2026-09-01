@@ -133,13 +133,22 @@ test("journey dedupe collapses an on-disk duplicate stuck behind a merged unit",
   await Bun.write(join(dir, ".aipe", "personas.yaml"), "personas:\n  - name: Jane\n    role: dev-fullstack\n    repo: agentistics\n");
   await run(["start", "--workspace", dir, "--id", "j1"]);
   // a merged unit (immutable) + a stuck lowercase/org-prefixed dispatched dup on the same branch
+  // Reaching `merged` now requires the real lifecycle — a delivery and an
+  // independent QA pass — so the fixture walks it instead of teleporting the row
+  // there. What this test is about is unchanged: the duplicate stuck BEHIND a
+  // merged unit.
+  const ev = ["--evidence-cmd", "bun test", "--evidence-summary", "green"];
+  await run(["record", "--workspace", dir, "--journey", "j1", "--repo", "agentistics", "--specialist", "Jane", "--task", "web", "--branch", "aipe/j1/web--jane", "--worktree", "w", "--status", "delivered", ...ev]);
+  await run(["record", "--workspace", dir, "--journey", "j1", "--repo", "agentistics", "--specialist", "Getz", "--task", "web", "--branch", "aipe/j1/web--getz", "--worktree", "wq", "--status", "verified", "--evidence-by", "qa", ...ev]);
   await run(["record", "--workspace", dir, "--journey", "j1", "--repo", "agentistics", "--specialist", "Jane", "--task", "web", "--branch", "aipe/j1/web--jane", "--worktree", "w", "--status", "merged"]);
   await run(["record", "--workspace", dir, "--journey", "j1", "--repo", "blpsoares/agentistics", "--specialist", "jane", "--branch", "aipe/j1/web--jane", "--worktree", "w"]);
   let ledger = parse(await readFile(join(dir, ".aipe", "journeys", "j1.yaml"), "utf8")) as { dispatches: { specialist: string; status: string }[] };
-  expect(ledger.dispatches.length).toBe(2); // the dup slipped in (different key before migration)
+  expect(ledger.dispatches.length).toBe(3); // Jane(merged) + Getz(QA) + the dup that slipped in
   const { output } = await capture(() => run(["dedupe", "--workspace", dir]));
   expect(output).toContain("MERGED journey=j1");
   ledger = parse(await readFile(join(dir, ".aipe", "journeys", "j1.yaml"), "utf8")) as { dispatches: { specialist: string; status: string }[] };
-  expect(ledger.dispatches.length).toBe(1);
-  expect(ledger.dispatches[0]!.status).toBe("merged"); // the merged unit survived, immutable
+  // The duplicate is gone; the merged unit and the QA row that gated it remain.
+  expect(ledger.dispatches.length).toBe(2);
+  expect(ledger.dispatches.map((d) => d.status).sort()).toEqual(["merged", "verified"]);
+  expect(ledger.dispatches.some((d) => d.status === "merged")).toBe(true); // immutable, survived
 });

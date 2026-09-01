@@ -12,8 +12,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchCommand } from "../cli";
-import { readLedger, recordDispatch, startJourney } from "../../journey/ledger";
-import { setJourneySpec } from "../../journey/ledger";
+import { readLedger, recordDispatch, setJourneySpec, startJourney } from "../../journey/ledger";
 import { hashOrientationContent } from "../../journey/spec";
 import type { AgentopRunner } from "../types";
 
@@ -69,6 +68,26 @@ const okRunner: AgentopRunner = async (args) => {
 
 test("a redispatch into a unit with a MERGED sibling task states the NEW spec version and names the merge as history, not as the order", async () => {
   const dir = await fixture();
+
+  // R4 changed the FIRST half of this incident. Editing orientation.md after
+  // approval now REFUSES the dispatch instead of proceeding with a NOTE: the PE
+  // never reviewed the appended section, and dispatching content no human
+  // approved is the very gap the spec-writer design closes. What that refusal
+  // does NOT change is D1's lesson below — once the amendment IS approved, the
+  // prompt must name the new version and the merged sibling. So the incident is
+  // now two beats: refuse, then (re-approved) dispatch correctly.
+  const refused = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: okRunner });
+  expect(refused.code).toBe(1);
+  expect(refused.lines.join("\n")).toContain("re-approval");
+
+  // The refusal still recorded the drift it detected: v2, awaiting approval.
+  const drifted = await readLedger(dir, "j1");
+  expect(drifted!.spec!.version).toBe(2);
+  expect(drifted!.spec!.approved).toBe(false);
+
+  // The PE reviews the amended spec and approves v2 — the human gate, taken.
+  await setJourneySpec(dir, "j1", { ...drifted!.spec!, approved: true });
+
   const r = await dispatchCommand({ workspace: dir, journeyId: "j1", runner: okRunner });
   expect(r.code).toBe(0);
 
@@ -88,5 +107,5 @@ test("a redispatch into a unit with a MERGED sibling task states the NEW spec ve
   // The ledger's own spec record reflects the bump, not just the prompt text.
   const ledger = await readLedger(dir, "j1");
   expect(ledger!.spec!.version).toBe(2);
-  expect(ledger!.spec!.approved).toBe(false);
+  expect(ledger!.spec!.approved).toBe(true); // approved by the PE above, and only then dispatched
 });
