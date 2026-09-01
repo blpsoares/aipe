@@ -397,8 +397,14 @@ async function showCommand(args: string[], deps: JourneyDeps = {}): Promise<numb
 //   • `journey spec --check` (here) — always read the FILE; also rejects a raw
 //     template now that validateOrientation flags placeholders.
 //   • `session dispatch` (session/cli.ts) — reads the orientation.md FILE
-//     (refuses missing/empty) before writing any prompt. Already correct: it
-//     never trusts the ledger record without the artifact.
+//     (refuses missing/empty) AND now refuses an unapproved one, drift included
+//     (R4). This line used to say "already correct: it never trusts the ledger
+//     record without the artifact" — true, and beside the point: the question
+//     this list asks is who consults APPROVAL, and dispatch consulted it
+//     nowhere. It detected post-approval drift, recorded `approved:false`, and
+//     dispatched anyway with a NOTE. An audit note that answers an easier
+//     question than the one in its own heading reads as reassurance; that is
+//     how this gap survived in plain sight.
 //   • `execution propose` (execution/cli.ts) — reads the spec FILE to price its
 //     units; pre-approval by design, so it must NOT require `approved`. Correct.
 //   • `serve` floor.ts + `status` assemble.ts — DISPLAY `spec.approved` to derive

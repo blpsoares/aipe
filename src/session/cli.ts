@@ -472,6 +472,34 @@ export async function dispatchCommand(
         contentHash: orientationHash,
       });
     }
+
+    // R4 — the human gate, ENFORCED. "Do not dispatch until `--show` reports
+    // approved=true" lived only as prose in skills/operate/SKILL.md, so it was a
+    // coordinator instruction, not a gate: this command read the spec FILE but
+    // never looked at `approved` at all. A rule with no refusal behind it is the
+    // shape that let 7/7 deliveries skip their spec — the evidence gate works
+    // precisely because it refuses.
+    //
+    // Drift is the sharper half. The block above already DETECTS an
+    // orientation.md edited after approval, and records `approved:false` for it
+    // — and then, before this refusal existed, went on to write the prompts
+    // anyway with only a NOTE. That is the Lawson incident mechanised: a spec
+    // amended to v3 after dispatch, a specialist working from v2, the code aware
+    // the whole time. Detecting drift and proceeding is worse than not detecting
+    // it, because the NOTE reads like something was handled.
+    //
+    // Refuse BEFORE any side effect — no prompt file, no session — so a refused
+    // dispatch leaves nothing behind implying it happened (the same reason
+    // pass 1 below resolves every persona before writing any prompt).
+    const approvedNow = drifted ? false : ledger.spec.approved;
+    if (!approvedNow) {
+      lines.push(
+        drifted
+          ? `ERROR spec: orientation.md changed after v${ledger.spec.version} was approved — v${specVersion} needs re-approval before dispatch. Have the PE review the change, then \`aipe journey spec --approve --journey ${opts.journeyId}\`. Nothing was dispatched.`
+          : `ERROR spec: the Orientation Spec for ${opts.journeyId} is not approved — the PE approves it BEFORE any specialist is dispatched. Run \`aipe journey spec --check\`, then \`aipe journey spec --approve --journey ${opts.journeyId}\`. Nothing was dispatched.`,
+      );
+      return { code: 1, lines };
+    }
   }
 
   const adapter = await resolveAdapter(workspace);

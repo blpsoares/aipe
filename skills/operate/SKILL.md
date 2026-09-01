@@ -385,7 +385,14 @@ digraph operate {
    wave). A subagent-mode unit needs no model — it binds per unit. Record this
    before moving to step 4a so `plan` has complete envelopes to group into waves.
 
-   Do **not** dispatch until `--show` reports `approved=true`. If an escalation
+   Do **not** dispatch until `--show` reports `approved=true`. This is no longer
+   only an instruction to you: `aipe session dispatch` **refuses** a journey whose
+   Orientation Spec is unapproved, and refuses before writing any prompt or
+   starting any session, so a refused dispatch leaves nothing behind. Editing
+   `orientation.md` after approval counts as unapproved — the edit bumps the
+   version and clears approval, and the PE must review the amendment and approve
+   again. That is the Lawson incident: previously the drift was detected, noted,
+   and dispatched anyway. If an escalation
    later changes the cross-package shape, `--amend` (bumps the version), edit, and
    get re-approval before the next wave.
 
