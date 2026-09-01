@@ -39,6 +39,10 @@ const unit = (over: Partial<UnitRow>): UnitRow => ({
   intensity: null,
   worktree: "w",
   ciBypass: null,
+  base: null,
+  title: null,
+  description: null,
+  at: null,
   ...over,
 });
 
@@ -49,7 +53,7 @@ test("names open journeys, in-flight units, waiting-on-you and queued (item 8)",
       { id: "j-1", specApproved: true, specVersion: 1, open: 2, done: 0, total: 2 },
       { id: "j-2", specApproved: true, specVersion: 1, open: 0, done: 0, total: 0 }, // queued
     ],
-    [{ kind: "escalated", journey: "j-1", fqid: "aipe", specialist: "Jesse", detail: "open escalation" }],
+    [{ kind: "escalated", journey: "j-1", fqid: "aipe", specialist: "Jesse", detail: "open escalation", sessionId: null, blocks: "aipe", since: null }],
   );
   const block = renderStateBlock(r);
   expect(block).toContain("1 open journey(s)");

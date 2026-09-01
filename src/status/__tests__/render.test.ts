@@ -24,6 +24,10 @@ const unit = (over: Partial<UnitRow> = {}): UnitRow => ({
   intensity: "normal",
   worktree: "/ws/aipe/.worktrees/j-1-jesse",
   ciBypass: null,
+  base: null,
+  title: null,
+  description: null,
+  at: null,
   ...over,
 });
 
@@ -109,7 +113,7 @@ test("the elision line is printed when journeys were hidden (item 4)", () => {
 
 test("the waiting section clips a paragraph-long reason (pasteable width)", () => {
   const r = report({
-    waiting: [{ kind: "redirected", journey: "j-1", fqid: "aipe", specialist: "Jesse", detail: "x".repeat(300) }],
+    waiting: [{ kind: "redirected", journey: "j-1", fqid: "aipe", specialist: "Jesse", detail: "x".repeat(300), sessionId: null, blocks: "aipe", since: null }],
   });
   const text = renderTable(r, "detailed", false);
   expect(text.every((l) => l.length < 200)).toBe(true);

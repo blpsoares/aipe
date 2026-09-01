@@ -56,6 +56,14 @@ export interface UnitRow {
   // flag on a delivered/verified record.
   worktree: string;
   ciBypass: "no-checks" | "verified-pre-merge" | null;
+  // #109 — recorded, never derived. Each is `null` when the ledger does not
+  // carry it, and the renderer prints that absence as absence: a table that
+  // invents a destination, a description or an age is worse than one that admits
+  // it does not know, because the invention is indistinguishable from a fact.
+  base: string | null; // the PR's DESTINATION (dev/main), not the work branch
+  title: string | null;
+  description: string | null;
+  at: string | null; // ISO-8601 of the last write to this row
 }
 
 export interface JourneyRow {
@@ -87,6 +95,20 @@ export interface WaitingItem {
   fqid: string;
   specialist: string;
   detail: string; // the reason / tier / "" when the ledger records none
+  // #109 — the columns that turn a LIST into a DECISION.
+  // `sessionId` is how the PE reaches the specialist directly
+  // (`agentop session attach <id>`); without it the queue says something is
+  // waiting and gives no way to act on it.
+  sessionId: string | null;
+  // What stops until this is answered. A queue without it is a list of
+  // annoyances; with it, each row carries its own cost. Its absence is why an
+  // item sat FOUR DAYS with nobody weighing what it was holding up.
+  blocks: string;
+  // When the request was recorded (ISO-8601), or null. Rendered as an ABSOLUTE
+  // time, never a duration typed by hand — this column is where "~1h" and then
+  // "~1h30" were written for something 23 minutes old. Null prints as
+  // "não registrado", which is a true statement; an estimate is not.
+  since: string | null;
 }
 
 // Whether we could stand behind any liveness claim at all (item 5).

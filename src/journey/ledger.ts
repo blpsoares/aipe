@@ -184,7 +184,7 @@ export async function startJourney(workspaceDir: string, id: string): Promise<st
 // PRESERVE the fix-loop history, not silently reset it. A cleared verifiedRound
 // would read as "never verified"; a cleared round would let a stale pass look
 // current — either way the merge gate would be judging invented state.
-const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId", "sddKit", "size", "taskType", "round", "verifiedRound"] as const;
+const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId", "sddKit", "size", "taskType", "round", "verifiedRound", "base", "title", "description"] as const;
 
 // Merges `incoming` onto `existing` field-by-field: a STICKY_DISPATCH_FIELDS
 // key that `incoming` genuinely omits (no own property at all — never merely
@@ -822,6 +822,9 @@ export async function recordDispatchGuarded(
       ? { ...toWrite, round: gateRound, verifiedRound: gateRound }
       : { ...toWrite, round: selfRow?.round ?? gateRound };
 
-  const path = await recordDispatch(workspaceDir, id, withRound);
+  // Stamped here, on the accepted write, and nowhere else: a caller-settable
+  // timestamp is a caller-settable lie, and the column exists because a
+  // hand-typed duration was wrong twice in a row.
+  const path = await recordDispatch(workspaceDir, id, { ...withRound, at: new Date().toISOString() });
   return { ok: true, path, gates: { sdd: sddOutcome, ci: ciOutcome, qa: qaOutcome } };
 }
