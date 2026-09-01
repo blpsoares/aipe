@@ -149,7 +149,18 @@ async function readRegistry(): Promise<WorkspaceEntry[]> {
  * signal that asserts without establishing.
  */
 export function isEphemeralWorkspace(path: string): boolean {
-  return path.startsWith("/tmp/") || path.includes("/scratchpad/") || path.endsWith("/scratchpad");
+  // The system temp directory is NOT always `/tmp`. An independent QA found the
+  // rule was a literal `/tmp/` prefix, so on macOS — where `os.tmpdir()` returns
+  // `/var/folders/…/T/`, and `/tmp` is itself a symlink to `/private/tmp` — the
+  // measured "49 of 50 entries were throwaway" problem would recur unchanged.
+  // AIPe's own `mkdtemp` fixtures live exactly there.
+  //
+  // Listed explicitly rather than asked of the OS: `tmpdir()` answers for THIS
+  // machine, and the registry is read on machines other than the one that wrote
+  // it. A path that is temp anywhere is temp everywhere, for this purpose.
+  const TEMP_ROOTS = ["/tmp/", "/var/tmp/", "/private/tmp/", "/private/var/tmp/", "/var/folders/"];
+  if (TEMP_ROOTS.some((root) => path.startsWith(root))) return true;
+  return path.includes("/scratchpad/") || path.endsWith("/scratchpad");
 }
 
 /**

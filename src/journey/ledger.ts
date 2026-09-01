@@ -184,7 +184,7 @@ export async function startJourney(workspaceDir: string, id: string): Promise<st
 // PRESERVE the fix-loop history, not silently reset it. A cleared verifiedRound
 // would read as "never verified"; a cleared round would let a stale pass look
 // current — either way the merge gate would be judging invented state.
-const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId", "sddKit", "size", "taskType", "round", "verifiedRound", "base", "title", "description"] as const;
+const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId", "sddKit", "size", "taskType", "round", "verifiedRound", "base", "title", "description", "filedQaVerdict"] as const;
 
 // Merges `incoming` onto `existing` field-by-field: a STICKY_DISPATCH_FIELDS
 // key that `incoming` genuinely omits (no own property at all — never merely
@@ -552,11 +552,15 @@ export async function recordDispatchGuarded(
   // ledger's own record of who filed a QA verdict is the fact, and it is the
   // same field the verify gate reads.
   if (dispatch.status === "delivered") {
+    // Read the STAMPED fact, not the row's current shape. Deriving it from
+    // `status` + `evidence` meant a re-dispatch — the documented fix loop — wiped
+    // the evidence and with it the gate, and the reviewer could deliver its own
+    // fix with nothing on the ledger saying it had ever reviewed.
     const ranTheGate = gateRows.some(
       (d) =>
         d.specialist.toLowerCase() === dispatch.specialist.toLowerCase() &&
-        (d.status === "verified" || d.status === "failed") &&
-        d.evidence?.by === "qa",
+        (d.filedQaVerdict === true ||
+          ((d.status === "verified" || d.status === "failed") && d.evidence?.by === "qa")),
     );
     if (ranTheGate) {
       return {
@@ -817,7 +821,7 @@ export async function recordDispatchGuarded(
   // NEW — the QA arriving to gate a delivered task is a reopening write by the
   // reason rule, and blanking its id threw away the session it had just been
   // given, leaving `collect` and the close path blind to it.
-  const toWrite: JourneyDispatch = reopening
+  let toWrite: JourneyDispatch = reopening
     ? { ...dispatch, ...(selfRow ? { sessionId: undefined } : {}), redispatchReason: opts.reason!.trim() }
     : dispatch.status === "redirected"
       ? { ...dispatch, redirectReason: opts.reason!.trim() }
@@ -850,6 +854,13 @@ export async function recordDispatchGuarded(
     (d) => (d.status === "verified" || d.status === "failed") && (d.round ?? 1) >= gateRound,
   );
   const bumpsRound = restarting || (dispatch.status === "delivered" && hasVerdictThisRound);
+  // Stamp the reviewer fact on the way in, so it survives every later write.
+  // Write-once and never cleared: `STICKY_DISPATCH_FIELDS` carries it forward,
+  // and nothing sets it back to false — a verdict that was filed stays filed.
+  const filesVerdictNow =
+    (dispatch.status === "verified" || dispatch.status === "failed") && dispatch.evidence?.by === "qa";
+  if (filesVerdictNow) toWrite = { ...toWrite, filedQaVerdict: true };
+
   const withRound: JourneyDispatch = bumpsRound
     ? { ...toWrite, round: gateRound + 1 }
     : dispatch.status === "verified"

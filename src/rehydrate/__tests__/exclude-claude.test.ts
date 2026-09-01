@@ -50,7 +50,8 @@ test("ensureReposExcludeClaude leaves every repo's git status clean", async () =
   const { dir, repoAbs } = await workspaceWithDirtyRepo();
   try {
     const excluded = await ensureReposExcludeClaude(dir);
-    expect(excluded).toContain(repoAbs);
+    expect(excluded.excluded).toContain(repoAbs);
+    expect(excluded.failed).toEqual([]);
     expect(await porcelain(repoAbs)).toBe("");
   } finally {
     await rm(dir, { recursive: true, force: true });
