@@ -54,10 +54,14 @@ test("delivered WITH evidence is recorded", async () => {
 test("verified requires QA evidence; empty summary is not proof", async () => {
   const dir = await ws();
   try {
-    const bad = await recordDispatchGuarded(dir, "j1", { ...base, status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "  " } });
+    // A QA verdict judges a DELIVERY: the ledger refuses a `verified` recorded
+    // over nothing delivered, so the fixture seeds the delivery it examines.
+    await recordDispatchGuarded(dir, "j1", { ...base, specialist: "Joaquim", status: "delivered", evidence });
+    const qa = { ...base, specialist: "Mike", task: "gate" };
+    const bad = await recordDispatchGuarded(dir, "j1", { ...qa, status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "  " } });
     expect(bad.ok).toBe(false);
     expect(bad.code).toBe("evidence-required");
-    const good = await recordDispatchGuarded(dir, "j1", { ...base, status: "verified", evidence: { by: "qa", commands: ["bun test", "drove the app"], summary: "checkout works end to end" } });
+    const good = await recordDispatchGuarded(dir, "j1", { ...qa, status: "verified", evidence: { by: "qa", commands: ["bun test", "drove the app"], summary: "checkout works end to end" } });
     expect(good.ok).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });

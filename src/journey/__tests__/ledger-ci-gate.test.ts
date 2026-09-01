@@ -137,10 +137,15 @@ test("an unresolvable verdict's REJECT message names what was attempted and what
 
 test("verified is gated too, not only delivered", async () => {
   const dir = await ws();
+  // A QA verdict judges a DELIVERY; seed the one it examines so the CI gate —
+  // the subject of this test — is the rule that actually answers.
+  await recordDispatchGuarded(dir, "j1", { ...base, status: "delivered", evidence: { by: "dev", commands: ["bun test"], summary: "green" } });
   const r = await recordDispatchGuarded(
     dir,
     "j1",
-    { ...base, status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "qa passed" } },
+    // the QA's OWN row — a verification signed by the builder is refused before
+    // the CI gate is ever consulted, which would hide the rule under test
+    { ...base, specialist: "Mike", task: "gate", status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "qa passed" } },
     { resolveChecks: resolver("red") },
   );
   expect(r.ok).toBe(false);

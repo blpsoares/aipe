@@ -6,8 +6,8 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
-import { recordDispatchGuarded, readLedger, setJourneySpec, setJourneyTaskSpec, startJourney, type SddArtifactResolver, type SddRouter } from "./ledger";
-import { hashTaskSpecContent, renderTaskSpecTemplate, taskSpecRelPath, validateTaskSpec } from "./task-spec";
+import { recordDispatchGuarded, readLedger, setJourneySpec, setJourneyTaskSpec, startJourney, type AcceptanceResolver, type SddArtifactResolver, type SddRouter } from "./ledger";
+import { hashTaskSpecContent, parseAcceptanceItems, renderTaskSpecTemplate, taskSpecRelPath, validateTaskSpec } from "./task-spec";
 import { resolveSddArtifactsGit } from "./sdd-artifacts";
 import { readToolbox } from "../toolbox/catalog";
 import { routeSddForGate } from "../toolbox/routing";
@@ -51,6 +51,9 @@ export interface JourneyDeps {
   // The SDD route derivation (#118): which tier does this unit's declared
   // difficulty fall under? Defaults to the workspace's own catalog; tests inject.
   routeSdd?: SddRouter;
+  // The acceptance criteria a `verified` must answer one by one (#116/R5).
+  // Defaults to the unit's APPROVED Task Spec; tests inject.
+  resolveAcceptance?: AcceptanceResolver;
 }
 
 // Resolve the release state for the repos a ledger touches, from local git. A
@@ -245,13 +248,22 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   const evCmds = getAllFlags(args, "--evidence-cmd");
   const evArtifact = getFlag(args, "--evidence-artifact");
   const evByFlag = getFlag(args, "--evidence-by");
+  // R5 — per-criterion coverage: `--verify-item A1 --verify-cmd "..."
+  // --verify-summary "..."`, repeated. Grouped by SCAN ORDER (each --verify-item
+  // opens a group the following flags attach to) rather than by zipping three
+  // parallel arrays: a caller who omits one flag in the middle would silently
+  // shift every later pairing, quietly attributing one criterion's proof to
+  // another. Mis-attributed evidence is worse than missing evidence, because it
+  // reads as covered.
+  const verifyItems = parseVerifyItems(args);
   const evidence: DispatchEvidence | undefined =
-    evSummary || evCmds.length > 0
+    evSummary || evCmds.length > 0 || verifyItems.length > 0
       ? {
           by: evByFlag === "qa" || evByFlag === "dev" ? evByFlag : status === "verified" ? "qa" : "dev",
           commands: evCmds,
           summary: evSummary ?? "",
           ...(evArtifact ? { artifact: evArtifact } : {}),
+          ...(verifyItems.length > 0 ? { items: verifyItems } : {}),
         }
       : undefined;
 
@@ -293,6 +305,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ciVerifiedPreMerge,
       resolveSddArtifacts: deps.resolveSddArtifacts ?? resolveSddArtifactsGit,
       routeSdd: deps.routeSdd ?? (await workspaceSddRouter(workspace)),
+      resolveAcceptance: deps.resolveAcceptance ?? approvedAcceptanceResolver(workspace, id),
     },
   );
 
@@ -899,4 +912,46 @@ function isTaskSize(v: string): v is TaskSize {
 async function workspaceSddRouter(workspace: string): Promise<SddRouter> {
   const toolbox = await readToolbox(workspace);
   return (task) => routeSddForGate(toolbox, task).kit;
+}
+
+// Groups the repeatable verification flags by scan order: every `--verify-item`
+// opens a group, and the `--verify-cmd` / `--verify-summary` that follow attach
+// to it. Flags appearing before any `--verify-item` belong to no criterion and
+// are ignored rather than guessed at.
+function parseVerifyItems(args: string[]): { label: string; commands: string[]; summary: string }[] {
+  const items: { label: string; commands: string[]; summary: string }[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith("--")) continue;
+    if (args[i] === "--verify-item") items.push({ label: value, commands: [], summary: "" });
+    else if (args[i] === "--verify-cmd") items[items.length - 1]?.commands.push(value);
+    else if (args[i] === "--verify-summary") {
+      const last = items[items.length - 1];
+      if (last) last.summary = last.summary ? `${last.summary} ${value}` : value;
+    }
+  }
+  return items;
+}
+
+// The acceptance criteria a QA verdict must answer, read from the unit's
+// APPROVED Task Spec. Returns null — "nothing enumerated to cover" — when there
+// is no Task Spec, when it is not approved, or when the file changed since
+// approval: in all three the criteria are not established, and a gate must not
+// demand coverage of a list nobody signed. It also never demands coverage of a
+// list it could not read, which keeps the refusal about the QA's work rather
+// than about the workspace's state.
+function approvedAcceptanceResolver(workspace: string, journeyId: string): AcceptanceResolver {
+  return async (unit) => {
+    const ledger = await readLedger(workspace, journeyId);
+    const fqid = unit.package ? `${unit.repo}/${unit.package}` : unit.repo;
+    const rec = ledger?.taskSpecs?.[fqid];
+    if (!rec?.approved) return null;
+    try {
+      const md = await readFile(join(workspace, rec.path), "utf8");
+      if (rec.contentHash !== undefined && rec.contentHash !== hashTaskSpecContent(md)) return null;
+      return parseAcceptanceItems(md).map((i) => i.label);
+    } catch {
+      return null;
+    }
+  };
 }
