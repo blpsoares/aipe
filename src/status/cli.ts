@@ -8,6 +8,7 @@ import { realRunner } from "../session/runner";
 import { looksLikeWorkspace } from "../runtime/workspaces";
 import type { AgentopRunner } from "../session/types";
 import { configCommand } from "./config";
+import { harvestDeadSessions } from "./harvest";
 import { loadReport } from "./load";
 import { renderJson, renderTable, supportsColor } from "./render";
 import type { StatusFormat, StatusScope } from "./types";
@@ -76,10 +77,30 @@ export async function run(args: string[], deps: StatusDeps = {}): Promise<number
     return 1;
   }
 
+  const runner = deps.runner ?? realRunner;
+
+  // The automatic harvest (#73). Before reporting, collect any session whose
+  // PROCESS has EXITED — the trigger the coordinator no longer has to run by
+  // hand. It only ever closes a provably dead process (a `waiting`/`NEEDS
+  // APPROVAL`/running session is `alive` and survives untouched), never consults
+  // the forge, and never throws. It runs BEFORE the report so the render already
+  // reflects the cleaned-up roster. Notices go to stderr, so `--json` stdout
+  // stays exactly the report. `--no-harvest` opts out (a pure read). Skipped on
+  // the SessionStart hot path by construction: that path never reaches this CLI,
+  // it calls loadReport directly with liveness:false.
+  if (!args.includes("--no-harvest")) {
+    const harvest = await harvestDeadSessions(workspace, runner);
+    for (const line of harvest.closed) console.error(line.line);
+    if (harvest.planned > 0) {
+      const closedN = harvest.closed.filter((l) => l.closed).length;
+      console.error(`STATE harvest dead-sessions=${harvest.planned} closed=${closedN}`);
+    }
+  }
+
   const journeyId = getFlag(args, "--journey");
   const scope: StatusScope = journeyId ? "journey" : args.includes("--all") ? "all" : "default";
 
-  const report = await loadReport(workspace, { scope, journeyId, runner: deps.runner ?? realRunner });
+  const report = await loadReport(workspace, { scope, journeyId, runner });
 
   // On-the-spot format overrides the saved preference for this render only.
   const override: StatusFormat | undefined = args.includes("--compact")

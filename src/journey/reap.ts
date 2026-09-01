@@ -12,9 +12,18 @@
 // (exited/closed) is reaped regardless of its ledger status, because a dead
 // process is not "still working" no matter what the ledger last recorded.
 //
-// It is an EXPLICIT coordinator step, never background: it plans first, and the
-// CLI lists the plan before any close. Killing a session is a decision, not an
-// automation.
+// The FULL plan (planReap) is an EXPLICIT coordinator step, never background: it
+// plans first, and the CLI lists the plan before any close. Killing a LIVE
+// session — even one whose PR merged — is a decision, not an automation.
+//
+// The one carve-out is the AUTOMATIC half (planDeadReap, #73): collecting a
+// session whose PROCESS has provably EXITED is not that decision. A dead process
+// is not "still working" and is not "waiting on a person" — it is a corpse, and
+// clearing a corpse is cleanup, not judgement. That subset needs no forge and no
+// human, so an edge aipe already runs (`aipe status`) may collect it on its own
+// (see src/status/harvest.ts). The PE's hard constraint holds by construction:
+// only agentop's `gone` reaches planDeadReap, and a `waiting`/`NEEDS APPROVAL`/
+// running session reports `alive`, never `gone`.
 //
 // NOTE on "derive from what exists": src/release derives a repo's PUBLICATION
 // state from local git, but at REPO granularity (is this repo's release branch
@@ -72,6 +81,41 @@ function findDeadProcess(
     reconciled: idRes.kind === "reconciled",
     staleId: idRes.kind === "reconciled" ? idRes.staleId : null,
   };
+}
+
+// The AUTOMATIC harvest (#73): the subset of the reap plan that needs NO forge
+// and NO human decision — every session whose PROCESS agentop reports as `gone`
+// (exited/closed). Pure and synchronous: unlike planReap it never calls the
+// forge, so it is safe on the `aipe status` path where a network round-trip per
+// unit would be a regression. It reuses findDeadProcess, so all of that
+// function's safety carries over unchanged: a `lost` session is ambiguous and
+// left alone; a worktree now hosting a LIVE fix session resolves to that live id
+// (not `gone`) and is never collected. An unreliable roster collects nothing —
+// death cannot be established, so nothing is guessed closed.
+export function planDeadReap(
+  ledger: JourneyLedger,
+  workspace: string,
+  roster: RosterEntry[],
+  rosterReliable: boolean,
+): ReapItem[] {
+  if (!rosterReliable) return [];
+  const items: ReapItem[] = [];
+  for (const d of ledger.dispatches) {
+    if (d.mode !== "session") continue;
+    const dead = findDeadProcess(d, workspace, roster);
+    if (!dead) continue;
+    const unit = packageFqid(d.repo, d.package);
+    items.push({
+      unit,
+      specialist: d.specialist,
+      disposition: "would-close",
+      sessionId: dead.id,
+      recordedId: d.sessionId ?? null,
+      reconciled: dead.reconciled,
+      reason: `agentop reports the process behind session ${dead.id} has exited${dead.reconciled ? ` (found at its worktree${dead.staleId ? `; recorded id ${dead.staleId} was stale` : ""})` : ""} — collected automatically: a dead process is neither still working nor waiting on a person`,
+    });
+  }
+  return items;
 }
 
 export interface ReapItem {
@@ -227,9 +271,12 @@ export async function executeReap(items: ReapItem[], runner: AgentopRunner): Pro
       continue;
     }
     if (killed.code === 0) {
-      out.push({ closed: true, line: `CLOSED session ${it.sessionId} (${it.unit} · ${it.specialist})${via} — its unit's PR is merged; a fix loop opens a new session` });
+      // The close line states the SAME fact the plan established (a merged PR, or
+      // a dead process), never a fixed "PR is merged" — that was wrong whenever
+      // the item closed via the dead-process path.
+      out.push({ closed: true, line: `CLOSED session ${it.sessionId} (${it.unit} · ${it.specialist})${via} — ${it.reason}` });
     } else {
-      out.push({ closed: false, line: `NOTE session ${it.sessionId} (${it.unit})${via} close could not be confirmed (kill exited ${killed.code}${killed.stderr ? `: ${killed.stderr}` : ""}) — it was live a moment ago; the ledger record stands` });
+      out.push({ closed: false, line: `NOTE session ${it.sessionId} (${it.unit})${via} close could not be confirmed (kill exited ${killed.code}${killed.stderr ? `: ${killed.stderr}` : ""}) — the ledger record stands` });
     }
   }
   return out;

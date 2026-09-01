@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
 import { resolveVerdict, type PrChecksResolver } from "./checks";
+import type { TaskSize } from "../toolbox/types";
 import {
   CI_GATED_STATUSES,
   EVIDENCE_REQUIRED_STATUSES,
@@ -152,7 +153,7 @@ export async function startJourney(workspaceDir: string, id: string): Promise<st
 //     (why THIS write happened) — letting one leak into an unrelated later
 //     write would misattribute it (see "redirected does not collide with
 //     redispatchReason" in ledger-gate.test.ts).
-const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId"] as const;
+const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId", "sddKit", "size", "taskType"] as const;
 
 // Merges `incoming` onto `existing` field-by-field: a STICKY_DISPATCH_FIELDS
 // key that `incoming` genuinely omits (no own property at all — never merely
@@ -257,8 +258,28 @@ export function grantedTiers(ledger: JourneyLedger | null): Set<string> {
 //
 // The guard keys on the UNIT (repo + package), not the specialist — a fix can
 // reuse or swap the specialist and the invariant still holds.
+// Resolves whether an SDD-routed unit's spec-first artifacts are present and
+// committed in its worktree (#118). Injected like PrChecksResolver so the gate
+// is inert for a resolver-less caller (the reconciler, unit tests) — it never
+// fabricates a pass OR a fail from nothing — and stays network-free (the real
+// implementation is `git ls-files` in the worktree, no forge).
+export type SddArtifactResolver = (worktree: string) => Promise<{ spec: boolean; plan: boolean }>;
+
+// Derives WHICH SDD tier a unit falls under from its recorded difficulty, when
+// no explicit `--sdd` was signed. Injected (like the two resolvers above) so the
+// ledger layer stays free of the toolbox: the real binding is the workspace's
+// own catalog + `routeSddForGate`. A resolver-less caller (the reconciler, unit
+// tests) keeps the gate inert rather than guessing a route from nothing.
+export type SddRouter = (task: { size?: TaskSize; taskType?: string }) => string | null;
+
+// The SDD kit whose delivery gate has teeth. Kept in lockstep with
+// routing.ts FULL_SDD_KIT — only the full flow carries the committed-artifact
+// contract; the light floor (sdd-lite) is covered by the evidence gate.
+const GATED_SDD_KIT = "spec-kit";
+
 export type LedgerGateCode =
   | "evidence-required"
+  | "sdd-artifacts-required"
   | "unit-immutable"
   | "redispatch-needs-reason"
   | "redirect-needs-reason"
@@ -298,7 +319,7 @@ export async function recordDispatchGuarded(
   workspaceDir: string,
   id: string,
   dispatch: JourneyDispatch,
-  opts: { reason?: string; resolveChecks?: PrChecksResolver; ciNone?: boolean; ciVerifiedPreMerge?: boolean } = {},
+  opts: { reason?: string; resolveChecks?: PrChecksResolver; ciNone?: boolean; ciVerifiedPreMerge?: boolean; resolveSddArtifacts?: SddArtifactResolver; routeSdd?: SddRouter } = {},
 ): Promise<GuardedRecordResult> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
   const pkg = dispatch.package ?? null;
@@ -323,6 +344,61 @@ export async function recordDispatchGuarded(
       };
     }
     dispatch = { ...dispatch, evidence: { ...ev, commands: realCommands } };
+  }
+
+  // 1b — SDD artifacts (#118): a unit routed to the FULL spec-kit flow cannot be
+  // claimed `delivered` without its spec AND plan committed in the worktree.
+  // Only `delivered` (the dev's done-claim, where 7/7 skipped the artifacts) is
+  // gated — a fix loop (`dispatched`/`blocked`/`failed`/`redirected`) and the QA
+  // `verified` are not, so the legitimate loop is never broken. Inert without an
+  // injected resolver, exactly like the CI gate.
+  //
+  // How the route is decided, in order — and the ORDER is the fix. Deriving it
+  // was the missing link: while the route came only from an explicit `--sdd`,
+  // the gate was real code that never ran, because the dispatch prompt never
+  // told anyone to type that flag. A gate you must opt into being bitten by is a
+  // suggestion wearing a gate's clothes — the same shape as `--size` being
+  // accepted and ignored.
+  //   1. an EXPLICIT `--sdd` on this write, or sticky from the dispatch — a
+  //      decision someone signed; it wins, including `sdd-lite` to claim trivial.
+  //   2. otherwise DERIVED by the injected router from the unit's recorded
+  //      `size`/`taskType`, the same router `aipe skill match` prints, so the
+  //      gate and the advice can never disagree.
+  // An undeclared size does not buy the floor (see routeSddForGate).
+  const declaredKit = dispatch.sddKit ?? current?.sddKit;
+  const declaredSize = dispatch.size ?? current?.size;
+  const declaredType = dispatch.taskType ?? current?.taskType;
+  const routedKit =
+    declaredKit ??
+    opts.routeSdd?.({
+      ...(declaredSize ? { size: declaredSize } : {}),
+      ...(declaredType ? { taskType: declaredType } : {}),
+    }) ??
+    undefined;
+  if (dispatch.status === "delivered" && routedKit === GATED_SDD_KIT && opts.resolveSddArtifacts) {
+    const art = await opts.resolveSddArtifacts(dispatch.worktree);
+    const missing: string[] = [];
+    if (!art.spec) missing.push("a spec (specs/**/spec.md)");
+    if (!art.plan) missing.push("a plan (specs/**/plan.md)");
+    if (missing.length > 0) {
+      // Say WHICH of the three ways this unit reached the full flow — routed by
+      // a signed `--sdd`, derived from a declared size, or defaulted from
+      // silence — because only the third is escapable by declaring, and a gate
+      // that blurred them would affirm something it had not established.
+      const origin = declaredKit
+        ? `was routed to the full ${GATED_SDD_KIT} flow at dispatch`
+        : declaredSize
+          ? `is size ${declaredSize}, which routes to the full ${GATED_SDD_KIT} flow`
+          : `falls to the full ${GATED_SDD_KIT} flow — no size and no route were ever declared for it, and undeclared is not established as trivial`;
+      const escape = declaredKit || declaredSize
+        ? ""
+        : " If this unit really is trivial, say so on the record instead — re-record with `--size small` (or `--sdd sdd-lite`) and the claim is kept.";
+      return {
+        ok: false,
+        code: "sdd-artifacts-required",
+        message: `unit ${unitName} ${origin} — a "delivered" claim requires ${missing.join(" and ")} committed in the worktree. The spec-first flow is the delivery contract, not a suggestion (7/7 deliveries skipped it once it was only prose); what is demanded is those two ARTEFACTS, not any one harness's way of writing them (the repo carries Spec Kit's templates under .specify/); commit them, then re-record.${escape} (worktree ${dispatch.worktree})`,
+      };
+    }
   }
 
   // 2 — immutability: a merged unit is final.

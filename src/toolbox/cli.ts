@@ -10,7 +10,7 @@ import { readBrain } from "../make-workspace/read";
 import { readToolbox } from "./catalog";
 import { installMcp, removeMcp, type InstallMcpInput } from "./mcp";
 import { kitNames, resolveKit } from "./registry";
-import { matchSkills } from "./routing";
+import { matchSkills, routeSdd } from "./routing";
 import { wirePdd } from "./pdd";
 // The reliability floor (verify-before-done + review-delivery) — installed into
 // every repo so a dispatched specialist can invoke them. Defined once in
@@ -81,6 +81,24 @@ async function resolveRepos(
   return { ok: true, value: repos };
 }
 
+// Materialize the real Spec Kit (.specify/ + .claude/commands/speckit.*) into
+// each named repo that exists on disk. Shared by the curated `skill add spec-kit`
+// path and the onboarding `preset` (#118 — spec-kit is installed automatically,
+// not merely suggested), so the two can never drift on how it lands.
+async function materializeSpecKitInto(workspace: string, repos: string[]): Promise<void> {
+  const brain = await readBrain(workspace);
+  if (!brain.ok) return;
+  const pathByRepo = new Map(brain.brain.repos.map((r) => [r.name, r.path]));
+  for (const repoName of repos) {
+    const rel = pathByRepo.get(repoName);
+    if (!rel) continue;
+    const abs = join(workspace, rel);
+    if (!(await dirExists(abs))) continue;
+    const files = await materializeSpecKit(abs);
+    console.log(`MATERIALIZED spec-kit → ${repoName} (${files.length} files: .specify/ + .claude/commands/speckit.*)`);
+  }
+}
+
 // Curated path: `aipe skill add <kit> [--repo <r> ...] [--all]` — AIPe knows the
 // kit's content + metadata, so no JSON payload is needed.
 async function skillAddKit(workspace: string, name: string, args: string[]): Promise<number> {
@@ -113,18 +131,7 @@ async function skillAddKit(workspace: string, name: string, args: string[]): Pro
   // scripts (.specify/) and the /speckit.* slash commands (.claude/commands/)
   // into each repo that exists on disk.
   if (kit.name === "spec-kit") {
-    const brain = await readBrain(workspace);
-    if (brain.ok) {
-      const pathByRepo = new Map(brain.brain.repos.map((r) => [r.name, r.path]));
-      for (const repoName of repos.value) {
-        const rel = pathByRepo.get(repoName);
-        if (!rel) continue;
-        const abs = join(workspace, rel);
-        if (!(await dirExists(abs))) continue;
-        const files = await materializeSpecKit(abs);
-        console.log(`MATERIALIZED spec-kit → ${repoName} (${files.length} files: .specify/ + .claude/commands/speckit.*)`);
-      }
-    }
+    await materializeSpecKitInto(workspace, repos.value);
   }
 
   // pdd is a living Claude Code plugin — wire its marketplace + enablement into
@@ -190,7 +197,18 @@ async function skillMatch(workspace: string, args: string[]): Promise<number> {
   const taskType = getFlag(args, "--task-type");
   const size = getFlag(args, "--size") as TaskSize | undefined;
   const matched = matchSkills(tb, { taskType, size });
+  // The SDD ROUTE decision (#118): a single tier, not a list to interpret. This
+  // is what makes `--size` real — below the full kit's threshold it names the
+  // light floor, at/above it names the full flow — and it is the value the
+  // coordinator records on the dispatch (`journey record --sdd <kit>`), which is
+  // what the delivery gate later enforces.
+  const route = routeSdd(tb, { taskType, size });
+  if (args.includes("--json")) {
+    console.log(JSON.stringify({ matched: matched.map((s) => s.name), route, total: tb.skills.length }));
+    return 0;
+  }
   for (const s of matched) console.log(`MATCH ${s.name} [${s.repos.join(",")}]`);
+  console.log(`ROUTE sdd=${route.kit ?? "none"} — ${route.reason}`);
   console.log(`STATE matched=${matched.length} of ${tb.skills.length}`);
   return 0;
 }
@@ -260,8 +278,34 @@ async function skillPreset(workspace: string): Promise<number> {
     console.log(`OK floor=${floor.name} (installed in ${repos.length} repo(s))`);
   }
 
-  console.log("SUGGEST enable spec-kit on non-trivial packages and pdd on migration repos:");
-  console.log("SUGGEST   aipe skill add spec-kit --repo <r>   |   aipe skill add pdd --repo <r>");
+  // #118: the FULL spec-kit is installed automatically, in every repo — never
+  // "suggested". The PE's constraint is textual: "o sdd deve vir automaticamente
+  // instalado junto com o aipe, isso é inegociável". Leaving it optional is
+  // exactly how it spent days uninstalled and `--size` stayed decorative (no kit
+  // with a minSize to route on). Installed here means a fresh workspace is born
+  // with the /speckit.* flow reachable and the delivery gate able to bite.
+  const specKit = resolveKit("spec-kit");
+  if (specKit) {
+    const sk = await installSkillContent(workspace, {
+      name: specKit.name,
+      description: specKit.description,
+      objective: specKit.objective,
+      whenToUse: specKit.whenToUse,
+      repos,
+      content: specKit.content,
+      ...(specKit.routing ? { routing: specKit.routing } : {}),
+    });
+    if (!sk.ok) {
+      console.log(`ERROR ${sk.error}`);
+      return 1;
+    }
+    for (const r of sk.rows) console.log(`${r.status.toUpperCase()} ${r.repo}`);
+    await materializeSpecKitInto(workspace, repos);
+    console.log(`OK sdd=spec-kit (full spec-driven flow installed in ${repos.length} repo(s))`);
+  }
+
+  console.log("SUGGEST enable pdd on migration/parity repos:");
+  console.log("SUGGEST   aipe skill add pdd --repo <r>");
   return 0;
 }
 
