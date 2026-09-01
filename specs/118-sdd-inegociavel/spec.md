@@ -61,9 +61,13 @@ SDD estava **inalcançável**. Três defeitos encadeados, todos medidos:
 - **A1 (T1).** Após `aipe skill preset` num workspace de teste, `aipe skill list`
   mostra `spec-kit` em todos os repos e os arquivos `.specify/` +
   `.claude/commands/speckit.*` existem em disco. Prova: saída do comando + `ls`.
-- **A2 (T2).** `aipe skill match --size small` NÃO roteia spec-kit (`ROUTE
-  sdd=sdd-lite`); `--size large` roteia (`ROUTE sdd=spec-kit`), e a linha nomeia
-  o limiar. Prova: as três saídas coladas.
+- **A2 (T2, por consequência).** **Em cima de `/home/mithrandir/aipe-blpsoares`,
+  com a entry rasa (sem `routing`) que está lá hoje**, `--size small` e
+  `--size large` produzem rotas **DIFERENTES** (`sdd-lite` vs `spec-kit`), e a
+  `reason` afirma só a comparação de fato feita — nunca "small ≥ medium". Prova:
+  as duas linhas divergentes coladas, rodadas nesse diretório. Regressão fixa a
+  entry rasa como fixture (o defeito nasce de workspace envelhecido, a config de
+  todo usuário existente).
 - **A3 (T3, a metade que importa).** Uma unidade despachada como spec-kit:
   - `journey record --status delivered` **sem** artefatos → **REJECT** com
     mensagem que nomeia o que falta (a recusa mordendo);

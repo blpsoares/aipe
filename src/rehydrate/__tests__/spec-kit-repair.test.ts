@@ -65,3 +65,26 @@ test("a workspace that HAS spec-kit in the toolbox but is missing .specify/ gets
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("a SHALLOW spec-kit entry (present by name, NO routing) is repaired by SHAPE — rehydrate restores its routing", async () => {
+  // The real pre-#118 state: `skill add spec-kit` (v1.16.0) wrote the entry with
+  // no routing block. Guarding the repair by name alone (`some(name==='spec-kit')`)
+  // would see it "present" and never cure it. Repair keys on shape.
+  const dir = await ws({
+    skills: [{ name: "spec-kit", description: "d", objective: "o", whenToUse: "w", repos: ["embark"] }], // NO routing
+    mcps: [],
+  });
+  try {
+    await mkdir(join(dir, ".aipe", "skills", "spec-kit"), { recursive: true });
+    await writeFile(join(dir, ".aipe", "skills", "spec-kit", "SKILL.md"), "---\nname: spec-kit\n---\n", "utf8");
+
+    await rehydrateToolbox(dir);
+
+    const tb = await readToolbox(dir);
+    const sk = tb.skills.find((s) => s.name === "spec-kit");
+    expect(sk?.routing?.minSize).toBe("medium"); // routing restored from the registry contract
+    expect(await exists(join(dir, "embark", ".specify"))).toBe(true); // and the kit re-materialized
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

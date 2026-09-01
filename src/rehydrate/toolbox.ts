@@ -50,14 +50,24 @@ export async function rehydrateToolbox(workspaceDir: string): Promise<ToolboxReh
     // never leaves a stale verify-before-done/review-delivery behind. Every other
     // skill is restored from its published .aipe/skills/ source, as before.
     const floor = RELIABILITY_FLOOR.find((f) => f.name === skill.name);
-    const result = floor
+    // spec-kit tracks the binary the same way the floor does (#118): its content
+    // AND its routing contract come from the registry, never from the published
+    // catalog entry — a pre-#118 `skill add spec-kit` wrote that entry with NO
+    // routing block, and restoring it from the published source would preserve
+    // that shallow, un-routable shape forever. Re-installing from the registry
+    // CURES it by shape (writes the routing back), which is what makes `--size`
+    // route on an aged workspace, not just a fresh one.
+    const specKit = skill.name === "spec-kit" ? resolveKit("spec-kit") : undefined;
+    const kit = floor ?? specKit;
+    const result = kit
       ? await installSkillContent(workspaceDir, {
-          name: floor.name,
-          description: floor.description,
-          objective: floor.objective,
-          whenToUse: floor.whenToUse,
+          name: kit.name,
+          description: kit.description,
+          objective: kit.objective,
+          whenToUse: kit.whenToUse,
           repos: skill.repos,
-          content: floor.content,
+          content: kit.content,
+          ...(specKit?.routing ? { routing: specKit.routing } : {}),
         })
       : await installSkill(workspaceDir, {
           name: skill.name,

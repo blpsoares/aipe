@@ -93,3 +93,34 @@ test("routeSdd: no SDD kit installed at all → null (nothing to route to)", () 
   const r = routeSdd(sddToolbox([]), { taskType: "feature", size: "large" });
   expect(r.kit).toBeNull();
 });
+
+// ── Regression (#118, Heisenberg): the REAL failing config. A pre-#118
+// `aipe skill add spec-kit` (v1.16.0) wrote the toolbox entry with NO `routing:`
+// block. Reading the threshold off that entry made every size route to spec-kit
+// and fabricated "small ≥ medium" in the reason. routeSdd must take the
+// threshold from the kit's registry contract, so a SHALLOW entry still routes
+// by difficulty and the reason never claims a comparison that did not run.
+function shallowSpecKitToolbox(): Toolbox {
+  const t = emptyToolbox();
+  t.skills = [
+    { name: "sdd-lite", description: "d", objective: "o", whenToUse: "floor", repos: ["aipe"] },
+    // exactly the shape `skill add spec-kit --all` wrote in the PE's workspace: NO routing
+    { name: "spec-kit", description: "d", objective: "o", whenToUse: "w", repos: ["aipe"] },
+  ];
+  return t;
+}
+
+test("a SHALLOW spec-kit entry (no routing block) still routes by size — small≠large", () => {
+  const tb = shallowSpecKitToolbox();
+  const small = routeSdd(tb, { taskType: "feature", size: "small" });
+  const large = routeSdd(tb, { taskType: "feature", size: "large" });
+  expect(small.kit).toBe("sdd-lite"); // below the registry threshold
+  expect(large.kit).toBe("spec-kit"); // at/above it
+  expect(small.kit).not.toBe(large.kit); // the divergence the acceptance demands
+});
+
+test("a SHALLOW entry's small route NEVER claims 'small ≥ medium' — the reason states the real comparison", () => {
+  const r = routeSdd(shallowSpecKitToolbox(), { taskType: "feature", size: "small" });
+  expect(r.reason).toContain("< the medium threshold"); // the comparison that actually happened
+  expect(r.reason).not.toContain("small ≥"); // never the lie
+});

@@ -17,9 +17,15 @@ Três dentes, cada um no ponto onde a força é estrutural, não prosa.
 ### T2 — Rota SDD única e visível (`routing.ts` + `skill match`)
 - Extrair `skillApplies(skill, task)` de `matchSkills` (predicado por skill).
 - `routeSdd(toolbox, task): { kit, reason }` — decide **um** piso SDD: `spec-kit`
-  se instalado e a task cumpre seu `routing` (`size >= minSize`, não em `skipFor`);
-  senão `sdd-lite` (piso); senão `null`. O limiar é o `minSize` já declarado no
-  kit — **estabelecido, não adivinhado** — e a `reason` o nomeia.
+  se instalado e a task cumpre o limiar; senão `sdd-lite` (piso); senão `null`.
+  **O limiar vem do CONTRATO do kit no registry (`resolveKit(spec-kit).routing`),
+  NUNCA da entry do toolbox.yaml.** Motivo (achado do Heisenberg): um
+  `skill add spec-kit` pré-#118 (v1.16.0) gravou a entry SEM bloco `routing:`;
+  ler o limiar da entry fazia `skillApplies` passar todo tamanho, e um
+  `?? "medium"` fabricava no TEXTO um limiar que nenhuma comparação usou
+  (`--size small` jurando "small ≥ medium"). Com o contrato no registry, o
+  limiar é real e a `reason` afirma só a comparação que de fato ocorreu; se não
+  houver limiar aplicado, a linha diz isso — nunca inventa um número.
 - `skill match` emite uma linha `ROUTE sdd=<kit> — <reason>` além dos `MATCH`, e
   a inclui no `--json`. É a decisão que o coordenador registra no dispatch.
 
@@ -40,7 +46,10 @@ Três dentes, cada um no ponto onde a força é estrutural, não prosa.
 - `src/toolbox/routing.ts` — `skillApplies`, `routeSdd`, `SddRoute`
 - `src/toolbox/cli.ts` — `skillPreset` materializa spec-kit; `skillMatch` imprime ROUTE
 - `src/toolbox/sdd.ts` — `resolveSddArtifactsGit` (resolver real, sem rede)
-- `src/rehydrate/toolbox.ts` — garante/repara spec-kit + re-materializa `.specify/`
+- `src/rehydrate/toolbox.ts` — repara spec-kit por FORMA (entry sem `routing` é
+  defasada → reinstala do registry, curando o bloco `routing`) + re-materializa
+  `.specify/`; e instala do zero se ausente. Reparo por nome só (o guard antigo)
+  nunca dispararia numa entry rasa.
 - `src/rehydrate/exclude.ts` — exclui `.specify/` do git local (novo, ver Riscos)
 - `src/session/cli.ts` — `--sdd` no comando de recuperação de dispatch (round-trip)
 - `src/journey/types.ts` — `sddKit?`

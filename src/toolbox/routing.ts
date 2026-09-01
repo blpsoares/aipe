@@ -1,3 +1,4 @@
+import { resolveKit } from "./registry";
 import type { SkillEntry, TaskSize, Toolbox } from "./types";
 
 const SIZE_RANK: Record<TaskSize, number> = { small: 0, medium: 1, large: 2 };
@@ -41,28 +42,50 @@ export interface SddRoute {
 }
 
 // The single SDD routing DECISION for a task (#118): not an additive list, but
-// which one SDD tier this task should follow. The threshold is the FULL kit's
-// own `routing` (declared in the registry — `minSize`/`skipFor`), so it is
-// ESTABLISHED, not guessed, and the `reason` names it. If the full kit is
-// installed and the task meets its routing, route there; otherwise the light
-// floor if installed; otherwise nothing (no SDD kit present — the exact state
-// that let `--size` look decorative and let 7/7 deliveries skip spec+plan).
+// which one SDD tier this task should follow.
+//
+// The routing THRESHOLD is the full kit's contract, read from the REGISTRY
+// (`resolveKit(FULL_SDD_KIT).routing`), NEVER from the installed toolbox entry.
+// A pre-#118 `aipe skill add spec-kit` (v1.16.0) wrote that entry with no
+// `routing:` block at all; reading the threshold off the entry then made
+// `skillApplies` pass every size, and a `?? "medium"` fallback fabricated a
+// number in the REASON that no comparison had used — the exact "signal that
+// lies comfortably" this issue exists to kill (`--size small` claiming
+// "small ≥ medium"). So the threshold comes from the kit's own definition, and
+// every branch's `reason` states the comparison that was ACTUALLY made — if no
+// threshold was applied, it says so instead of inventing one.
 export function routeSdd(toolbox: Toolbox, task: TaskShape): SddRoute {
-  const full = toolbox.skills.find((s) => s.name === FULL_SDD_KIT);
-  const floor = toolbox.skills.find((s) => s.name === FLOOR_SDD_KIT);
+  const fullInstalled = toolbox.skills.some((s) => s.name === FULL_SDD_KIT);
+  const floorInstalled = toolbox.skills.some((s) => s.name === FLOOR_SDD_KIT);
+  const floorOr = (reason: string): SddRoute =>
+    floorInstalled ? { kit: FLOOR_SDD_KIT, reason } : { kit: null, reason: `${reason}; and no ${FLOOR_SDD_KIT} floor is installed` };
 
-  if (full && skillApplies(full, task)) {
-    const threshold = full.routing?.minSize ?? "medium";
-    return { kit: FULL_SDD_KIT, reason: `size ${task.size ?? "?"} ≥ the ${threshold} threshold → the full ${FULL_SDD_KIT} flow (specify → plan → tasks → implement)` };
+  if (!fullInstalled) {
+    return floorInstalled
+      ? { kit: FLOOR_SDD_KIT, reason: `${FULL_SDD_KIT} is NOT installed — only the light ${FLOOR_SDD_KIT} floor is reachable (run \`aipe skill preset\`/\`rehydrate\` to install it)` }
+      : { kit: null, reason: "no SDD kit is installed in this workspace — the SDD flow is unreachable" };
   }
-  if (floor) {
-    const threshold = full?.routing?.minSize;
-    const why = full
-      ? threshold
-        ? `below the ${threshold} threshold for ${FULL_SDD_KIT} → the light ${FLOOR_SDD_KIT} floor`
-        : `the light ${FLOOR_SDD_KIT} floor`
-      : `${FULL_SDD_KIT} is NOT installed — only the light ${FLOOR_SDD_KIT} floor is reachable`;
-    return { kit: FLOOR_SDD_KIT, reason: why };
+
+  const contract = resolveKit(FULL_SDD_KIT)?.routing;
+
+  // skipFor overrides size — a chore/one-liner is never the full flow.
+  if (task.taskType && contract?.skipFor?.some((t) => t.toLowerCase() === task.taskType!.toLowerCase())) {
+    return floorOr(`task type "${task.taskType}" is on ${FULL_SDD_KIT}'s skip list → the light ${FLOOR_SDD_KIT} floor`);
   }
-  return { kit: null, reason: "no SDD kit is installed in this workspace — the SDD flow is unreachable" };
+
+  const threshold = contract?.minSize;
+  if (!threshold) {
+    // The routing kit declares NO size threshold. Do NOT fabricate one and do
+    // NOT force the heavy flow on every task — say the threshold is absent.
+    return floorOr(`${FULL_SDD_KIT} declares no size threshold — cannot route by difficulty (no size comparison made) → the light ${FLOOR_SDD_KIT} floor`);
+  }
+  if (!task.size) {
+    // A threshold exists but there is no size to compare it against — never
+    // claim a comparison that did not run.
+    return floorOr(`no --size given — not established at/above the ${threshold} threshold for ${FULL_SDD_KIT} (pass --size to route to it) → the light ${FLOOR_SDD_KIT} floor`);
+  }
+  if (SIZE_RANK[task.size] >= SIZE_RANK[threshold]) {
+    return { kit: FULL_SDD_KIT, reason: `size ${task.size} ≥ the ${threshold} threshold → the full ${FULL_SDD_KIT} flow (specify → plan → tasks → implement)` };
+  }
+  return floorOr(`size ${task.size} < the ${threshold} threshold for ${FULL_SDD_KIT} → the light ${FLOOR_SDD_KIT} floor`);
 }
