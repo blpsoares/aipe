@@ -30,20 +30,38 @@ Três dentes, cada um no ponto onde a força é estrutural, não prosa.
   a inclui no `--json`. É a decisão que o coordenador registra no dispatch.
 
 ### T3 — Recusa no ledger (`ledger.ts` + `journey record`)
-- Tipo: `JourneyDispatch.sddKit?: string`; `STICKY_DISPATCH_FIELDS += "sddKit"`
-  (um `delivered` que omite `--sdd` preserva o valor gravado no dispatch).
-- Gate em `recordDispatchGuarded`, novo code `sdd-artifacts-required`: quando
-  `status === "delivered"` e a unidade foi roteada para `spec-kit`
-  (`dispatch.sddKit ?? current.sddKit`), exige `specs/**/spec.md` **e**
-  `specs/**/plan.md` presentes/commitados no worktree. Inerte sem resolver
-  injetado (reconciler/testes), como o gate de CI — nunca fabrica um passe.
-- Resolver real `resolveSddArtifactsGit(worktree)` via `git ls-files` no worktree
-  (arquivos rastreados = no PR). CLI injeta o real; testes injetam fake.
-- CLI `journey record` ganha `--sdd <kit>` (grava `sddKit`) e injeta o resolver.
+- Tipos: `JourneyDispatch.sddKit?`, `size?`, `taskType?`;
+  `STICKY_DISPATCH_FIELDS += sddKit, size, taskType` (um `delivered` que omite
+  as flags preserva o que foi gravado no dispatch).
+- Gate em `recordDispatchGuarded`, code `sdd-artifacts-required`: quando
+  `status === "delivered"` e a unidade cai no fluxo completo (`spec-kit`), exige
+  `specs/**/spec.md` **e** `specs/**/plan.md` commitados no worktree. Inerte sem
+  resolver injetado (reconciler/testes), como o gate de CI.
+- **A ROTA é DERIVADA, não uma flag lembrada no fim** (conserto do elo aberto —
+  o portão do 2509001 era código correto que nunca rodava porque o prompt real
+  de despacho nunca punha `--sdd`). Ordem: (1) `--sdd` explícito (nesta escrita
+  ou sticky) vence — decisão assinada, incl. `sdd-lite` para reivindicar
+  trivial; (2) senão a rota é derivada do `--size`/`--task-type` gravados na
+  unidade, pelo mesmo roteador (`routeSddForGate`) que o `skill match` imprime;
+  (3) silêncio NÃO compra o piso — `routeSddForGate` difere do `routeSdd` num
+  ponto: sem tamanho declarado, cai no fluxo COMPLETO (não declarado ≠
+  estabelecido como trivial). O `--size`/`--task-type` são fatos sticky do
+  ledger, então a obrigação mora no registro. A recusa nomeia QUAL dos três
+  caminhos trouxe a unidade ao fluxo completo (só o silêncio é escapável
+  declarando). Honestidade inversa: workspace sem spec-kit no catálogo nunca é
+  barrado (não se exige artefato de um fluxo que o repo não alcança).
+- Resolver real `resolveSddArtifactsGit(worktree)` via `git ls-tree HEAD`
+  (commitado = no PR). Router real `workspaceSddRouter` lê o toolbox do
+  workspace → `routeSddForGate`. CLI injeta ambos; testes injetam fakes.
+- O **prompt** (`session/prompt.ts`) obriga os DOIS ARTEFATOS (`specs/**/spec.md`
+  + `plan.md`), nunca `/speckit.*` — regra do PE "obrigue o artefato, nunca o
+  mecanismo" (o guard `prompt.test.ts` recusa citar slash command de um harness).
+- CLI `journey record` ganha `--sdd`, `--size` (validado), `--task-type`.
 
 ## Arquivos tocados
 - `src/toolbox/types.ts` — (nada novo; `SkillRouting` já basta)
-- `src/toolbox/routing.ts` — `skillApplies`, `routeSdd`, `SddRoute`
+- `src/toolbox/routing.ts` — `skillApplies`, `routeSdd`, `routeSddForGate`, `SddRoute`
+- `src/session/prompt.ts` — prompt obriga os dois artefatos, não `/speckit.*`
 - `src/toolbox/cli.ts` — `skillPreset` materializa spec-kit; `skillMatch` imprime ROUTE
 - `src/toolbox/sdd.ts` — `resolveSddArtifactsGit` (resolver real, sem rede)
 - `src/rehydrate/toolbox.ts` — repara spec-kit por FORMA (entry sem `routing` é

@@ -68,16 +68,21 @@ SDD estava **inalcançável**. Três defeitos encadeados, todos medidos:
   as duas linhas divergentes coladas, rodadas nesse diretório. Regressão fixa a
   entry rasa como fixture (o defeito nasce de workspace envelhecido, a config de
   todo usuário existente).
-- **A3 (T3, a metade que importa).** Uma unidade despachada como spec-kit:
-  - `journey record --status delivered` **sem** artefatos → **REJECT** com
-    mensagem que nomeia o que falta (a recusa mordendo);
+- **A3 (T3, a metade que importa) — no FLUXO REAL, sem flag no fim.** Uma unidade
+  cujo despacho declara `--size large` (a rota é DERIVADA disso; ninguém precisa
+  lembrar `--sdd` na entrega — foi esse o elo que deixou o portão inerte):
+  - `journey record --status delivered` (comando limpo, como o prompt compõe)
+    **sem** artefatos → **REJECT** `sdd-artifacts-required`, mensagem nomeando o
+    que falta **e** por qual dos três caminhos a unidade caiu no fluxo completo;
   - com `specs/**/spec.md` **e** `plan.md` commitados no worktree → **aceita**.
-  - Provado por **mutação**: remova os artefatos e mostre a recusa; commite e
-    mostre passando. Uma regra cujo teste passa com a regra removida não tem
-    dentes.
-- **A4 (loop de conserto não quebra).** Uma unidade SDD já `verified`/`merged`,
-  ou um `blocked`/`failed`/`redirected`, não é barrada pelo gate T3 — só o
-  claim-de-pronto (`delivered`/`verified`) exige artefatos.
+  - Provado por **mutação** (código): sem o gate, os testes de recusa falham.
+  - **Silêncio não escapa:** uma unidade sem `--size` declarado cai no fluxo
+    COMPLETO (não declarado ≠ trivial); o caso trivial é o que precisa se
+    declarar (`--size small` ou `--sdd sdd-lite`), e a reivindicação fica no
+    ledger.
+- **A4 (loop de conserto não quebra).** Só o claim-de-pronto `delivered` é
+  barrado. Uma unidade `dispatched` (conserto), `blocked`, `failed`,
+  `redirected` ou o QA `verified` não é barrada pelo gate T3.
 - **A5 (auto-refutação).** Esta própria entrega chega com `specs/118-…/{spec,
   plan,tasks}.md` commitados. Se a jornada que torna o SDD obrigatório chegasse
   sem spec, ela se refutaria.
