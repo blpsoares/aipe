@@ -494,6 +494,37 @@ digraph operate {
    aipe session dispatch --journey <id> --workspace <workspace>
    ```
 
+   **Between those two commands, every unit routed to the full flow needs an
+   APPROVED TASK SPEC — `aipe session dispatch` refuses without one.**
+
+   ```bash
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --scaffold
+   # the spec writer fills it in; then:
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --check
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --approve   # PE
+   ```
+
+   The specialist does **not** write this. That is the whole point: whoever builds
+   a thing decides what "done" means for it, and before this existed that decision
+   happened *after* dispatch — so nothing a human approved ever said what the work
+   was for. A dev and a QA both read `disableStdin: true`, agreed it was
+   "pre-existing design, not a regression", and shipped, because no approved
+   document said that being able to TYPE was the objective. The PE reported it five
+   times.
+
+   Two things the validator refuses, so write for them:
+   - **Acceptance by CONSEQUENCE, never mechanism.** Each criterion names the
+     **Action** exercised and the **Effect** observed. *"use the `--st-escalated`
+     token"* is refused — it has no observable effect to write down. *"a task in
+     progress is distinguishable from a stopped one — prove it by alternating"* is
+     the shape that works.
+   - **Every criterion carries the test the QA will run**, matched by its label, in
+     `## Tests the QA runs`. The QA executes those; it does not author its own.
+
+   The path travels to the specialist, never the text: the spec is read at work
+   time, so an amendment reaches whoever is already working. Amend it and the PE
+   re-approves — the dispatch refuses a spec edited after approval.
+
    **`--size` is how hard this unit is, and it is the input the SDD route is
    derived from** — the same router `aipe skill match --task-type <t> --size <s>`
    prints as `ROUTE sdd=<kit>`, so the two can never disagree. Recording it is
