@@ -154,7 +154,16 @@ function waitingItems(l: JourneyLedger, policy: ModelPolicy, live: LiveSessions)
     if (d.status === "escalated") {
       out.push({ ...base, kind: "escalated", detail: "open escalation" });
     }
-    if (d.status === "redirected") {
+    // #106 — the coordinator's OWN redirect is not a pendency for the PE: it is
+    // the origin of the change, and the recorded reason is the coordinator's own
+    // text. Handing that back as "waiting on you" is a queue returning someone's
+    // decision to them, and a queue that re-presents what is already resolved
+    // gets ignored — which is how it stops protecting the case that matters.
+    //
+    // An UNRECORDED origin still surfaces. Silence must not buy a way out of the
+    // queue: the whole point of the column is that something unresolved is
+    // visible, so "we do not know who steered" belongs in front of the PE.
+    if (d.status === "redirected" && d.redirectOrigin !== "coordinator") {
       out.push({ ...base, kind: "redirected", detail: d.redirectReason ?? "redirected — not yet reconciled" });
     }
     if (d.status === "blocked") {

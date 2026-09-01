@@ -334,6 +334,7 @@ const FIELD_FLAGS = {
   sddKit: "--sdd",
   size: "--size",
   taskType: "--task-type",
+  redirectOrigin: "--redirect-origin",
   base: "--base",
   title: "--title",
   description: "--description",

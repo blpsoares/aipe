@@ -225,6 +225,14 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   //   --title/--description  what this task is, for someone who did not build it;
   //           the `task` slug is an identifier, not prose.
   // All sticky: recorded once, carried by every later plain write.
+  // #106 — who steered. Only a PE-originated redirect needs reconciling; the
+  // coordinator's own redirect is the origin of the change, not a request to it.
+  const redirectOriginFlag = getFlag(args, "--redirect-origin");
+  if (redirectOriginFlag !== undefined && redirectOriginFlag !== "pe" && redirectOriginFlag !== "coordinator") {
+    console.log(`ERROR redirect-origin: "${redirectOriginFlag}" is not an origin — use pe or coordinator`);
+    return 1;
+  }
+  const redirectOrigin = redirectOriginFlag as "pe" | "coordinator" | undefined;
   const base = getFlag(args, "--base");
   const title = getFlag(args, "--title");
   const description = getFlag(args, "--description");
@@ -302,6 +310,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ...(sddKit ? { sddKit } : {}),
       ...(size ? { size } : {}),
       ...(taskType ? { taskType } : {}),
+      ...(redirectOrigin ? { redirectOrigin } : {}),
       ...(base ? { base } : {}),
       ...(title ? { title } : {}),
       ...(description ? { description } : {}),

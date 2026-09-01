@@ -103,3 +103,34 @@ test("the ask is what the PERSON must do, not the machine's word for its state",
     "o histórico entra no escopo?",
   );
 });
+
+// ── #106, the rule #109 inherits ─────────────────────────────────────────────
+// A queue that hands the coordinator its own decision back stops being read, and
+// then it stops protecting the case that matters. Measured: three journeys in
+// one day, all closed BY the coordinator with the reason written by him, all
+// still sitting in "waiting on you".
+test("the coordinator's own redirect leaves the queue; an unrecorded origin stays", async () => {
+  const { assemble } = await import("../assemble");
+  const led = (origin?: "pe" | "coordinator") => [{
+    id: "j1",
+    dispatches: [{
+      repo: "demo", specialist: "Jesse", branch: "b", worktree: "/wt",
+      status: "redirected" as const, redirectReason: "muda o escopo para X",
+      ...(origin ? { redirectOrigin: origin } : {}),
+    }],
+  }];
+  const base = {
+    workspace: "/w", contextName: "demo", scope: "all" as const,
+    pref: { auto: false, format: "detailed" as const }, roster: [], policy: { authorizationTiers: [] },
+    live: { sessions: [], reliable: false, source: "none" as const },
+    releaseStates: new Map(),
+  };
+
+  // the PE steered → the coordinator must reconcile the spec → it is a pendency
+  expect(assemble({ ...base, ledgers: led("pe") } as never).waiting).toHaveLength(1);
+  // the coordinator steered → it IS the origin of the change → nothing to ask
+  expect(assemble({ ...base, ledgers: led("coordinator") } as never).waiting).toHaveLength(0);
+  // origin never recorded → surfaces. Silence does not buy a way out of a queue
+  // whose entire job is that something unresolved stays visible.
+  expect(assemble({ ...base, ledgers: led() } as never).waiting).toHaveLength(1);
+});

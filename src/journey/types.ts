@@ -158,6 +158,15 @@ export interface JourneyDispatch {
   // recordDispatchGuarded in ledger.ts); absent on legacy ledgers written
   // before this field existed.
   redirectReason?: string;
+  // WHO changed the direction. `redirected` exists for the case where the PE
+  // steered a specialist outside its brief, so the coordinator must reconcile
+  // the Orientation Spec against it. When the COORDINATOR is the one who
+  // redirected, it is the origin of the change and there is nothing for anyone
+  // to reconcile — but both cases used the same word and produced the same
+  // "waiting on you" line, handing the coordinator its own decision back as a
+  // pending item (#106). Absent ⇒ origin not established, which SURFACES: an
+  // unrecorded origin must not buy a way out of the queue.
+  redirectOrigin?: "pe" | "coordinator";
   // Why a specialist declared itself `blocked` — what it is stuck on and what it
   // needs from the coordinator. Required by the ledger gate whenever
   // `status: "blocked"` is recorded (recordDispatchGuarded), so a blocked record
