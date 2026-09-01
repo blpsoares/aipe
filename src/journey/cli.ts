@@ -217,6 +217,25 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   }
   const size = sizeFlag as TaskSize | undefined;
   const taskType = getFlag(args, "--task-type");
+  // #109 — three fields the status table needs and that nothing recorded, so the
+  // table either lied or a human filled it in by hand (which is how a duration
+  // got typed as "~1h", then "~1h30", for something that was 23 minutes old).
+  //   --base  the PR's DESTINATION (`dev`/`main`) — answers "does this reach me?"
+  //           and is a different branch from where the specialist commits.
+  //   --title/--description  what this task is, for someone who did not build it;
+  //           the `task` slug is an identifier, not prose.
+  // All sticky: recorded once, carried by every later plain write.
+  // #106 — who steered. Only a PE-originated redirect needs reconciling; the
+  // coordinator's own redirect is the origin of the change, not a request to it.
+  const redirectOriginFlag = getFlag(args, "--redirect-origin");
+  if (redirectOriginFlag !== undefined && redirectOriginFlag !== "pe" && redirectOriginFlag !== "coordinator") {
+    console.log(`ERROR redirect-origin: "${redirectOriginFlag}" is not an origin — use pe or coordinator`);
+    return 1;
+  }
+  const redirectOrigin = redirectOriginFlag as "pe" | "coordinator" | undefined;
+  const base = getFlag(args, "--base");
+  const title = getFlag(args, "--title");
+  const description = getFlag(args, "--description");
 
   // Session-mode dispatch metadata (optional; absent ⇒ absent on the ledger,
   // never present-and-undefined — legacy ledgers and subagent dispatches must
@@ -291,6 +310,10 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ...(sddKit ? { sddKit } : {}),
       ...(size ? { size } : {}),
       ...(taskType ? { taskType } : {}),
+      ...(redirectOrigin ? { redirectOrigin } : {}),
+      ...(base ? { base } : {}),
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
       ...(mode ? { mode } : {}),
       ...(intensity ? { intensity } : {}),
       ...(harness ? { harness } : {}),

@@ -83,6 +83,10 @@ function unitRow(
     publishState: d.status === "merged" ? releaseStates.get(d.repo)?.state ?? null : null,
     // The envelope + swept fields (v4). `?? null` so a legacy record surfaces
     // absence honestly instead of an invented value.
+    base: d.base ?? null,
+    title: d.title ?? null,
+    description: d.description ?? null,
+    at: d.at ?? null,
     harness: d.harness ?? null,
     model: d.model ?? null,
     tier: d.tier ?? null,
@@ -118,7 +122,17 @@ function waitingItems(l: JourneyLedger, policy: ModelPolicy, live: LiveSessions)
   const gatedTiers = new Set<string>(policy.authorizationTiers);
   for (const d of l.dispatches) {
     const fqid = packageFqid(d.repo, d.package);
-    const base = { journey: l.id, fqid, specialist: d.specialist };
+    // Every waiting row carries how to REACH the specialist, WHAT it holds up,
+    // and SINCE WHEN — recorded, never estimated. `blocks` names the unit whose
+    // work stops; the queue is a decision only when each row says its own cost.
+    const base = {
+      journey: l.id,
+      fqid,
+      specialist: d.specialist,
+      sessionId: d.sessionId ?? null,
+      blocks: d.task ? `${fqid} · ${d.task}` : fqid,
+      since: d.at ?? null,
+    };
     // "Finished but not processed": a session-mode unit still `dispatched` whose
     // session has RELIABLY exited (dead-silent WITH a real sessionId — it
     // launched and is gone; a never-launched unit has no sessionId and is a
@@ -140,7 +154,16 @@ function waitingItems(l: JourneyLedger, policy: ModelPolicy, live: LiveSessions)
     if (d.status === "escalated") {
       out.push({ ...base, kind: "escalated", detail: "open escalation" });
     }
-    if (d.status === "redirected") {
+    // #106 — the coordinator's OWN redirect is not a pendency for the PE: it is
+    // the origin of the change, and the recorded reason is the coordinator's own
+    // text. Handing that back as "waiting on you" is a queue returning someone's
+    // decision to them, and a queue that re-presents what is already resolved
+    // gets ignored — which is how it stops protecting the case that matters.
+    //
+    // An UNRECORDED origin still surfaces. Silence must not buy a way out of the
+    // queue: the whole point of the column is that something unresolved is
+    // visible, so "we do not know who steered" belongs in front of the PE.
+    if (d.status === "redirected" && d.redirectOrigin !== "coordinator") {
       out.push({ ...base, kind: "redirected", detail: d.redirectReason ?? "redirected — not yet reconciled" });
     }
     if (d.status === "blocked") {
