@@ -26,13 +26,16 @@ const d = (over: Partial<JourneyDispatch>): JourneyDispatch => ({
 // ── the pure function ────────────────────────────────────────────────────────
 
 test("a CLEAN journey (dispatched→delivered→verified→merged, producer landed) yields no findings", () => {
+  // The QA is a DIFFERENT specialist from the one who delivered. This fixture
+  // used to have Joaquim verify his own delivery and still call itself clean —
+  // and the audit now says, correctly, that such a journey was never gated.
   const ledger = ledgerOf(
     d({ repo: "embark", package: "worker", status: "dispatched" }),
     d({ repo: "embark", package: "worker", status: "delivered", evidence: devEv }),
-    d({ repo: "embark", package: "worker", status: "verified", evidence: qaEv }),
+    d({ repo: "embark", package: "worker", specialist: "Mike", status: "verified", evidence: qaEv }),
     d({ repo: "embark", package: "worker", status: "merged", pr: "http://pr/1" }),
     // the producer this consumer depends on, landed (verified)
-    d({ repo: "embark", package: "api", status: "verified", evidence: qaEv }),
+    d({ repo: "embark", package: "api", specialist: "Mike", status: "verified", evidence: qaEv }),
   );
   const edges = [{ from: "embark/worker", to: "embark/api", type: "consumes" }];
   expect(verifyJourney(ledger, edges)).toEqual([]);
