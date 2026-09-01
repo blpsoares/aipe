@@ -6,7 +6,7 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
-import { recordDispatchGuarded, readLedger, setJourneySpec, setJourneyTaskSpec, startJourney, type AcceptanceResolver, type SddArtifactResolver, type SddRouter } from "./ledger";
+import { formatGates, recordDispatchGuarded, readLedger, setJourneySpec, setJourneyTaskSpec, startJourney, type AcceptanceResolver, type SddArtifactResolver, type SddRouter } from "./ledger";
 import { hashTaskSpecContent, parseAcceptanceItems, renderTaskSpecTemplate, taskSpecRelPath, validateTaskSpec } from "./task-spec";
 import { resolveSddArtifactsGit } from "./sdd-artifacts";
 import { readToolbox } from "../toolbox/catalog";
@@ -313,7 +313,29 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
     console.log(`REJECT ${result.code} ${repo}${pkg ? `/${pkg}` : ""} — ${result.message}`);
     return 1;
   }
-  console.log(`OK ${repo}${pkg ? `/${pkg}` : ""} ${specialist} ${status}`);
+  // FAIL-CLOSED AT THE BOUNDARY. A gate that could not run is not a gate that
+  // passed, and this command is the production path: it injects every resolver a
+  // few lines above, so `not-checked` here means something regressed — a
+  // resolver dropped, a new call site wired without them. Refusing is the whole
+  // lesson of the day this was written: the library stays injectable so tests
+  // can drive one gate at a time, and the CLI refuses to record a done-claim it
+  // could not actually check.
+  const unchecked = Object.entries(result.gates ?? {})
+    .filter(([, v]) => v === "not-checked")
+    .map(([k]) => k);
+  if (unchecked.length > 0) {
+    console.log(
+      `REJECT gate-unavailable ${repo}${pkg ? `/${pkg}` : ""} — the ${unchecked.join(" and ")} gate(s) could not run on this write, so this record would claim a check that never happened. The record was NOT written. This is a wiring fault in aipe itself, not something to work around: report it.`,
+    );
+    return 1;
+  }
+
+  // Say what each gate DID, never just that nothing failed. `OK … delivered`
+  // used to be byte-identical whether the SDD gate approved or was never on the
+  // path — which is how six approved gates green-lit three broken features while
+  // reporting the truth. `—` means not applicable/none; it is not a pass.
+  const gates = result.gates ? ` ${formatGates(result.gates, ciNone ? "none" : "green")}` : "";
+  console.log(`OK ${repo}${pkg ? `/${pkg}` : ""} ${specialist} ${status}${gates}`);
 
   // Rule 2 — the ledger record above is the important thing and is now durable;
   // closing the session is housekeeping done AFTER it, and must never lose the

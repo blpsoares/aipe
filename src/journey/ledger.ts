@@ -347,11 +347,42 @@ export type LedgerGateCode =
   | "ci-unresolvable"
   | "ci-verified-pre-merge-needs-reason";
 
+// What each gate actually DID on this write. The root cause of 2026-08-31, in
+// one line: you could not tell a pass from a no-op. `OK aipe Jesse delivered`
+// was byte-identical whether the SDD gate had run and approved, or had never
+// been on the path at all — so six approved gates could green-light three broken
+// features while reporting, truthfully, that nothing had failed. A gate that
+// cannot say "I ran" is indistinguishable from one that is not wired.
+//
+//   "ok"          — ran, applied, passed.
+//   "n/a"         — ran, and correctly did not apply (wrong status, no PR, no
+//                   Task Spec written). An established non-answer.
+//   "not-checked" — could NOT run: its resolver was absent. THE state that used
+//                   to be invisible. Never read this as a pass.
+export type GateOutcome = "ok" | "n/a" | "not-checked";
+
+export interface GateReport {
+  sdd: GateOutcome; // spec+plan committed for a full-SDD delivery
+  ci: GateOutcome; // the PR's checks
+  qa: GateOutcome; // per-criterion coverage of the approved Task Spec
+}
+
 export interface GuardedRecordResult {
   ok: boolean;
   code?: LedgerGateCode;
   message?: string;
   path?: string;
+  // Present on every ACCEPTED write. A refusal needs no report — the code and
+  // message already say which gate spoke.
+  gates?: GateReport;
+}
+
+// Renders a report for the operator: `[sdd:ok ci:green qa:—]`. An em dash is the
+// not-checked marker, chosen so it cannot be misread as a verdict.
+export function formatGates(g: GateReport, ciDetail?: string): string {
+  const mark = (o: GateOutcome, okText = "ok"): string =>
+    o === "ok" ? okText : o === "n/a" ? "n/a" : "—";
+  return `[sdd:${mark(g.sdd)} ci:${mark(g.ci, ciDetail ?? "ok")} qa:${mark(g.qa)}]`;
 }
 
 function unitStatus(ledger: JourneyLedger, repo: string, pkg: string | null, task: string | null): JourneyDispatch | undefined {
@@ -471,7 +502,12 @@ export async function recordDispatchGuarded(
       ...(declaredType ? { taskType: declaredType } : {}),
     }) ??
     undefined;
-  if (dispatch.status === "delivered" && routedKit === GATED_SDD_KIT && opts.resolveSddArtifacts) {
+  // Whether this gate APPLIES is decided before, and independently of, whether it
+  // CAN run. Folding the two together is what made an unwired gate look like an
+  // inapplicable one.
+  const sddApplies = dispatch.status === "delivered" && routedKit === GATED_SDD_KIT;
+  let sddOutcome: GateOutcome = sddApplies ? (opts.resolveSddArtifacts ? "ok" : "not-checked") : "n/a";
+  if (sddApplies && opts.resolveSddArtifacts) {
     const art = await opts.resolveSddArtifacts(dispatch.worktree);
     const missing: string[] = [];
     if (!art.spec) missing.push("a spec (specs/**/spec.md)");
@@ -553,7 +589,9 @@ export async function recordDispatchGuarded(
   // a header summary changed — and the criterion the PE actually cared about was
   // never anyone's test. A blanket summary hides an untested criterion inside an
   // average; answering each label makes the hole visible and REFUSES it.
-  if (dispatch.status === "verified" && opts.resolveAcceptance) {
+  const qaApplies = dispatch.status === "verified";
+  let qaOutcome: GateOutcome = qaApplies ? (opts.resolveAcceptance ? "ok" : "not-checked") : "n/a";
+  if (qaApplies && opts.resolveAcceptance) {
     const criteria = await opts.resolveAcceptance({ repo: dispatch.repo, ...(pkg ? { package: pkg } : {}) });
     if (criteria.kind === "unestablished") {
       return {
@@ -563,6 +601,7 @@ export async function recordDispatchGuarded(
       };
     }
     const labels = criteria.kind === "criteria" ? criteria.labels : [];
+    if (labels.length === 0) qaOutcome = "n/a";
     if (labels.length > 0) {
       const covered = new Set(realVerifiedItems(dispatch.evidence).map((i) => i.label));
       const missing = labels.filter((l) => !covered.has(l));
@@ -666,6 +705,10 @@ export async function recordDispatchGuarded(
   // The resolution is five-way (see CheckVerdict) so "still running" is neither
   // "passed" nor "failed", and an unreachable forge abstains rather than guesses.
   let ciBypass: JourneyDispatch["ciBypass"];
+  const ciApplies = !!dispatch.pr && CI_GATED_STATUSES.includes(dispatch.status);
+  let ciOutcome: GateOutcome = ciApplies ? (opts.resolveChecks ? "ok" : "not-checked") : "n/a";
+  // `dispatch.pr` re-tested inline so TypeScript narrows it; `ciApplies` above
+  // carries the same condition for the report.
   if (opts.resolveChecks && dispatch.pr && CI_GATED_STATUSES.includes(dispatch.status)) {
     const { verdict, detail } = resolveVerdict(await opts.resolveChecks(dispatch.pr));
     if (verdict === "red") {
@@ -780,5 +823,5 @@ export async function recordDispatchGuarded(
       : { ...toWrite, round: selfRow?.round ?? gateRound };
 
   const path = await recordDispatch(workspaceDir, id, withRound);
-  return { ok: true, path };
+  return { ok: true, path, gates: { sdd: sddOutcome, ci: ciOutcome, qa: qaOutcome } };
 }
