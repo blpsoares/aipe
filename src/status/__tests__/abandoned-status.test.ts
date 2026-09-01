@@ -75,12 +75,15 @@ test("the rendered status table prints them as visibly distinct words, never bot
     live: noLive,
   });
 
-  const failedLine = renderTable(failedReport, "detailed", false).find((l) => l.includes("Tyrus"))!;
-  const abandonedLine = renderTable(abandonedReport, "detailed", false).find((l) => l.includes("Tyrus"))!;
+  // Over the whole render: the specialist's name is in table 1 and the status
+  // word in table 2, so a single line can no longer carry both.
+  const failedLine = renderTable(failedReport, "detailed", false).join("\n");
+  const abandonedLine = renderTable(abandonedReport, "detailed", false).join("\n");
 
-  expect(failedLine).toContain("failed");
-  expect(abandonedLine).toContain("abandoned");
-  expect(abandonedLine).not.toContain("failed");
+  // The glossary's words, not the ledger's — that is the point of the column.
+  expect(failedLine).toContain("Reprovado");
+  expect(abandonedLine).toContain("Abandonado");
+  expect(abandonedLine).not.toContain("Reprovado");
 });
 
 test("only abandoned surfaces as WAITING ON YOU with its reason — a QA-rejected unit is dev's turn, not the coordinator's", () => {
@@ -116,7 +119,10 @@ test("color mode never collapses the two into the same painted string either", (
     live: noLive,
   });
   const color = supportsColor({ isTTY: true }, {});
-  const failedLine = renderTable(failedReport, "detailed", color).find((l) => l.includes("Tyrus"))!;
-  const abandonedLine = renderTable(abandonedReport, "detailed", color).find((l) => l.includes("Tyrus"))!;
+  // The status word lives in table 2 and the specialist's name in table 1, so
+  // the assertion is over the whole render: the two states must never collapse
+  // into the same word, which is the defect this test exists for.
+  const failedLine = renderTable(failedReport, "detailed", color).join("\n");
+  const abandonedLine = renderTable(abandonedReport, "detailed", color).join("\n");
   expect(failedLine).not.toBe(abandonedLine);
 });

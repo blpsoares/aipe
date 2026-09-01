@@ -8,6 +8,7 @@
 import type { PublishState } from "../release/types";
 import type { UnitPhase } from "../session/types";
 import type { StatusFormat, StatusReport, UnitRow } from "./types";
+import { askCell, cell, packageCell, taskLines, taskStatusCell, whenCell } from "./tables";
 
 const C = {
   reset: "\x1b[0m",
@@ -222,20 +223,78 @@ export function renderTable(report: StatusReport, format: StatusFormat, color: b
   );
   out.push("");
 
-  // Units.
-  out.push(label("UNITS", color));
-  out.push(...grid(unitHeaders(format), report.units.map((u) => unitCells(u, format, color)), color));
-  out.push("");
+  // The three tables (#109). One line per task, in the PE's vocabulary, split so
+  // no table is wide enough for the terminal to truncate the repo name — which
+  // was the original complaint: the column that orients you was the one being
+  // cut. `#` is the key between them; nothing repeats across the two.
+  const lines = taskLines(report.units);
+  const anyPackage = lines.some((l) => l.package !== null);
 
-  // Waiting on the PE.
-  out.push(label("WAITING ON YOU", color));
+  out.push(label("1 — ONDE O TRABALHO ESTÁ", color));
   out.push(
     ...grid(
-      ["KIND", "JOURNEY", "FQID", "WHO", "DETAIL"],
-      report.waiting.map((w) => [w.kind, w.journey, w.fqid, w.specialist, clip(w.detail)]),
+      ["#", "SESSÃO", "TASK ID", "ESPECIALISTA", "REPO", ...(anyPackage ? ["PACKAGE"] : []), "BRANCH", "DESTINO"],
+      lines.map((l) => [
+        String(l.n),
+        cell(l.sessionId),
+        l.taskId,
+        l.specialist,
+        // NEVER clipped: shortening the repo name is what destroyed the table.
+        l.repo,
+        ...(anyPackage ? [packageCell(l.package)] : []),
+        l.branch,
+        cell(l.base),
+      ]),
       color,
     ),
   );
+  out.push("");
+
+  // `--compact` drops the one free-text column wide enough to wrap a terminal.
+  // It has to keep doing something real: the whole reason the three tables exist
+  // is that a wide table truncated the column that orients you, and a preference
+  // that silently stopped mattering would be the same defect in a new place — a
+  // flag accepted and ignored.
+  const wide = format !== "compact";
+  out.push(label("2 — COMO ESTÁ INDO", color));
+  out.push(
+    ...grid(
+      ["#", "SESSÃO", "MODELO", "EFFORT", "TÍTULO", ...(wide ? ["DESCRIÇÃO"] : []), "STATUS"],
+      lines.map((l) => [
+        String(l.n),
+        cell(l.sessionId),
+        cell(l.model),
+        cell(l.effort),
+        cell(l.title),
+        ...(wide ? [clip(cell(l.description))] : []),
+        taskStatusCell(l.status, l.publishState),
+      ]),
+      color,
+    ),
+  );
+  out.push("");
+
+  // ALWAYS rendered, even empty. A table that disappears when there is nothing
+  // in it is indistinguishable from a table nobody remembered to check.
+  out.push(label("3 — PRECISA DE VOCÊ", color));
+  if (report.waiting.length === 0) {
+    out.push("  nada esperando você");
+  } else {
+    out.push(
+      ...grid(
+        ["#", "SESSÃO", "ORIGEM", "PEDIDO", "BLOQUEIA", "ESPERANDO DESDE"],
+        report.waiting.map((w, i) => [
+          String(i + 1),
+          cell(w.sessionId),
+          w.specialist,
+          clip(askCell(w)),
+          w.blocks,
+          whenCell(w.since),
+        ]),
+        color,
+      ),
+    );
+  }
   out.push("");
 
   // Represado — merged work not yet published (item 2).

@@ -102,7 +102,8 @@ test("a journey with zero dispatches works and says so plainly (item 6)", async 
   );
   expect(result).toBe(0);
   expect(out).toContain("j-empty");
-  expect(out).toContain("UNITS");
+  expect(out).toContain("1 — ONDE O TRABALHO ESTÁ");
+  expect(out).toContain("3 — PRECISA DE VOCÊ"); // always rendered, even empty
 });
 
 test("--journey on an unknown id says so, exit 0 (no crash)", async () => {
@@ -136,8 +137,8 @@ test("--compact overrides the saved detailed preference for this render only", a
   const { out } = await withStdout(() =>
     run(["--workspace", dir, "--all", "--compact"], { runner: noAgentop, stdout: { isTTY: false }, env: {} }),
   );
-  // compact drops the BRANCH column
-  expect(out).not.toContain("BRANCH");
+  // compact drops the one wide free-text column
+  expect(out).not.toContain("DESCRIÇÃO");
   // the brain on disk is untouched (still says detailed) — override is per-render
   const brainNow = await Bun.file(join(dir, ".aipe", "brain.yaml")).text();
   expect(brainNow).toContain("format: detailed");
