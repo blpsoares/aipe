@@ -30,6 +30,15 @@ export interface PromptInput {
   // same unit, framed as context, never as the current order. Empty string ⇒
   // no history to show (a fresh unit).
   history: string;
+  // R3 — the workspace-relative path to this unit's APPROVED Task Spec, or null
+  // when the unit is not routed to the full SDD flow (nothing to point at).
+  //
+  // The path travels, never the content, and that is the design, not a saving:
+  // a prompt is composed once at dispatch and then frozen, so a spec amended
+  // afterwards never reaches the specialist who was already sent — issue #98,
+  // and the incident where a spec went to v3 after dispatch and the specialist
+  // worked from v2. A file read at work time cannot go stale that way.
+  taskSpecPath: string | null;
 }
 
 export function composePrompt(input: PromptInput): string {
@@ -52,6 +61,19 @@ export function composePrompt(input: PromptInput): string {
   // no way to infer on its own from the ledger alone.
   const dispatchLine = `This dispatch: task ${input.task ?? "(unit-level)"} · spec version v${input.specVersion}.`;
   parts.push(`# Your assignment (${input.fqid})\n\n${dispatchLine}\n\n${input.specSlice.trim()}`);
+  if (input.taskSpecPath) {
+    parts.push(
+      [
+        "# Your Task Spec (approved before this dispatch)",
+        "",
+        `**Read \`${input.taskSpecPath}\` in the workspace (\`${input.workspace}\`) before writing any code.** It is the approved specification for this unit: the objective, the acceptance criteria, and the exact tests the QA will run against your work.`,
+        "",
+        "It is deliberately NOT copied into this prompt. This prompt was frozen when you were dispatched; the file is read when you read it, so an amendment reaches you and a stale copy cannot.",
+        "",
+        "You did not write it and you must not rewrite it to match what you built. If it is ambiguous, not implementable, or contradicted by the code, **refuse it**: record `blocked` with the reason, and stop. Sending it back is a legitimate outcome — silently reinterpreting it is not.",
+      ].join("\n"),
+    );
+  }
   if (input.history) parts.push(input.history);
 
   // Every step below is phrased as an outcome or as an `aipe` subcommand, never

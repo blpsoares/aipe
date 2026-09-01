@@ -6,7 +6,8 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
-import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney, type SddArtifactResolver, type SddRouter } from "./ledger";
+import { recordDispatchGuarded, readLedger, setJourneySpec, setJourneyTaskSpec, startJourney, type SddArtifactResolver, type SddRouter } from "./ledger";
+import { hashTaskSpecContent, renderTaskSpecTemplate, taskSpecRelPath, validateTaskSpec } from "./task-spec";
 import { resolveSddArtifactsGit } from "./sdd-artifacts";
 import { readToolbox } from "../toolbox/catalog";
 import { routeSddForGate } from "../toolbox/routing";
@@ -725,6 +726,128 @@ async function reapCommand(args: string[], deps: JourneyDeps = {}): Promise<numb
   return 0;
 }
 
+// The per-unit TASK SPEC (layer 2): scaffold → the spec writer fills it → the PE
+// checks and approves → only then may the unit be dispatched.
+//
+// It mirrors specCommand deliberately, including the rule that cost the most to
+// learn: every gate ESTABLISHES the artifact before trusting the ledger record.
+// A record saying `approved: true` over a file that is gone, blank, or edited
+// since is not approval — it is a stale claim, and this is the layer whose whole
+// purpose is that a human actually read the thing.
+async function taskSpecCommand(args: string[]): Promise<number> {
+  const workspace = getFlag(args, "--workspace") ?? process.cwd();
+  const id = getFlag(args, "--journey");
+  const unit = getFlag(args, "--unit");
+  if (!id || !unit) {
+    console.log("ERROR args: --journey <id> and --unit <fqid> are required");
+    return 1;
+  }
+  const relPath = taskSpecRelPath(id, unit);
+  const absPath = join(workspace, relPath);
+
+  // Reports what is wrong in the CALLER'S terms, each class named as itself. The
+  // measured trap: a single "replace every placeholder" line printed when what
+  // was actually absent was a required SECTION, sending the operator hunting for
+  // chevrons that did not exist. Missing sections, leftover placeholders,
+  // mechanism-shaped criteria and untested criteria are four different problems
+  // and each gets its own line.
+  const report = (check: ReturnType<typeof validateTaskSpec>): void => {
+    for (const sec of check.missingSections) console.log(`REJECT missing-section ${sec}`);
+    for (const p of check.placeholders) console.log(`REJECT placeholder ${p}`);
+    if (check.noAcceptance) console.log("REJECT no-acceptance — the Acceptance section has no items; a heading is not a criterion");
+    for (const m of check.mechanismOnly) {
+      console.log(`REJECT mechanism-only ${m.label} — names ${m.missing.join(" and ")}. Acceptance states what someone DOES and what they OBSERVE; a criterion with no observable effect is a mechanism, and a QA can only transcribe it.`);
+    }
+    for (const u of check.untestedItems) {
+      console.log(`REJECT untested-criterion ${u} — no entry under "Tests the QA runs". Every criterion carries the test the QA will execute, agreed before the code, so the QA never invents its own.`);
+    }
+  };
+
+  if (args.includes("--scaffold")) {
+    await mkdir(dirname(absPath), { recursive: true });
+    try {
+      await readFile(absPath, "utf8");
+      console.log(`OK exists ${relPath} (left untouched)`);
+      return 0;
+    } catch {
+      await writeFile(absPath, renderTaskSpecTemplate(id, unit), "utf8");
+    }
+    await setJourneyTaskSpec(workspace, id, unit, { path: relPath, version: 1, approved: false });
+    console.log(`OK scaffolded ${relPath}`);
+    return 0;
+  }
+
+  if (args.includes("--check")) {
+    let md: string;
+    try {
+      md = await readFile(absPath, "utf8");
+    } catch {
+      console.log(`REJECT missing-file ${relPath} — no Task Spec for ${unit}; scaffold it first`);
+      return 1;
+    }
+    const check = validateTaskSpec(md);
+    if (!check.ok) {
+      report(check);
+      return 1;
+    }
+    console.log(`OK checkable ${relPath}`);
+    return 0;
+  }
+
+  if (args.includes("--approve")) {
+    let md: string;
+    try {
+      md = await readFile(absPath, "utf8");
+    } catch {
+      console.log(`REJECT missing-file ${relPath} — nothing to approve`);
+      return 1;
+    }
+    if (md.trim() === "") {
+      console.log(`REJECT empty-file ${relPath} — the Task Spec is blank; fill it before approving`);
+      return 1;
+    }
+    const check = validateTaskSpec(md);
+    if (!check.ok) {
+      report(check);
+      console.log(`REJECT not-approvable ${relPath}`);
+      return 1;
+    }
+    const ledger = await readLedger(workspace, id);
+    const prior = ledger?.taskSpecs?.[unit];
+    await setJourneyTaskSpec(workspace, id, unit, {
+      path: relPath,
+      version: prior?.version ?? 1,
+      approved: true,
+      contentHash: hashTaskSpecContent(md),
+    });
+    console.log(`OK approved journey=${id} unit=${unit} task-spec=v${prior?.version ?? 1}`);
+    return 0;
+  }
+
+  // default: --show
+  const ledger = await readLedger(workspace, id);
+  const rec = ledger?.taskSpecs?.[unit];
+  if (!rec) {
+    console.log(`STATE task-spec journey=${id} unit=${unit} none`);
+    return 0;
+  }
+  let approved = rec.approved;
+  let note = "";
+  // Never parrot the record over a file that is gone or has changed since.
+  try {
+    const md = await readFile(join(workspace, rec.path), "utf8");
+    if (rec.contentHash !== undefined && rec.contentHash !== hashTaskSpecContent(md)) {
+      approved = false;
+      note = " (file changed since approval — needs re-approval)";
+    }
+  } catch {
+    approved = false;
+    note = " (file is missing)";
+  }
+  console.log(`STATE task-spec journey=${id} unit=${unit} v${rec.version} approved=${approved}${note}`);
+  return 0;
+}
+
 export async function run(args: string[], deps: JourneyDeps = {}): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -736,6 +859,8 @@ export async function run(args: string[], deps: JourneyDeps = {}): Promise<numbe
       return showCommand(rest, deps);
     case "spec":
       return specCommand(rest);
+    case "task-spec":
+      return taskSpecCommand(rest);
     case "reconcile":
       return reconcileCommand(rest);
     case "dedupe":
@@ -746,7 +871,7 @@ export async function run(args: string[], deps: JourneyDeps = {}): Promise<numbe
       return reapCommand(rest, deps);
     default:
       console.log(`ERROR command: unknown journey command "${sub ?? ""}"`);
-      console.log("Usage: aipe journey <start|record|show|spec|reconcile|dedupe|verify|reap> [options]");
+      console.log("Usage: aipe journey <start|record|show|spec|task-spec|reconcile|dedupe|verify|reap> [options]");
       return 1;
   }
 }

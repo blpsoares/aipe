@@ -7,6 +7,9 @@ import { repoDir } from "../context-brain/layout";
 import { readBrain } from "../make-workspace/read";
 import { readLedger, recordDispatch, setJourneySpec } from "../journey/ledger";
 import { hashOrientationContent } from "../journey/spec";
+import { hashTaskSpecContent } from "../journey/task-spec";
+import { readToolbox } from "../toolbox/catalog";
+import { routeSddForGate } from "../toolbox/routing";
 import type { JourneyDispatch } from "../journey/types";
 import { getAdapter, hasAdapter, resolveAdapter } from "../harness/registry";
 import { isContainable } from "../harness/types";
@@ -520,15 +523,72 @@ export async function dispatchCommand(
   // dispatch that fails partway (persona missing for unit 2 of 3, say) must
   // not leave unit 1's prompt file behind, orphaned, implying a dispatch that
   // never happened. Validate everything first; write only once all reads land.
+  // The SDD route for this workspace, read once: it decides which units owe a
+  // Task Spec at all. Tying the layer-2 requirement to the SAME declared size
+  // that decides SDD rigour keeps it one concept with two enforcement points,
+  // instead of a second, independent rule to remember. A unit declared trivial
+  // (`--size small`, or an explicit `--sdd sdd-lite`) is not asked for one — the
+  // PE's own boundary: "sdd-lite é pra casos ridiculos e simples".
+  const toolbox = await readToolbox(workspace);
+  const owesTaskSpec = (d: JourneyDispatch): boolean => {
+    const declared = d.sddKit;
+    if (declared) return declared === "spec-kit";
+    return routeSddForGate(toolbox, {
+      ...(d.size ? { size: d.size } : {}),
+      ...(d.taskType ? { taskType: d.taskType } : {}),
+    }).kit === "spec-kit";
+  };
+
   const resolved: {
     d: (typeof pending)[number];
     fqid: string;
     personaBody: string;
     agentopHarness: string;
     unitAdapter: HarnessAdapter;
+    taskSpecPath: string | null;
   }[] = [];
   for (const d of pending) {
     const fqid = packageFqid(d.repo, d.package);
+
+    // R3 + R4, layer 2 — the unit's own Task Spec: written by a spec writer,
+    // APPROVED BY THE PE BEFORE ANY CODE, and never authored by the specialist
+    // that implements it. The measured reason: whoever builds decides what
+    // "done" means, and that decision happened after dispatch, so there was no
+    // human gate before the work started. The dev and the QA both looked at
+    // `disableStdin: true`, called it "pre-existing design, not a regression",
+    // and moved on — because no approved document said that TYPING was the
+    // point. The PE reported the same thing five times.
+    //
+    // Establish the ARTEFACT, never the record alone: an `approved: true` over a
+    // file that is missing or has changed since approval is a stale claim, and
+    // this is the one layer whose entire purpose is that a human read the thing.
+    const taskSpecRec = ledger.taskSpecs?.[fqid];
+    let taskSpecPath: string | null = null;
+    if (owesTaskSpec(d)) {
+      const how = `Write it with \`aipe journey task-spec --journey ${opts.journeyId} --unit ${fqid} --scaffold\`, have the PE approve it with \`--approve\`, then dispatch again. Nothing was dispatched.`;
+      if (!taskSpecRec) {
+        lines.push(`ERROR task-spec: ${fqid} is routed to the full spec-kit flow and has no Task Spec. A specialist receives an approved spec; it does not write its own. ${how}`);
+        return { code: 1, lines };
+      }
+      let md: string;
+      try {
+        md = await readFile(join(workspace, taskSpecRec.path), "utf8");
+      } catch {
+        lines.push(`ERROR task-spec: ${fqid} records a Task Spec at ${taskSpecRec.path} but the file is absent — an approval over a missing artefact is not an approval. ${how}`);
+        return { code: 1, lines };
+      }
+      const changed =
+        taskSpecRec.contentHash !== undefined && taskSpecRec.contentHash !== hashTaskSpecContent(md);
+      if (!taskSpecRec.approved || changed) {
+        lines.push(
+          changed
+            ? `ERROR task-spec: ${fqid}'s Task Spec changed after approval — the PE approved different bytes than the ones on disk. Have the PE review the amendment and re-approve with \`aipe journey task-spec --journey ${opts.journeyId} --unit ${fqid} --approve\`. Nothing was dispatched.`
+            : `ERROR task-spec: ${fqid}'s Task Spec is not approved — the PE approves the how, and the tests the QA will run, BEFORE any code. ${how}`,
+        );
+        return { code: 1, lines };
+      }
+      taskSpecPath = taskSpecRec.path;
+    }
 
     // Two namespaces: `d.harness` is the AIPe adapter id the PE approved for
     // this unit ("claude-code", "codex", …) — NOT the name agentop itself
@@ -581,7 +641,7 @@ export async function dispatchCommand(
     const target = adapter.personaTarget(personaSlug(d.specialist));
     try {
       const personaBody = await readFile(join(workspace, repoRelDir(d.repo), target.relDir, target.filename), "utf8");
-      resolved.push({ d, fqid, personaBody, agentopHarness, unitAdapter });
+      resolved.push({ d, fqid, personaBody, agentopHarness, unitAdapter, taskSpecPath });
     } catch {
       lines.push(`ERROR persona: could not read the persona for ${d.specialist}@${d.repo}`);
       return { code: 1, lines };
@@ -611,7 +671,7 @@ export async function dispatchCommand(
 
   await mkdir(promptsDir, { recursive: true });
   const units: BatchUnit[] = [];
-  for (const { d, fqid, personaBody, agentopHarness } of resolved) {
+  for (const { d, fqid, personaBody, agentopHarness, taskSpecPath } of resolved) {
     const prompt = composePrompt({
       personaBody,
       specSlice: specSlice(orientation, fqid),
@@ -624,6 +684,7 @@ export async function dispatchCommand(
       fqid,
       specVersion,
       history: renderUnitHistory(fqid, unitHistoryFor(ledger, d)),
+      taskSpecPath,
       intensity: d.intensity === "ultracode" ? "ultracode" : "normal",
       ...(d.task ? { task: d.task } : {}),
     });

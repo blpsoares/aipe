@@ -50,6 +50,12 @@ export async function readLedger(workspaceDir: string, id: string): Promise<Jour
         dispatches: parsed.dispatches as JourneyDispatch[],
         authorizations,
         ...(parsed.spec && typeof parsed.spec === "object" ? { spec: parsed.spec as JourneySpec } : {}),
+        // The reader is an allowlist too, and both ends drop silently: a field
+        // added to the writer alone round-trips to nothing, with every write
+        // still reporting success. Keep this list and writeLedger's in step.
+        ...(parsed.taskSpecs && typeof parsed.taskSpecs === "object"
+          ? { taskSpecs: parsed.taskSpecs as Record<string, JourneySpec> }
+          : {}),
       };
     }
   } catch {
@@ -68,6 +74,11 @@ export async function writeLedger(workspaceDir: string, ledger: JourneyLedger): 
       dispatches: ledger.dispatches,
       authorizations: ledger.authorizations ?? [],
       ...(ledger.spec ? { spec: ledger.spec } : {}),
+      // The writer is an ALLOWLIST: a field absent here is silently dropped on
+      // every write, however well-typed it is upstream. `taskSpecs` was, and the
+      // scaffold still printed OK — the write reported success for a value that
+      // never reached the file. Any new ledger field must be added here too.
+      ...(ledger.taskSpecs && Object.keys(ledger.taskSpecs).length > 0 ? { taskSpecs: ledger.taskSpecs } : {}),
     }),
     "utf8",
   );
@@ -117,6 +128,20 @@ export async function repairWorktreePaths(
 export async function setJourneySpec(workspaceDir: string, id: string, spec: JourneySpec): Promise<string> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
   return writeLedger(workspaceDir, { ...ledger, spec });
+}
+
+// Records (or replaces) ONE unit's Task Spec on the journey ledger, keyed by
+// fqid. Layered exactly like setJourneySpec — the ledger is the record, the
+// markdown file is the artifact, and every gate establishes the artifact before
+// trusting the record.
+export async function setJourneyTaskSpec(
+  workspaceDir: string,
+  id: string,
+  fqid: string,
+  spec: JourneySpec,
+): Promise<string> {
+  const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
+  return writeLedger(workspaceDir, { ...ledger, taskSpecs: { ...ledger.taskSpecs, [fqid]: spec } });
 }
 
 // Creates the ledger file for a journey if it doesn't exist yet; returns its id.

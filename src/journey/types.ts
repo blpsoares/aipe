@@ -219,5 +219,13 @@ export interface JourneyLedger {
   id: string;
   dispatches: JourneyDispatch[];
   spec?: JourneySpec;
+  // Layer 2 of the spec-writer design: one approved Task Spec PER UNIT, keyed by
+  // the unit's fqid (`repo` or `repo/package`). Keyed on the ledger rather than
+  // stored on each dispatch row because a unit outlives its rows — a redispatch,
+  // a fix loop and the QA all work against the SAME approved spec, and copying
+  // it per row is how two rows would end up disagreeing about what was approved.
+  // Absent ⇒ no Task Spec was ever written for any unit (every journey before
+  // this existed), which reads as "not required", never as "approved".
+  taskSpecs?: Record<string, JourneySpec>;
   authorizations?: JourneyAuthorization[];
 }
