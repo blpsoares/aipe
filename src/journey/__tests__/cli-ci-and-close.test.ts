@@ -58,11 +58,47 @@ function agentop(opts: {
 }
 
 const evArgs = ["--evidence-cmd", "bun test", "--evidence-summary", "all green"];
+
 const dispatchArgs = (dir: string, extra: string[]) => [
   "record", "--workspace", dir, "--journey", "j1",
   "--repo", "aipe", "--specialist", "Jesse", "--branch", "aipe/j1/jesse", "--worktree", "/wt",
   ...extra,
 ];
+
+// A QA verdict judges a DELIVERY, and a merge carries a QA pass for the current
+// round — the ledger refuses both when that history is missing, because a
+// `verified` recorded over nothing delivered, and a `merged` nobody tested, are
+// exactly the holes those gates close. These fixtures used to jump straight from
+// `dispatched`; seeding the real lifecycle leaves every assertion below
+// untouched. The seeds run against an INERT agentop (an empty live list, so
+// nothing is ever killed) — they are setup, and must not spend or pollute the
+// kill log the assertions read.
+// The QA records its verdict on its OWN row (its persona, its task) — the
+// ledger refuses a verification signed by whoever made the delivery. Closing the
+// DEV's session from the QA's record is the intended close-BY-UNIT behaviour,
+// which is what these tests assert.
+const qaArgs = (dir: string, extra: string[]) => [
+  "record", "--workspace", dir, "--journey", "j1",
+  "--repo", "aipe", "--specialist", "Mike", "--branch", "aipe/j1/mike", "--worktree", "/wt-gate",
+  ...extra,
+];
+
+const inertRunner: AgentopRunner = async () => ({ code: 0, stdout: "[]", stderr: "" });
+
+async function seedDelivered(dir: string): Promise<void> {
+  await run(dispatchArgs(dir, ["--status", "delivered", ...evArgs]), { sessionRunner: inertRunner });
+}
+
+// The QA is a DIFFERENT person from the builder — the ledger refuses a
+// verification signed by whoever made the delivery — so the seed records the
+// pass as the unit's QA persona, on its own row, exactly as a real gate does.
+async function seedVerified(dir: string): Promise<void> {
+  await seedDelivered(dir);
+  await run(qaArgs(dir, ["--status", "verified", "--evidence-by", "qa", ...evArgs]), {
+    sessionRunner: inertRunner,
+  });
+}
+
 
 test("record --status delivered with red CI is REJECTed at the CLI", async () => {
   const dir = await ws();
@@ -121,9 +157,10 @@ test("verified on a session-mode unit whose session IS live closes it and says s
   const dir = await ws();
   // seed a session-mode dispatched record carrying a sessionId
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session", "--session-id", "sess-abc"]));
+  await seedDelivered(dir);
   const { runner, kills } = agentop({ live: ["sess-abc"] });
   const { code, output } = await capture(() =>
-    run(dispatchArgs(dir, ["--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs]), {
+    run(qaArgs(dir, ["--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs]), {
       resolveChecks: async () => "green" as CheckVerdict,
       sessionRunner: runner,
     }),
@@ -136,6 +173,7 @@ test("verified on a session-mode unit whose session IS live closes it and says s
 test("merged on a session-mode unit whose session IS live also closes it", async () => {
   const dir = await ws();
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session", "--session-id", "sess-xyz"]));
+  await seedVerified(dir);
   const { runner, kills } = agentop({ live: ["sess-xyz"] });
   const { code, output } = await capture(() =>
     run(dispatchArgs(dir, ["--status", "merged"]), { sessionRunner: runner }),
@@ -185,6 +223,7 @@ test("escalated closes the unit's session too — the PE decides, any continuati
 test("a close against a stale id that reconciles to nothing does NOT claim it was closed, and does not even attempt a guessing kill", async () => {
   const dir = await ws();
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session", "--session-id", "sess-ghost"]));
+  await seedVerified(dir);
   // The exact condition that produced today's false success: the live list has
   // no such session (and none at the unit's worktree), yet `session kill` would
   // exit 0 with agentop's real message. Establish-first means we never call it.
@@ -208,6 +247,7 @@ test("a close against a stale id that reconciles to nothing does NOT claim it wa
 test("when agentop's live list is unreadable, a code-0 kill is reported as could-not-confirm, never CLOSED", async () => {
   const dir = await ws();
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session", "--session-id", "sess-u"]));
+  await seedVerified(dir);
   const { runner } = agentop({ listCode: 1 }); // `session list` fails ⇒ liveness unknown
   const { code, output } = await capture(() =>
     run(dispatchArgs(dir, ["--status", "merged"]), { sessionRunner: runner }),
@@ -220,6 +260,7 @@ test("when agentop's live list is unreadable, a code-0 kill is reported as could
 test("an agentop that throws (binary gone) does not break the record", async () => {
   const dir = await ws();
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session", "--session-id", "sess-1"]));
+  await seedVerified(dir);
   const { runner } = agentop({ throws: true });
   const { code, output } = await capture(() =>
     run(dispatchArgs(dir, ["--status", "merged"]), { sessionRunner: runner }),
@@ -235,9 +276,10 @@ test("a mode:session record with NO sessionId is surfaced as a visible NOTE nami
   // session mode but the sessionId was never recorded — the silence that let two
   // sessions run for hours.
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "session"]));
+  await seedDelivered(dir);
   const { runner, kills } = agentop({});
   const { code, output } = await capture(() =>
-    run(dispatchArgs(dir, ["--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs]), {
+    run(qaArgs(dir, ["--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs]), {
       resolveChecks: async () => "green" as CheckVerdict,
       sessionRunner: runner,
     }),
@@ -252,9 +294,10 @@ test("a mode:session record with NO sessionId is surfaced as a visible NOTE nami
 test("a subagent-mode unit closes nothing on a terminal status", async () => {
   const dir = await ws();
   await run(dispatchArgs(dir, ["--status", "dispatched", "--mode", "subagent"]));
+  await seedDelivered(dir);
   const { runner, kills } = agentop({});
   const { code, output } = await capture(() =>
-    run(dispatchArgs(dir, ["--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs]), {
+    run(qaArgs(dir, ["--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs]), {
       resolveChecks: async () => "green" as CheckVerdict,
       sessionRunner: runner,
     }),
@@ -265,7 +308,15 @@ test("a subagent-mode unit closes nothing on a terminal status", async () => {
   expect(output).not.toContain("no sessionId");
 });
 
-test("a QA verified recorded under ANOTHER task closes the DEV's delivered session on the same unit (close by unit)", async () => {
+// Session CLOSING is by unit; the QA GATE is by task. The two are different
+// questions and this test is about the first: a verdict recorded by a different
+// specialist, in a different worktree, with its own live session, closes the
+// DEV's session too. The QA's row names the DEV'S TASK, because a verdict has to
+// be addressable to the delivery it judges — recording it under a task of its
+// own left it attached to nothing, which is the mis-paired gate this repo's own
+// comments warn about (and which an independent QA showed lets a merge through
+// on a task nobody verified).
+test("a QA verified from a DIFFERENT specialist closes the DEV's delivered session on the same unit (close by unit)", async () => {
   const dir = await ws();
   // Dev is at DELIVERED (self-report, gate pending) under task "impl", session live.
   await run([
@@ -278,23 +329,28 @@ test("a QA verified recorded under ANOTHER task closes the DEV's delivered sessi
     "--branch", "aipe/j1/jesse", "--worktree", "/wt-impl", "--task", "impl",
     "--status", "delivered", "--pr", "http://pr/impl", ...evArgs,
   ], { resolveChecks: async () => "green" as CheckVerdict });
-  // QA is dispatched under a DIFFERENT task "gate" — its own session live too.
+  // QA is dispatched on the SAME task, as its own specialist — its own session live too.
+  // The QA's own dispatch lands on a task that is already `delivered`, so it
+  // needs a --reason like any other dispatch onto finished work. Exempting "a
+  // specialist with no row yet" was tried and let a different dev silently redo
+  // finished work, so the reason is the price and it is a cheap one.
   await run([
     "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Mike",
-    "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "gate",
+    "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "impl",
     "--status", "dispatched", "--mode", "session", "--session-id", "sess-qa",
+    "--reason", "QA gate",
   ]);
   const { runner, kills } = agentop({ live: ["sess-dev", "sess-qa"] });
   const { code, output } = await capture(() =>
     run([
       "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Mike",
-      "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "gate",
+      "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "impl",
       "--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs,
     ], { resolveChecks: async () => "green" as CheckVerdict, sessionRunner: runner }),
   );
   expect(code).toBe(0);
-  // The dev's session (delivered, task "impl") is closed even though the gate
-  // landed on task "gate" — the leak the unit scope fixes.
+  // The dev's session is closed by the QA's write even though they are separate
+  // rows with separate worktrees — closing is by UNIT.
   expect(kills.sort()).toEqual(["sess-dev", "sess-qa"]);
   expect(output).toContain("CLOSED session sess-dev");
 });

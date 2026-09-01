@@ -13,7 +13,7 @@ const base = {
   fqid: "embark",
   intensity: "normal" as const,
   specVersion: 1,
-  history: "",
+  history: "", taskSpecPath: null,
 };
 
 test("the prompt carries persona, spec slice and the return contract", () => {

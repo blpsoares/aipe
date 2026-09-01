@@ -385,7 +385,14 @@ digraph operate {
    wave). A subagent-mode unit needs no model — it binds per unit. Record this
    before moving to step 4a so `plan` has complete envelopes to group into waves.
 
-   Do **not** dispatch until `--show` reports `approved=true`. If an escalation
+   Do **not** dispatch until `--show` reports `approved=true`. This is no longer
+   only an instruction to you: `aipe session dispatch` **refuses** a journey whose
+   Orientation Spec is unapproved, and refuses before writing any prompt or
+   starting any session, so a refused dispatch leaves nothing behind. Editing
+   `orientation.md` after approval counts as unapproved — the edit bumps the
+   version and clears approval, and the PE must review the amendment and approve
+   again. That is the Lawson incident: previously the drift was detected, noted,
+   and dispatched anyway. If an escalation
    later changes the cross-package shape, `--amend` (bumps the version), edit, and
    get re-approval before the next wave.
 
@@ -481,10 +488,72 @@ digraph operate {
    aipe journey record --journey <id> --repo <repo> [--package <pkg>] \
      --specialist <persona> --branch <branch> --worktree <path> \
      --status dispatched --mode session --intensity <normal|ultracode> \
+     --size <small|medium|large> [--task-type <type>] \
      --harness claude-code --workspace <workspace>
 
    aipe session dispatch --journey <id> --workspace <workspace>
    ```
+
+   **Between those two commands, every unit routed to the full flow needs an
+   APPROVED TASK SPEC — `aipe session dispatch` refuses without one.**
+
+   ```bash
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --scaffold
+   # the spec writer fills it in; then:
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --check
+   aipe journey task-spec --journey <id> --unit <fqid> --workspace <ws> --approve   # PE
+   ```
+
+   The specialist does **not** write this. That is the whole point: whoever builds
+   a thing decides what "done" means for it, and before this existed that decision
+   happened *after* dispatch — so nothing a human approved ever said what the work
+   was for. A dev and a QA both read `disableStdin: true`, agreed it was
+   "pre-existing design, not a regression", and shipped, because no approved
+   document said that being able to TYPE was the objective. The PE reported it five
+   times.
+
+   Two things the validator refuses, so write for them:
+   - **Acceptance by CONSEQUENCE, never mechanism.** Each criterion names the
+     **Action** exercised and the **Effect** observed. *"use the `--st-escalated`
+     token"* is refused — it has no observable effect to write down. *"a task in
+     progress is distinguishable from a stopped one — prove it by alternating"* is
+     the shape that works.
+   - **Every criterion carries the test the QA will run**, matched by its label, in
+     `## Tests the QA runs`. The QA executes those; it does not author its own.
+
+   The path travels to the specialist, never the text: the spec is read at work
+   time, so an amendment reaches whoever is already working. Amend it and the PE
+   re-approves — the dispatch refuses a spec edited after approval.
+
+   **Dispatching the QA.** Its record carries the **same `--task` as the delivery**
+   (a verdict is paired with the delivery by `(repo, package, task)`; under a task
+   of its own it gates nothing) and, because the task is already `delivered`, its
+   dispatch needs `--reason "QA gate"` — every dispatch onto finished work says
+   why, which is what stops a different specialist silently redoing it.
+
+   **`--size` is how hard this unit is, and it is the input the SDD route is
+   derived from** — the same router `aipe skill match --task-type <t> --size <s>`
+   prints as `ROUTE sdd=<kit>`, so the two can never disagree. Recording it is
+   what gives the SDD its teeth (#118): when the size routes to `spec-kit`, the
+   ledger REFUSES this unit's later `--status delivered` unless a spec
+   (`specs/**/spec.md`) **and** a plan (`specs/**/plan.md`) are committed in its
+   worktree — exactly as it already refuses a `delivered` with no evidence. The
+   specialist does not have to pass anything: the obligation lives on the ledger,
+   not in a flag someone has to remember at the end.
+
+   **Leaving `--size` off does not buy the floor — it routes to the FULL flow.**
+   Undeclared is not established as trivial, and treating it as trivial is
+   precisely what shipped 7/7 PRs with no spec in one day. If a unit really is
+   trivial, say so on the record (`--size small`, or `--sdd sdd-lite` to name the
+   tier outright) — a signed `--sdd` outranks the derived route, and the claim is
+   kept on the ledger where an audit can see someone made it.
+
+   If `skill match` says `ROUTE sdd=none — spec-kit is NOT installed`, STOP and
+   run `aipe skill preset` (or `aipe rehydrate`): the flow is unreachable, not
+   absent by choice. A workspace with no spec-kit is never gated — AIPe does not
+   demand an artifact from a flow the repo cannot run — so an uninstalled kit
+   silently disables the whole discipline. That is the state #118 removes at
+   onboarding, and the one to never let return.
 
    `aipe session dispatch` composes each specialist's prompt from its persona,
    its slice of the approved spec, and the return contract; writes it to

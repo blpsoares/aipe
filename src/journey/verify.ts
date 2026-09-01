@@ -76,6 +76,89 @@ export function verifyJourney(
   // on graph-node membership made it a permanent false critical.
   const journeyUnits = new Set(byUnit.keys());
 
+  // A unit that reached `merged` with no QA pass for its current round. The
+  // WRITE gate (merge-needs-qa) refuses this, but `journey reconcile` learns the
+  // merge from the FORGE and must record what actually happened — so a PR merged
+  // on GitHub before the QA signed off lands here, stamped, instead of being
+  // silently absorbed. Critical, not a warning: "every finished task is tested"
+  // is the invariant, and this is a unit that broke it.
+  // Grouped by TASK, like the stamp in reconcile.ts and the write gate. Reading
+  // the rounds by UNIT made this message lie: with a sibling task's pass in
+  // scope it reported "reworked after that pass" for a task whose round and pass
+  // were equal — a signal that asserted something it had not established, which
+  // is the defect class this file exists to catch.
+  for (const [, rows] of groupByTask(ledger.dispatches)) {
+    const gapped = rows.filter((d) => d.qaGap);
+    if (gapped.length === 0) continue;
+    const unit = packageFqid(gapped[0]!.repo, gapped[0]!.package);
+    // A retracted pass does not count, exactly as the write gate reads it.
+    const passed = Math.max(0, ...rows.filter((d) => d.status === "verified").map((d) => d.verifiedRound ?? 0));
+    const round = Math.max(1, ...rows.map((d) => d.round ?? 1));
+    const prs = gapped.map((d) => d.pr ?? "?").join(", ");
+    findings.push({
+      severity: "critical",
+      code: "merged-without-qa",
+      unit,
+      detail: passed === 0
+        ? `merged (${prs}) without any standing QA verification — the PR landed on the forge before the gate ran (or its pass was later retracted). Have the QA verify it against its Task Spec now, and treat the merge as unreviewed until then.`
+        : `merged (${prs}) on round ${round}, but the last QA pass was round ${passed} — the code was reworked after that pass and landed without a re-test.`,
+    });
+  }
+
+  // The audit half of the QA closure. The WRITE gate refuses these at record
+  // time, but an independent QA measured that everything the write gate let
+  // through — a self-signed verdict, a verdict with no per-criterion evidence —
+  // audited `clean=true`. An audit that only re-states what the write gate
+  // already blocked audits nothing: it must catch rows ALREADY on the ledger,
+  // including ones written before the gate existed, through a raw write path,
+  // or by an older binary.
+  for (const [, rows] of groupByTask(ledger.dispatches)) {
+    const deliveredBy = new Set(
+      rows.filter((d) => d.status === "delivered").map((d) => d.specialist.toLowerCase()),
+    );
+    for (const d of rows) {
+      if (d.status !== "verified") continue;
+      const unit = packageFqid(d.repo, d.package);
+      if (deliveredBy.has(d.specialist.toLowerCase())) {
+        findings.push({
+          severity: "critical",
+          code: "self-verified",
+          unit,
+          detail: `${d.specialist} verified a delivery ${d.specialist} made — a verification is an independent check, so this unit has not actually been gated. Have the unit's QA persona verify it.`,
+        });
+      }
+      // An approved Task Spec enumerates the criteria; a verdict answering none
+      // of them is the blanket claim this whole design replaces.
+      const spec = ledger.taskSpecs?.[unit];
+      if (spec?.approved && (d.evidence?.items ?? []).length === 0) {
+        findings.push({
+          severity: "critical",
+          code: "verified-without-criteria",
+          unit,
+          detail: `${d.specialist} recorded "verified" with no per-criterion evidence, while this unit has an APPROVED Task Spec whose acceptance criteria name the tests to run. A single summary cannot show which criterion was exercised — re-verify answering each one.`,
+        });
+      }
+    }
+  }
+
+  // The trivial-declaration escape, made visible. Declaring a unit small (or
+  // routing it to the light floor) legitimately switches OFF both the Task Spec
+  // requirement and the per-criterion QA gate. That is a choice someone is
+  // allowed to make — but it is two gates removed by one flag, and nothing
+  // surfaced it. A warning, not a critical: the claim being on the record is the
+  // point; the PE just gets to see who made it.
+  for (const [, rows] of groupByTask(ledger.dispatches)) {
+    const waived = rows.find((d) => d.size === "small" || d.sddKit === "sdd-lite");
+    if (!waived) continue;
+    if (!rows.some((d) => d.status === "delivered" || d.status === "verified" || d.status === "merged")) continue;
+    findings.push({
+      severity: "warning",
+      code: "sdd-waived",
+      unit: packageFqid(waived.repo, waived.package),
+      detail: `declared ${waived.sddKit === "sdd-lite" ? "sdd-lite" : "size small"} by ${waived.specialist}, which skips BOTH the approved Task Spec and the per-criterion QA gate. Legitimate for a genuinely trivial change; check that it was one.`,
+    });
+  }
+
   // Identity-per-task (j-20260826-uv): the QA-gate audits below are per TASK, not
   // per unit. Grouping by unit made a `verified`/`failed` on one task pair with
   // another task's delivery the moment two tasks shared a unit — a mis-paired gate
@@ -293,4 +376,18 @@ export async function auditPrChecks(
   }
 
   return findings.sort((a, b) => a.unit.localeCompare(b.unit));
+}
+
+// Groups rows by the QA gate's identity — repo + package + task — the same key
+// recordDispatchGuarded scopes its gates to. One helper, so an audit and the
+// write gate can never disagree about what "the same piece of work" means.
+function groupByTask(rows: JourneyDispatch[]): Map<string, JourneyDispatch[]> {
+  const out = new Map<string, JourneyDispatch[]>();
+  for (const d of rows) {
+    const key = `${packageFqid(d.repo, d.package)}::${d.task ?? ""}`;
+    const list = out.get(key) ?? [];
+    list.push(d);
+    out.set(key, list);
+  }
+  return out;
 }

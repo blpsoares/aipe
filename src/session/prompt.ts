@@ -30,6 +30,15 @@ export interface PromptInput {
   // same unit, framed as context, never as the current order. Empty string ⇒
   // no history to show (a fresh unit).
   history: string;
+  // R3 — the workspace-relative path to this unit's APPROVED Task Spec, or null
+  // when the unit is not routed to the full SDD flow (nothing to point at).
+  //
+  // The path travels, never the content, and that is the design, not a saving:
+  // a prompt is composed once at dispatch and then frozen, so a spec amended
+  // afterwards never reaches the specialist who was already sent — issue #98,
+  // and the incident where a spec went to v3 after dispatch and the specialist
+  // worked from v2. A file read at work time cannot go stale that way.
+  taskSpecPath: string | null;
 }
 
 export function composePrompt(input: PromptInput): string {
@@ -52,6 +61,19 @@ export function composePrompt(input: PromptInput): string {
   // no way to infer on its own from the ledger alone.
   const dispatchLine = `This dispatch: task ${input.task ?? "(unit-level)"} · spec version v${input.specVersion}.`;
   parts.push(`# Your assignment (${input.fqid})\n\n${dispatchLine}\n\n${input.specSlice.trim()}`);
+  if (input.taskSpecPath) {
+    parts.push(
+      [
+        "# Your Task Spec (approved before this dispatch)",
+        "",
+        `**Read \`${input.taskSpecPath}\` in the workspace (\`${input.workspace}\`) before writing any code.** It is the approved specification for this unit: the objective, the acceptance criteria, and the exact tests the QA will run against your work.`,
+        "",
+        "It is deliberately NOT copied into this prompt. This prompt was frozen when you were dispatched; the file is read when you read it, so an amendment reaches you and a stale copy cannot.",
+        "",
+        "You did not write it and you must not rewrite it to match what you built. If it is ambiguous, not implementable, or contradicted by the code, **refuse it**: record `blocked` with the reason, and stop. Sending it back is a legitimate outcome — silently reinterpreting it is not.",
+      ].join("\n"),
+    );
+  }
   if (input.history) parts.push(input.history);
 
   // Every step below is phrased as an outcome or as an `aipe` subcommand, never
@@ -61,7 +83,8 @@ export function composePrompt(input: PromptInput): string {
       "# How you must work",
       "",
       `- Operate strictly inside ${lane}. Never touch anything outside it.`,
-      "- Check `aipe skill match --task-type <type> --size <size>` first; if an SDD kit matches, derive a short package spec + plan and commit it alongside the code.",
+      "- Check `aipe skill match --task-type <type> --size <size>` first — it prints `ROUTE sdd=<kit>`, the ONE SDD tier this task falls under.",
+      "- If that route is `spec-kit`, work spec-first and **commit a spec at `specs/<feature>/spec.md` and a plan at `specs/<feature>/plan.md`** alongside the code. This is not advice: your `delivered` is REFUSED by the ledger until both files are committed in this worktree. What is required is those two ARTEFACTS — drive them with whatever your harness gives you (the repo carries Spec Kit's templates under `.specify/`, and some harnesses expose them as commands).",
       "- Work test-first.",
       "- Verify before claiming done, and gather the evidence: the commands you ran and what their output showed.",
       `- Push \`${input.branch}\` and open a PR.`,
@@ -93,6 +116,8 @@ export function composePrompt(input: PromptInput): string {
       "```",
       "",
       "A `delivered` without evidence is REJECTed by the ledger — that is deliberate.",
+      "",
+      "A `delivered` is ALSO REJECTed when this unit is routed to the full `spec-kit` flow and its worktree carries no committed spec (`specs/**/spec.md`) and plan (`specs/**/plan.md`). You do not pass a flag for this — the route was decided when the unit was dispatched and it is already on the ledger. If you believe this task is too trivial for the full flow, do NOT work around the gate: record yourself `blocked` and say so, so the decision is made on the record instead of by whoever was typing.",
       "",
       "A `delivered`/`verified` that names a `--pr` is ALSO REJECTed unless that PR's CI is green. Red is refused; **still running is refused too** — wait for the workflow to finish, do not record on a pending run and do not read \"pending\" as \"probably fine\". Only if the repo has NO CI configured at all, record with `--ci-none` (the claim lands on the ledger for audit) — never reach for `--ci-none` to get past a red or unfinished workflow.",
       "",
