@@ -43,6 +43,7 @@ const unit = (over: Partial<UnitRow>): UnitRow => ({
   title: null,
   description: null,
   at: null,
+  round: null,
   ...over,
 });
 

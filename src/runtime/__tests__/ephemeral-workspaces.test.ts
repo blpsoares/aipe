@@ -31,3 +31,22 @@ test("the rule is a PATH rule, not a guess about content", () => {
   // Ephemerality is decided by WHERE the path is, which is a fact.
   expect(isEphemeralWorkspace("/tmp/does-not-exist-at-all")).toBe(true);
 });
+
+test("the real temp roots are covered, not just the literal /tmp", () => {
+  // An independent QA found the rule was a `/tmp/` prefix test, so on macOS —
+  // where `os.tmpdir()` is `/var/folders/…/T/` and `/tmp` is a symlink to
+  // `/private/tmp` — the measured "49 of 50 entries throwaway" problem would
+  // recur unchanged, because AIPe's own mkdtemp fixtures live exactly there.
+  expect(isEphemeralWorkspace("/var/tmp/aipe-fixture/ws")).toBe(true);
+  expect(isEphemeralWorkspace("/private/tmp/aipe-fixture/ws")).toBe(true);
+  expect(isEphemeralWorkspace("/private/var/tmp/aipe-fixture/ws")).toBe(true);
+  expect(isEphemeralWorkspace("/var/folders/2k/xyz/T/aipe-abc/ws")).toBe(true);
+
+  // …and nothing that merely LOOKS like one is dropped. A real workspace lost
+  // from the registry is worse than a fixture kept: the upgrade would stop
+  // reaching somewhere work actually happens.
+  expect(isEphemeralWorkspace("/home/u/var/tmpish/ws")).toBe(false);
+  expect(isEphemeralWorkspace("/varsity/tmp-ws")).toBe(false);
+  expect(isEphemeralWorkspace("/home/u/private/tmp-notes")).toBe(false);
+  expect(isEphemeralWorkspace("/home/u/folders/T/ws")).toBe(false);
+});

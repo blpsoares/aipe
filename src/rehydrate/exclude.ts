@@ -34,10 +34,30 @@ async function isGitRepo(repoAbs: string): Promise<boolean> {
  * that is a git checkout. Returns the repos actually excluded. Best-effort and
  * idempotent: a missing/unclonable repo is skipped, a second run is a no-op.
  */
-export async function ensureReposExcludeClaude(workspaceDir: string): Promise<string[]> {
+export interface ExcludeFailure {
+  repo: string;
+  reason: string;
+}
+
+export interface ExcludeResult {
+  excluded: string[];
+  failed: ExcludeFailure[];
+  /**
+   * Repos where `.claude/` is ALREADY TRACKED by git. `.git/info/exclude` has no
+   * power over a tracked path, so in these AIPe is writing into files under
+   * version control — an independent QA watched hiring leave
+   * ` M .claude/settings.json` in a target repo. Reported, never silently
+   * "handled": whether that is acceptable is the repo owner's call, not ours.
+   */
+  tracked: string[];
+}
+
+export async function ensureReposExcludeClaude(workspaceDir: string): Promise<ExcludeResult> {
   const brain = await readBrain(workspaceDir).catch(() => null);
-  if (!brain || !brain.ok) return [];
+  if (!brain || !brain.ok) return { excluded: [], failed: [], tracked: [] };
   const excluded: string[] = [];
+  const failed: ExcludeFailure[] = [];
+  const tracked: string[] = [];
   for (const repo of brain.brain.repos) {
     const repoAbs = resolve(workspaceDir, repo.path);
     if (!(await isGitRepo(repoAbs))) continue;
@@ -45,9 +65,20 @@ export async function ensureReposExcludeClaude(workspaceDir: string): Promise<st
       await ensureExcluded(repoAbs, CLAUDE_EXCLUDE);
       await ensureExcluded(repoAbs, SPECIFY_EXCLUDE);
       excluded.push(repoAbs);
-    } catch {
-      // best-effort — never fail rehydrate over a single repo's exclude file
+    } catch (err) {
+      // Best-effort for REHYDRATE — a single unwritable exclude file must not
+      // fail an upgrade. But it is NOT best-effort for what it protects: an
+      // independent QA made `.git/info` read-only, watched the write throw, and
+      // saw hiring report `STATE specialists=done` over a repo left with an
+      // untracked `.claude/` — the exact state the exclusion exists to prevent,
+      // announced as success. The failure is now returned to the caller, which
+      // decides whether it can proceed quietly.
+      failed.push({ repo: repoAbs, reason: err instanceof Error ? err.message : String(err) });
     }
+    // Does git already track anything under `.claude/`? Then the exclusion is
+    // inert for those paths and AIPe is about to write into version control.
+    const ls = await git(["git", "-C", repoAbs, "ls-files", "--", ".claude"]);
+    if (ls.code === 0 && ls.stdout.trim() !== "") tracked.push(repoAbs);
   }
-  return excluded;
+  return { excluded, failed, tracked };
 }

@@ -31,7 +31,18 @@ async function writePersonaFiles(
   // Same shape as every defect this repo has been paying for: the protection
   // existed and was not on the path. It is idempotent, so rehydrate calling it
   // again is free.
-  await ensureReposExcludeClaude(workspaceDir);
+  const ex = await ensureReposExcludeClaude(workspaceDir);
+  // Hiring writes personas into repos. If the exclusion could not be installed,
+  // or `.claude/` is already tracked there, this command is about to leave
+  // version-controlled changes in someone's repository — and reporting
+  // `STATE specialists=done` over that is a signal asserting what it did not
+  // establish. Say which repo and why; the operator decides.
+  for (const f of ex.failed) {
+    console.log(`WARN exclude ${f.repo} — could not write .git/info/exclude (${f.reason}); the personas written below WILL be visible to git there`);
+  }
+  for (const t of ex.tracked) {
+    console.log(`WARN tracked ${t} — this repo already TRACKS files under .claude/; excluding cannot hide them and AIPe is writing into version control here`);
+  }
   const adapter = await resolveAdapter(workspaceDir);
   for (const report of reports) {
     const repo = brain.repos.find((r) => r.name === report.repo);

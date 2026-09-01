@@ -17,6 +17,15 @@ function validateRepo(repo: unknown, index: number): string | null {
   if (!isNonEmptyString(r.name)) return `repos[${index}].name: required`;
   if (!isNonEmptyString(r.url)) return `repos[${index}].url: required`;
   if (!isNonEmptyString(r.path)) return `repos[${index}].path: required`;
+  // `stack` is consumed as a list (`stack.join(...)` when rendering a persona).
+  // It was unvalidated, so a scalar `stack: typescript` passed `readBrain`,
+  // worked for `status` and `skill preset`, and killed HIRING with
+  // `TypeError: stack.join is not a function` — after the exclude was written
+  // and before a single persona was installed, leaving the hire half-done. A
+  // brain the reader accepts must be a brain every consumer can use.
+  if (r.stack !== undefined && !Array.isArray(r.stack)) {
+    return `repos[${index}].stack: expected array (a single value must still be a list, e.g. [TypeScript])`;
+  }
   if (r.packages !== undefined) {
     if (!Array.isArray(r.packages)) return `repos[${index}].packages: expected array`;
     const seen = new Set<string>();

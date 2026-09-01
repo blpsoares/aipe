@@ -64,6 +64,11 @@ export interface UnitRow {
   title: string | null;
   description: string | null;
   at: string | null; // ISO-8601 of the last write to this row
+  // The fix-loop round this row is on (ledger-managed). The table needs it to
+  // know whether a `failed` verdict still speaks for the task or was superseded
+  // by a re-delivery — a rejection is a verdict ON a delivery, not a state
+  // "behind" it.
+  round: number | null;
 }
 
 export interface JourneyRow {

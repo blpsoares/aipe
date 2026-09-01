@@ -87,6 +87,7 @@ function unitRow(
     title: d.title ?? null,
     description: d.description ?? null,
     at: d.at ?? null,
+    round: d.round ?? null,
     harness: d.harness ?? null,
     model: d.model ?? null,
     tier: d.tier ?? null,
