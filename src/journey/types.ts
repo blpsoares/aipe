@@ -182,6 +182,15 @@ export interface JourneyDispatch {
   // `round` ⇒ the current work has been QA-tested. Less than `round` ⇒ the unit
   // was reworked after its last pass and owes a RE-TEST. Absent ⇒ never verified.
   verifiedRound?: number;
+  // Stamped when a unit reached `merged` WITHOUT a QA pass for its current round.
+  // The forge is the authority on whether a PR merged, so `aipe journey
+  // reconcile` must record that truth even when the QA never signed off —
+  // rewriting the status to something friendlier would make the ledger lie about
+  // the world. What it must NOT do is let the gap pass unremarked, so it is
+  // marked here and `journey verify` fails on it. The gate on the WRITE path
+  // (merge-needs-qa) prevents the gap; this records the ones that got in through
+  // the forge anyway.
+  qaGap?: true;
   // Model-policy audit (optional; absent on legacy ledgers): the tier the
   // coordinator assigned and the concrete model the specialist ran on.
   tier?: string;

@@ -3,6 +3,7 @@
 // pure — the PR-state fetcher is injected so tests can run without gh/network;
 // the CLI wires in the real `gh` via ghPrState.
 import { listJourneys, readLedger, writeLedger } from "./ledger";
+import type { JourneyDispatch } from "./types";
 import { dedupeLedger } from "./dedupe";
 import { parsePrUrl } from "../forge/slug";
 import { readPersonas } from "../hire-specialists/read-personas";
@@ -58,12 +59,33 @@ export async function reconcileJourney(
 
   // Mark merges on the (cleaned) rows in memory, then write the whole ledger once.
   const dispatches = dd.ledger.dispatches.map((d) => ({ ...d }));
+
+  // A unit's QA standing, by unit rather than by row: the dev delivers on its
+  // own row and the QA records its verdict on a separate one, so both the round
+  // reached and the round passed are a MAX across the unit's rows.
+  const unitKey = (d: JourneyDispatch): string => `${d.repo}\u0000${d.package ?? ""}`;
+  const roundBy = new Map<string, number>();
+  const passedBy = new Map<string, number>();
+  for (const d of dispatches) {
+    const k = unitKey(d);
+    roundBy.set(k, Math.max(roundBy.get(k) ?? 1, d.round ?? 1));
+    passedBy.set(k, Math.max(passedBy.get(k) ?? 0, d.verifiedRound ?? 0));
+  }
+
   for (const d of dispatches) {
     if (!RECONCILABLE.has(d.status) || !d.pr) continue;
     checked++;
     const state = await fetchState(d.pr);
     if (state === "MERGED") {
       d.status = "merged";
+      // The forge merged it; that is a fact and it is recorded as one. But a
+      // merge with no current-round QA pass is the exact thing the write gate
+      // refuses, and reconcile is the path that bypasses that gate — so the gap
+      // is STAMPED rather than absorbed. `journey verify` fails on it, which is
+      // what keeps "every finished task is tested" from being quietly true only
+      // on the paths that happen to go through the CLI.
+      const k = unitKey(d);
+      if ((passedBy.get(k) ?? 0) < (roundBy.get(k) ?? 1)) d.qaGap = true;
       merged.push(d.pr);
     }
   }

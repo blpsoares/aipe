@@ -76,6 +76,27 @@ export function verifyJourney(
   // on graph-node membership made it a permanent false critical.
   const journeyUnits = new Set(byUnit.keys());
 
+  // A unit that reached `merged` with no QA pass for its current round. The
+  // WRITE gate (merge-needs-qa) refuses this, but `journey reconcile` learns the
+  // merge from the FORGE and must record what actually happened — so a PR merged
+  // on GitHub before the QA signed off lands here, stamped, instead of being
+  // silently absorbed. Critical, not a warning: "every finished task is tested"
+  // is the invariant, and this is a unit that broke it.
+  for (const [unit, rows] of byUnit) {
+    const gapped = rows.filter((d) => d.qaGap);
+    if (gapped.length === 0) continue;
+    const passed = Math.max(0, ...rows.map((d) => d.verifiedRound ?? 0));
+    const round = Math.max(1, ...rows.map((d) => d.round ?? 1));
+    findings.push({
+      severity: "critical",
+      code: "merged-without-qa",
+      unit,
+      detail: passed === 0
+        ? `merged (${gapped.map((d) => d.pr ?? "?").join(", ")}) without any QA verification — the PR landed on the forge before the gate ran. Have the QA verify it against its Task Spec now, and treat the merge as unreviewed until then.`
+        : `merged (${gapped.map((d) => d.pr ?? "?").join(", ")}) on round ${round}, but the last QA pass was round ${passed} — the code was reworked after that pass and landed without a re-test.`,
+    });
+  }
+
   // Identity-per-task (j-20260826-uv): the QA-gate audits below are per TASK, not
   // per unit. Grouping by unit made a `verified`/`failed` on one task pair with
   // another task's delivery the moment two tasks shared a unit — a mis-paired gate
