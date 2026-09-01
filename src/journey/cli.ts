@@ -769,7 +769,7 @@ async function taskSpecCommand(args: string[]): Promise<number> {
     for (const p of check.placeholders) console.log(`REJECT placeholder ${p}`);
     if (check.noAcceptance) console.log("REJECT no-acceptance — the Acceptance section has no items; a heading is not a criterion");
     for (const m of check.mechanismOnly) {
-      console.log(`REJECT mechanism-only ${m.label} — names ${m.missing.join(" and ")}. Acceptance states what someone DOES and what they OBSERVE; a criterion with no observable effect is a mechanism, and a QA can only transcribe it.`);
+      console.log(`REJECT mechanism-only ${m.label} — is missing ${m.missing.join(" and ")}. Acceptance states what someone DOES and what they OBSERVE; a criterion with no observable effect is a mechanism, and a QA can only transcribe it.`);
     }
     for (const u of check.untestedItems) {
       console.log(`REJECT untested-criterion ${u} — no entry under "Tests the QA runs". Every criterion carries the test the QA will execute, agreed before the code, so the QA never invents its own.`);
@@ -945,13 +945,22 @@ function approvedAcceptanceResolver(workspace: string, journeyId: string): Accep
     const ledger = await readLedger(workspace, journeyId);
     const fqid = unit.package ? `${unit.repo}/${unit.package}` : unit.repo;
     const rec = ledger?.taskSpecs?.[fqid];
-    if (!rec?.approved) return null;
+    // Never written ⇒ nothing enumerated. This is the ONLY skip.
+    if (!rec) return { kind: "none" };
+    // Recorded but never approved: the criteria exist and a human has not signed
+    // them, which is not the same as no criteria at all — and it is not a state a
+    // verdict should slip through, since the dispatch gate would have refused it.
+    if (!rec.approved) {
+      return { kind: "unestablished", why: `its Task Spec (${rec.path}) is not approved` };
+    }
     try {
       const md = await readFile(join(workspace, rec.path), "utf8");
-      if (rec.contentHash !== undefined && rec.contentHash !== hashTaskSpecContent(md)) return null;
-      return parseAcceptanceItems(md).map((i) => i.label);
+      if (rec.contentHash !== undefined && rec.contentHash !== hashTaskSpecContent(md)) {
+        return { kind: "unestablished", why: `${rec.path} changed after it was approved` };
+      }
+      return { kind: "criteria", labels: parseAcceptanceItems(md).map((i) => i.label) };
     } catch {
-      return null;
+      return { kind: "unestablished", why: `${rec.path} is recorded as approved but cannot be read` };
     }
   };
 }

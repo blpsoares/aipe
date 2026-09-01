@@ -308,7 +308,21 @@ export type SddRouter = (task: { size?: TaskSize; taskType?: string }) => string
 // Spec, which is "nothing enumerated to cover", never "covered". Injected like
 // the resolvers above so the ledger layer never reads the filesystem itself and
 // a resolver-less caller keeps the gate inert rather than inventing a verdict.
-export type AcceptanceResolver = (unit: { repo: string; package?: string }) => Promise<string[] | null>;
+export type AcceptanceCriteria =
+  // No Task Spec was ever written for this unit: nothing is enumerated, so there
+  // is nothing to cover. The only state that legitimately skips the item gate.
+  | { kind: "none" }
+  // The criteria a QA verdict must answer, from an APPROVED, unchanged Task Spec.
+  | { kind: "criteria"; labels: string[] }
+  // A Task Spec EXISTS but its criteria cannot be established right now — it was
+  // edited after approval, deleted, or is unreadable. This must be its own state,
+  // and it must REFUSE. Collapsing it into "none" is what an independent QA
+  // exploited: deleting the approved Task Spec turned the item-by-item gate off
+  // and the write reported success. The one artefact whose purpose is that a
+  // human read it must not be disableable by removing it.
+  | { kind: "unestablished"; why: string };
+
+export type AcceptanceResolver = (unit: { repo: string; package?: string }) => Promise<AcceptanceCriteria>;
 
 // The SDD kit whose delivery gate has teeth. Kept in lockstep with
 // routing.ts FULL_SDD_KIT — only the full flow carries the committed-artifact
@@ -374,15 +388,31 @@ export async function recordDispatchGuarded(
   // rule about "was this delivered / has the QA passed it" is scoped to the
   // UNIT, never to the row doing the writing — a row-scoped check would ask the
   // QA's own row whether it had delivered anything, which it never does.
-  const unitRows = ledger.dispatches.filter(
-    (d) => d.repo === dispatch.repo && (d.package ?? null) === pkg,
+  // Scoped by TASK (repo + package + task), the same key `journey verify` groups
+  // its QA audit by. Unit scope was wrong and an independent QA proved it: with
+  // two tasks on one unit, a pass recorded on task A cleared a merge on task B
+  // that nobody had delivered or verified — this repo's own comment for the
+  // identical bug calls it "a mis-paired gate that reports safety that is not
+  // there". A dev and its QA share the task and differ by SPECIALIST, which is
+  // exactly what the documented flow records.
+  const gateRows = ledger.dispatches.filter(
+    (d) => d.repo === dispatch.repo && (d.package ?? null) === pkg && (d.task ?? null) === (dispatch.task ?? null),
   );
-  // The unit's fix-loop round is the furthest any of its rows has got, and its
-  // QA standing is the furthest round any row has passed. Reading both as a MAX
-  // is what lets the dev's redispatch (which bumps the round on the dev's row)
-  // invalidate a pass recorded on the QA's row.
-  const unitRound = Math.max(1, ...unitRows.map((d) => d.round ?? 1));
-  const unitVerifiedRound = Math.max(0, ...unitRows.map((d) => d.verifiedRound ?? 0));
+  // The fix-loop round is the furthest any row in this task-group has got, and
+  // the QA standing is the furthest round any of them has PASSED. Reading both
+  // as a MAX is what lets the dev's redispatch invalidate the QA's older pass.
+  const gateRound = Math.max(1, ...gateRows.map((d) => d.round ?? 1));
+  const gateVerifiedRound = Math.max(0, ...gateRows.map((d) => d.verifiedRound ?? 0));
+
+  // The row this write will actually upsert onto — same identity recordDispatch
+  // matches by. The round MUST be read from here and never from `current`:
+  // `current` is the highest-RANKED row of the task group, so after a QA pass it
+  // is the QA's `verified` row, and copying its round onto the dev's re-delivery
+  // silently reset round 2 back to 1 — which made the whole "re-test after a fix"
+  // rule vanish in the documented flow (where the QA records no separate task).
+  const selfRow = gateRows.find(
+    (d) => d.specialist.toLowerCase() === dispatch.specialist.toLowerCase(),
+  );
 
   // 1 — verify-before-done: claiming done requires attached evidence. A command
   // that is empty or whitespace is not a command run — so proof needs at least
@@ -466,7 +496,7 @@ export async function recordDispatchGuarded(
   // (i) A verdict needs something to judge. `verified` on a unit that is not
   // currently `delivered` is a pass issued over nothing — the shape that lets a
   // journey show green without a delivery ever having been examined.
-  if (dispatch.status === "verified" && !unitRows.some((d) => d.status === "delivered")) {
+  if (dispatch.status === "verified" && !gateRows.some((d) => d.status === "delivered")) {
     return {
       ok: false,
       code: "verify-needs-delivery",
@@ -493,10 +523,14 @@ export async function recordDispatchGuarded(
     // reviews. Measured: a dev and a QA both read `disableStdin: true`, agreed it
     // was "pre-existing design, not a regression", and shipped — and that was
     // with two people. One person wearing both hats has no second look at all.
-    const deliveredBy = unitRows
+    // `some`, never `every`: an independent QA proved that `every` evaporated the
+    // moment a SECOND specialist also delivered on the unit — the builder could
+    // then sign off on their own delivery. If you delivered anything here, you
+    // are a builder of it, and you do not get to be its independent check.
+    const deliveredBy = gateRows
       .filter((d) => d.status === "delivered")
       .map((d) => d.specialist.toLowerCase());
-    if (deliveredBy.length > 0 && deliveredBy.every((who) => who === dispatch.specialist.toLowerCase())) {
+    if (deliveredBy.some((who) => who === dispatch.specialist.toLowerCase())) {
       return {
         ok: false,
         code: "verify-needs-qa",
@@ -512,8 +546,16 @@ export async function recordDispatchGuarded(
   // never anyone's test. A blanket summary hides an untested criterion inside an
   // average; answering each label makes the hole visible and REFUSES it.
   if (dispatch.status === "verified" && opts.resolveAcceptance) {
-    const labels = await opts.resolveAcceptance({ repo: dispatch.repo, ...(pkg ? { package: pkg } : {}) });
-    if (labels && labels.length > 0) {
+    const criteria = await opts.resolveAcceptance({ repo: dispatch.repo, ...(pkg ? { package: pkg } : {}) });
+    if (criteria.kind === "unestablished") {
+      return {
+        ok: false,
+        code: "verification-incomplete",
+        message: `unit ${unitName} has a Task Spec whose criteria cannot be established — ${criteria.why}. A verification is judged against the criteria the PE approved, so an approved spec that has since been edited or removed does not lower the bar to nothing: restore it, or have the PE re-approve the amendment, then record the verdict.`,
+      };
+    }
+    const labels = criteria.kind === "criteria" ? criteria.labels : [];
+    if (labels.length > 0) {
       const covered = new Set(realVerifiedItems(dispatch.evidence).map((i) => i.label));
       const missing = labels.filter((l) => !covered.has(l));
       if (missing.length > 0) {
@@ -530,13 +572,17 @@ export async function recordDispatchGuarded(
   // round. `verifiedRound < round` means the unit was reworked after its last
   // pass — the fix loop ran and nobody re-tested it. That is exactly the
   // "specialist adjusts → QA re-tests" loop, enforced instead of hoped for.
-  if (dispatch.status === "merged" && unitRows.length > 0 && unitVerifiedRound < unitRound) {
+  // No `gateRows.length > 0` guard: a `merged` recorded straight into a ledger
+  // that carries no delivery and no verdict for this task is the emptiest case of
+  // all, not an exempt one. It used to skip the gate entirely — an independent QA
+  // landed a merge into a fresh ledger in one command.
+  if (dispatch.status === "merged" && gateVerifiedRound < gateRound) {
     return {
       ok: false,
       code: "merge-needs-qa",
-      message: unitVerifiedRound === 0
-        ? `unit ${unitName} is being recorded "merged" but no QA has verified it — every finished task is tested before it lands. Have the QA record \`--status verified --evidence-by qa\` against this unit first.`
-        : `unit ${unitName} is being recorded "merged" but its last QA pass was round ${unitVerifiedRound} and the unit is now on round ${unitRound} — it was reworked after that pass and owes a RE-TEST. A fix does not inherit the approval of the code it replaced.`,
+      message: gateVerifiedRound === 0
+        ? `unit ${unitName} is being recorded "merged" but no QA has verified it — every finished task is tested before it lands. Have the QA record \`--status verified --evidence-by qa\` against this task first (same --task, a different specialist). If the work was tracked in another journey, record its delivery and verdict here too: a merge with no history is a merge nobody can show was tested.`
+        : `unit ${unitName} is being recorded "merged" but its last QA pass was round ${gateVerifiedRound} and it is now on round ${gateRound} — it was reworked after that pass and owes a RE-TEST. A fix does not inherit the approval of the code it replaced.`,
     };
   }
 
@@ -550,7 +596,21 @@ export async function recordDispatchGuarded(
   }
 
   // 3 — no silent re-dispatch: reopening finished work needs a reason.
-  const reopening = dispatch.status === "dispatched" && current && (current.status === "delivered" || current.status === "verified");
+  // Reopening = FINISHED WORK BEING REDONE. Two shapes qualify, and one that
+  // looks similar does not:
+  //   • this specialist already has a row here → their own work is being redone;
+  //   • the task already carries a QA verdict (`verified`) → anyone dispatched
+  //     after a pass is redoing work that had been signed off.
+  // But a specialist with NO row here arriving while the task sits at
+  // `delivered` is not a redo — that is the QA showing up to review it. Treating
+  // that as a re-dispatch refused the QA's own dispatch for want of a `--reason`,
+  // which is why the gate previously "worked" only when the QA was filed under a
+  // task of its own, where its verdict paired with nothing.
+  const reopening =
+    dispatch.status === "dispatched" &&
+    !!current &&
+    (current.status === "delivered" || current.status === "verified") &&
+    (selfRow !== undefined || current.status === "verified");
   if (reopening && !opts.reason?.trim()) {
     return {
       ok: false,
@@ -692,10 +752,10 @@ export async function recordDispatchGuarded(
   // the code changes, and the old pass must not survive that.
   const restarting = reopening || (dispatch.status === "dispatched" && current?.status === "failed");
   const withRound: JourneyDispatch = restarting
-    ? { ...toWrite, round: unitRound + 1 }
+    ? { ...toWrite, round: gateRound + 1 }
     : dispatch.status === "verified"
-      ? { ...toWrite, round: unitRound, verifiedRound: unitRound }
-      : { ...toWrite, round: current?.round ?? unitRound };
+      ? { ...toWrite, round: gateRound, verifiedRound: gateRound }
+      : { ...toWrite, round: selfRow?.round ?? gateRound };
 
   const path = await recordDispatch(workspaceDir, id, withRound);
   return { ok: true, path };

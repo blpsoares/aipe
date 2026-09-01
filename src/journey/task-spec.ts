@@ -118,11 +118,16 @@ export function parseAcceptanceItems(md: string): AcceptanceItem[] {
     if (current === null) return;
     const text = current;
     const label = /\*\*([^*]+)\*\*/.exec(text)?.[1]?.trim() ?? text.trim().slice(0, 40);
-    items.push({
-      label,
-      hasAction: /\bAction:/i.test(text),
-      hasEffect: /\bEffect:/i.test(text),
-    });
+    // The label must be FOLLOWED BY CONTENT, not merely present. An independent
+    // QA approved a spec whose entire acceptance was "use the token `--fast`.
+    // Action: Effect:" — two bare colons satisfied a token test and turned the
+    // one rule this validator exists for into a formality. Require at least a
+    // few real characters before the next marker or the end.
+    const stated = (marker: string): boolean => {
+      const m = new RegExp(`\\b${marker}:\\s*([\\s\\S]*?)(?=\\b(?:Action|Effect):|$)`, "i").exec(text);
+      return (m?.[1] ?? "").replace(/[·\-—*\s]/g, "").length >= 3;
+    };
+    items.push({ label, hasAction: stated("Action"), hasEffect: stated("Effect") });
     current = null;
   };
   for (const line of sectionBody(md, "Acceptance").split("\n")) {

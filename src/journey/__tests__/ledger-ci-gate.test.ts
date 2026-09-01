@@ -145,7 +145,7 @@ test("verified is gated too, not only delivered", async () => {
     "j1",
     // the QA's OWN row — a verification signed by the builder is refused before
     // the CI gate is ever consulted, which would hide the rule under test
-    { ...base, specialist: "Mike", task: "gate", status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "qa passed" } },
+    { ...base, specialist: "Mike", status: "verified", evidence: { by: "qa", commands: ["bun test"], summary: "qa passed" } },
     { resolveChecks: resolver("red") },
   );
   expect(r.ok).toBe(false);

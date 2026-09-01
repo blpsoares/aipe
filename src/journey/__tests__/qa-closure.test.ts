@@ -11,7 +11,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readLedger, recordDispatchGuarded, startJourney } from "../ledger";
+import { readLedger, recordDispatchGuarded, startJourney, type AcceptanceResolver } from "../ledger";
 import type { DispatchEvidence, JourneyDispatch } from "../types";
 
 async function ws(): Promise<string> {
@@ -21,7 +21,12 @@ async function ws(): Promise<string> {
 }
 
 const DEV: JourneyDispatch = { repo: "aipe", specialist: "Jesse", branch: "b", worktree: "/wt", status: "dispatched" };
-const QA: JourneyDispatch = { repo: "aipe", specialist: "Mike", task: "gate", branch: "bq", worktree: "/wq", status: "dispatched" };
+// The QA shares the dev's TASK and differs by SPECIALIST — exactly what the
+// documented flow records (neither operate/SKILL.md nor review-delivery/SKILL.md
+// passes --task on the QA's verdict). An independent QA found that giving the QA
+// its own task here was the ONLY configuration in which the fix-loop rule held,
+// so the fixture was proving a path the docs never tell anyone to take.
+const QA: JourneyDispatch = { repo: "aipe", specialist: "Mike", branch: "bq", worktree: "/wq", status: "dispatched" };
 
 const devEv: DispatchEvidence = { by: "dev", commands: ["bun test"], summary: "42 pass" };
 const qaEv = (items?: DispatchEvidence["items"]): DispatchEvidence => ({
@@ -32,7 +37,7 @@ const qaEv = (items?: DispatchEvidence["items"]): DispatchEvidence => ({
 });
 
 // The two criteria of an approved Task Spec for this unit.
-const acceptance = async () => ["A1", "A2"];
+const acceptance: AcceptanceResolver = async () => ({ kind: "criteria", labels: ["A1", "A2"] });
 
 test("a verified over NOTHING delivered is refused — a verdict judges a delivery", async () => {
   const dir = await ws();
@@ -127,7 +132,7 @@ test("a unit with NO approved Task Spec demands no item coverage — no demandin
     const r = await recordDispatchGuarded(
       dir, "j1",
       { ...QA, status: "verified", evidence: qaEv() },
-      { resolveAcceptance: async () => null },
+      { resolveAcceptance: async () => ({ kind: "none" }) },
     );
     expect(r.ok).toBe(true);
   } finally { await rm(dir, { recursive: true, force: true }); }

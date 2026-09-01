@@ -80,7 +80,6 @@ const dispatchArgs = (dir: string, extra: string[]) => [
 const qaArgs = (dir: string, extra: string[]) => [
   "record", "--workspace", dir, "--journey", "j1",
   "--repo", "aipe", "--specialist", "Mike", "--branch", "aipe/j1/mike", "--worktree", "/wt-gate",
-  "--task", "gate",
   ...extra,
 ];
 
@@ -95,11 +94,9 @@ async function seedDelivered(dir: string): Promise<void> {
 // pass as the unit's QA persona, on its own row, exactly as a real gate does.
 async function seedVerified(dir: string): Promise<void> {
   await seedDelivered(dir);
-  await run([
-    "record", "--workspace", dir, "--journey", "j1",
-    "--repo", "aipe", "--specialist", "Mike", "--branch", "aipe/j1/mike", "--worktree", "/wt-gate",
-    "--task", "gate", "--status", "verified", "--evidence-by", "qa", ...evArgs,
-  ], { sessionRunner: inertRunner });
+  await run(qaArgs(dir, ["--status", "verified", "--evidence-by", "qa", ...evArgs]), {
+    sessionRunner: inertRunner,
+  });
 }
 
 
@@ -311,7 +308,15 @@ test("a subagent-mode unit closes nothing on a terminal status", async () => {
   expect(output).not.toContain("no sessionId");
 });
 
-test("a QA verified recorded under ANOTHER task closes the DEV's delivered session on the same unit (close by unit)", async () => {
+// Session CLOSING is by unit; the QA GATE is by task. The two are different
+// questions and this test is about the first: a verdict recorded by a different
+// specialist, in a different worktree, with its own live session, closes the
+// DEV's session too. The QA's row names the DEV'S TASK, because a verdict has to
+// be addressable to the delivery it judges — recording it under a task of its
+// own left it attached to nothing, which is the mis-paired gate this repo's own
+// comments warn about (and which an independent QA showed lets a merge through
+// on a task nobody verified).
+test("a QA verified from a DIFFERENT specialist closes the DEV's delivered session on the same unit (close by unit)", async () => {
   const dir = await ws();
   // Dev is at DELIVERED (self-report, gate pending) under task "impl", session live.
   await run([
@@ -324,23 +329,23 @@ test("a QA verified recorded under ANOTHER task closes the DEV's delivered sessi
     "--branch", "aipe/j1/jesse", "--worktree", "/wt-impl", "--task", "impl",
     "--status", "delivered", "--pr", "http://pr/impl", ...evArgs,
   ], { resolveChecks: async () => "green" as CheckVerdict });
-  // QA is dispatched under a DIFFERENT task "gate" — its own session live too.
+  // QA is dispatched on the SAME task, as its own specialist — its own session live too.
   await run([
     "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Mike",
-    "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "gate",
+    "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "impl",
     "--status", "dispatched", "--mode", "session", "--session-id", "sess-qa",
   ]);
   const { runner, kills } = agentop({ live: ["sess-dev", "sess-qa"] });
   const { code, output } = await capture(() =>
     run([
       "record", "--workspace", dir, "--journey", "j1", "--repo", "aipe", "--specialist", "Mike",
-      "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "gate",
+      "--branch", "aipe/j1/mike", "--worktree", "/wt-gate", "--task", "impl",
       "--status", "verified", "--pr", "http://pr/1", "--evidence-by", "qa", ...evArgs,
     ], { resolveChecks: async () => "green" as CheckVerdict, sessionRunner: runner }),
   );
   expect(code).toBe(0);
-  // The dev's session (delivered, task "impl") is closed even though the gate
-  // landed on task "gate" — the leak the unit scope fixes.
+  // The dev's session is closed by the QA's write even though they are separate
+  // rows with separate worktrees — closing is by UNIT.
   expect(kills.sort()).toEqual(["sess-dev", "sess-qa"]);
   expect(output).toContain("CLOSED session sess-dev");
 });
