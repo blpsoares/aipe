@@ -128,14 +128,41 @@ async function readRegistry(): Promise<WorkspaceEntry[]> {
   }
 }
 
+
+/**
+ * Is this path a THROWAWAY workspace — a test fixture, an e2e scratch dir, an
+ * assistant's scratchpad — rather than somewhere real work lives?
+ *
+ * The registry drives `aipe upgrade`, which rehydrates every workspace it knows.
+ * It only ever forgot an entry whose `.aipe/` had disappeared, and a `/tmp`
+ * fixture survives until reboot — so every test run, every e2e case and every
+ * assistant session that built a scratch workspace was recorded FOREVER, and
+ * each one added a line to every future upgrade.
+ *
+ * Measured on the PE's machine: 50 entries, 49 of them throwaway, one real. His
+ * `aipe upgrade` rehydrated six scratch directories before touching his actual
+ * workspace, and then reported a migration blocked partly because of them.
+ *
+ * Deliberately a PATH rule and not a heuristic about content: a workspace under
+ * `/tmp` or inside a `scratchpad/` is ephemeral by construction, and a rule that
+ * tried to guess "is this one real?" from what is inside it would be the kind of
+ * signal that asserts without establishing.
+ */
+export function isEphemeralWorkspace(path: string): boolean {
+  return path.startsWith("/tmp/") || path.includes("/scratchpad/") || path.endsWith("/scratchpad");
+}
+
 /**
  * Records `dir` as a workspace this machine knows about. No-op when the
- * directory is not a workspace. Never throws.
+ * directory is not a workspace, or is a throwaway one. Never throws.
  */
 export async function recordWorkspace(dir: string, now: number = Date.now()): Promise<void> {
   try {
     const path = resolve(dir);
     if (!looksLikeWorkspace(path)) return;
+    // A fixture is not a workspace anyone upgrades. Recording it costs nothing
+    // today and costs a rehydrate on every future upgrade, forever.
+    if (isEphemeralWorkspace(path)) return;
     const list = await readRegistry();
     // Hooks fire this on every session event; rewriting the file each time
     // would be a disk write per keystroke-scale event for no new information.
@@ -155,5 +182,10 @@ export async function recordWorkspace(dir: string, now: number = Date.now()): Pr
  * rehydrating a path that no longer exists would only manufacture failures.
  */
 export async function knownWorkspaces(): Promise<string[]> {
-  return (await readRegistry()).filter((e) => looksLikeWorkspace(e.path)).map((e) => e.path);
+  // Ephemeral entries are filtered on the way OUT too, so a registry that
+  // already accumulated them heals itself on the next read — nobody has to edit
+  // JSON by hand to stop their upgrade rehydrating other people's test fixtures.
+  return (await readRegistry())
+    .filter((e) => !isEphemeralWorkspace(e.path) && looksLikeWorkspace(e.path))
+    .map((e) => e.path);
 }
