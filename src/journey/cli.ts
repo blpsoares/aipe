@@ -6,7 +6,8 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readGraph } from "../relationship/read-graph";
 import { ghPrChecks, type PrChecksResolver } from "./checks";
-import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney } from "./ledger";
+import { recordDispatchGuarded, readLedger, setJourneySpec, startJourney, type SddArtifactResolver } from "./ledger";
+import { resolveSddArtifactsGit } from "./sdd-artifacts";
 import { ghPrState, reconcileAll, reconcileJourney, type PrStateFetcher } from "./reconcile";
 import { normalizeRepo, normalizeSpecialist } from "./normalize";
 import { dedupeAll } from "./dedupe-run";
@@ -40,6 +41,9 @@ export interface JourneyDeps {
   // Local-git release-state resolver (j-20260830-zd); defaults to real git, tests
   // inject a fake so `show`/`verify` stay offline.
   resolveRelease?: ReleaseResolver;
+  // The SDD delivery gate's artifact resolver (#118): does the worktree carry a
+  // committed spec+plan? Defaults to the real git reader; tests inject a fake.
+  resolveSddArtifacts?: SddArtifactResolver;
 }
 
 // Resolve the release state for the repos a ledger touches, from local git. A
@@ -184,6 +188,11 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
   const tier = getFlag(args, "--tier");
   const model = getFlag(args, "--model");
   const reason = getFlag(args, "--reason");
+  // The SDD route recorded at dispatch (#118): `--sdd spec-kit` (the full flow,
+  // whose delivery is gated on a committed spec+plan) or `--sdd sdd-lite` (the
+  // floor). Sticky on the ledger, so a later plain `--status delivered` inherits
+  // it. Comes from `aipe skill match`'s ROUTE line.
+  const sddKit = getFlag(args, "--sdd");
 
   // Session-mode dispatch metadata (optional; absent ⇒ absent on the ledger,
   // never present-and-undefined — legacy ledgers and subagent dispatches must
@@ -246,6 +255,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ...(pr ? { pr } : {}),
       ...(tier ? { tier } : {}),
       ...(model ? { model } : {}),
+      ...(sddKit ? { sddKit } : {}),
       ...(mode ? { mode } : {}),
       ...(intensity ? { intensity } : {}),
       ...(harness ? { harness } : {}),
@@ -253,7 +263,7 @@ async function recordCommand(args: string[], deps: JourneyDeps = {}): Promise<nu
       ...(evidence ? { evidence } : {}),
       status,
     },
-    { ...(reason ? { reason } : {}), resolveChecks, ciNone, ciVerifiedPreMerge },
+    { ...(reason ? { reason } : {}), resolveChecks, ciNone, ciVerifiedPreMerge, resolveSddArtifacts: deps.resolveSddArtifacts ?? resolveSddArtifactsGit },
   );
 
   if (!result.ok) {

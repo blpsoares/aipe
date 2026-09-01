@@ -132,15 +132,21 @@ scratch — never do that just to tweak one persona.
     Mention that onboarding is now complete — opening a session directly
     inside a repo will load that repo's personas automatically.
 
-11. **Install the spec-first floor + offer the heavier kits.** Run
-    `aipe skill preset --workspace <workspace>` — it installs the always-on
-    **`sdd-lite`** floor (short spec + evidence + task doc) into every repo, no
-    prompt. Then offer the PE, in **one** message, the routed kits:
-    **spec-kit** on packages with non-trivial work
-    (`aipe skill add spec-kit --repo <r>`) and **pdd** on any repo that is a
-    legacy migration/port (`aipe skill add pdd --repo <r>`). Presets do the
-    rest; at dispatch time you route the right kit per task with
-    `aipe skill match`.
+11. **Install the SDD, non-negotiably (both tiers), + offer pdd.** Run
+    `aipe skill preset --workspace <workspace>` — it installs, into **every**
+    repo with no prompt, the always-on **`sdd-lite`** floor **and** the full
+    **`spec-kit`** flow (its `.specify/` templates + `/speckit.*` commands). This
+    is not optional: the PE's constraint is textual — *"o sdd deve vir
+    automaticamente instalado junto com o aipe, isso é inegociável"* — and a
+    `spec-kit` that is merely *suggested* is exactly how it spent days
+    uninstalled and `aipe skill match --size` stayed decorative (issue #118). Do
+    NOT downgrade the preset to "install the floor and suggest spec-kit"; a
+    suggested kit is an uninstalled kit. Then offer the PE, in **one** message,
+    only **pdd** on any repo that is a legacy migration/port
+    (`aipe skill add pdd --repo <r>`). At dispatch time you route per task with
+    `aipe skill match` — its `ROUTE sdd=<kit>` line is the decision, and you
+    record it on the dispatch (`aipe journey record --status dispatched --sdd
+    <kit>`) so the delivery gate can enforce it.
 
 ## The QA-per-group gate (MUST — non-negotiable)
 

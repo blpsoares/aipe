@@ -481,10 +481,23 @@ digraph operate {
    aipe journey record --journey <id> --repo <repo> [--package <pkg>] \
      --specialist <persona> --branch <branch> --worktree <path> \
      --status dispatched --mode session --intensity <normal|ultracode> \
+     --sdd <spec-kit|sdd-lite> \
      --harness claude-code --workspace <workspace>
 
    aipe session dispatch --journey <id> --workspace <workspace>
    ```
+
+   **`--sdd <kit>` is the SDD route, and it MUST be the `ROUTE sdd=<kit>` line
+   `aipe skill match --task-type <t> --size <s>` printed for this unit — not a
+   guess.** Recording it is what gives the SDD its teeth (#118): when the route is
+   `spec-kit`, the ledger REFUSES this unit's later `--status delivered` unless a
+   spec (`specs/**/spec.md`) **and** a plan (`specs/**/plan.md`) are committed in
+   its worktree — exactly as it already refuses a `delivered` with no evidence.
+   Leave `--sdd` off and the gate cannot bite, so a non-trivial unit slips through
+   spec-less — the precise failure that shipped 7/7 PRs with no spec in a day. If
+   `skill match` says `ROUTE sdd=none — spec-kit is NOT installed`, STOP and run
+   `aipe skill preset` (or `aipe rehydrate`): the flow is unreachable, not absent
+   by choice.
 
    `aipe session dispatch` composes each specialist's prompt from its persona,
    its slice of the approved spec, and the return contract; writes it to

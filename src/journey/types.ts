@@ -146,6 +146,15 @@ export interface JourneyDispatch {
   // coordinator assigned and the concrete model the specialist ran on.
   tier?: string;
   model?: string;
+  // The SDD tier this unit was routed to at dispatch (#118), from
+  // `aipe skill match`'s ROUTE decision — `"spec-kit"` (the full flow) or
+  // `"sdd-lite"` (the light floor). Sticky like tier/model: recorded once at
+  // dispatch and preserved through the plain delivered/verified writes that omit
+  // it. When it is `"spec-kit"`, the ledger's delivery gate refuses a
+  // `delivered` claim whose worktree has no committed spec+plan. Absent ⇒ the
+  // unit was never routed to an SDD kit (legacy rows and non-SDD units
+  // round-trip untouched).
+  sddKit?: string;
   // Session-mode dispatch (absent on subagent dispatches and legacy ledgers).
   // `sessionId` is what `aipe session collect` cross-references against
   // `agentop session list --json` to tell "still working" from "died silently".

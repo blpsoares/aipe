@@ -152,7 +152,7 @@ export async function startJourney(workspaceDir: string, id: string): Promise<st
 //     (why THIS write happened) — letting one leak into an unrelated later
 //     write would misattribute it (see "redirected does not collide with
 //     redispatchReason" in ledger-gate.test.ts).
-const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId"] as const;
+const STICKY_DISPATCH_FIELDS = ["tier", "model", "mode", "intensity", "harness", "sessionId", "sddKit"] as const;
 
 // Merges `incoming` onto `existing` field-by-field: a STICKY_DISPATCH_FIELDS
 // key that `incoming` genuinely omits (no own property at all — never merely
@@ -257,8 +257,21 @@ export function grantedTiers(ledger: JourneyLedger | null): Set<string> {
 //
 // The guard keys on the UNIT (repo + package), not the specialist — a fix can
 // reuse or swap the specialist and the invariant still holds.
+// Resolves whether an SDD-routed unit's spec-first artifacts are present and
+// committed in its worktree (#118). Injected like PrChecksResolver so the gate
+// is inert for a resolver-less caller (the reconciler, unit tests) — it never
+// fabricates a pass OR a fail from nothing — and stays network-free (the real
+// implementation is `git ls-files` in the worktree, no forge).
+export type SddArtifactResolver = (worktree: string) => Promise<{ spec: boolean; plan: boolean }>;
+
+// The SDD kit whose delivery gate has teeth. Kept in lockstep with
+// routing.ts FULL_SDD_KIT — only the full flow carries the committed-artifact
+// contract; the light floor (sdd-lite) is covered by the evidence gate.
+const GATED_SDD_KIT = "spec-kit";
+
 export type LedgerGateCode =
   | "evidence-required"
+  | "sdd-artifacts-required"
   | "unit-immutable"
   | "redispatch-needs-reason"
   | "redirect-needs-reason"
@@ -298,7 +311,7 @@ export async function recordDispatchGuarded(
   workspaceDir: string,
   id: string,
   dispatch: JourneyDispatch,
-  opts: { reason?: string; resolveChecks?: PrChecksResolver; ciNone?: boolean; ciVerifiedPreMerge?: boolean } = {},
+  opts: { reason?: string; resolveChecks?: PrChecksResolver; ciNone?: boolean; ciVerifiedPreMerge?: boolean; resolveSddArtifacts?: SddArtifactResolver } = {},
 ): Promise<GuardedRecordResult> {
   const ledger = (await readLedger(workspaceDir, id)) ?? { id, dispatches: [] };
   const pkg = dispatch.package ?? null;
@@ -323,6 +336,29 @@ export async function recordDispatchGuarded(
       };
     }
     dispatch = { ...dispatch, evidence: { ...ev, commands: realCommands } };
+  }
+
+  // 1b — SDD artifacts (#118): a unit routed to the FULL spec-kit flow cannot be
+  // claimed `delivered` without its spec AND plan committed in the worktree. The
+  // route was recorded once at dispatch (`--sdd spec-kit`, sticky), so a plain
+  // `--status delivered` that omits it still reads the routed kit off the
+  // existing record. Only `delivered` (the dev's done-claim, where 7/7 skipped
+  // the artifacts) is gated — a fix loop (`dispatched`/`blocked`/`failed`/
+  // `redirected`) and the QA `verified` are not, so the legitimate loop is never
+  // broken. Inert without an injected resolver, exactly like the CI gate.
+  const routedKit = dispatch.sddKit ?? current?.sddKit;
+  if (dispatch.status === "delivered" && routedKit === GATED_SDD_KIT && opts.resolveSddArtifacts) {
+    const art = await opts.resolveSddArtifacts(dispatch.worktree);
+    const missing: string[] = [];
+    if (!art.spec) missing.push("a spec (specs/**/spec.md)");
+    if (!art.plan) missing.push("a plan (specs/**/plan.md)");
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        code: "sdd-artifacts-required",
+        message: `unit ${unitName} was routed to the full ${GATED_SDD_KIT} flow — a "delivered" claim requires ${missing.join(" and ")} committed in the worktree. The spec-first flow is the delivery contract for this size, not a suggestion (7/7 deliveries skipped it once it was only prose); run /speckit.specify → /speckit.plan, commit them, then re-record. (worktree ${dispatch.worktree})`,
+      };
+    }
   }
 
   // 2 — immutability: a merged unit is final.

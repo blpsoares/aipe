@@ -14,8 +14,15 @@ import { resolve } from "node:path";
 import { readBrain } from "../make-workspace/read";
 import { ensureExcluded, run as git } from "../worktree/git";
 
-/** The entry we exclude — a trailing slash so only the directory is matched. */
+/** The entries we exclude — a trailing slash so only the directory is matched. */
 export const CLAUDE_EXCLUDE = ".claude/";
+// `.specify/` is the real Spec Kit's vendored templates/scripts, re-materialized
+// from the binary on every rehydrate (#118 — spec-kit is now auto-installed).
+// Like `.claude/`, it is in nobody's committed `.gitignore`, so without this it
+// would dirty every repo the moment spec-kit lands — the same trap that made the
+// upgrade refuse its own migration. The specialist's actual artifacts live under
+// `specs/` (committed, and what the delivery gate checks); `.specify/` is tooling.
+export const SPECIFY_EXCLUDE = ".specify/";
 
 async function isGitRepo(repoAbs: string): Promise<boolean> {
   const r = await git(["git", "-C", repoAbs, "rev-parse", "--is-inside-work-tree"]);
@@ -36,6 +43,7 @@ export async function ensureReposExcludeClaude(workspaceDir: string): Promise<st
     if (!(await isGitRepo(repoAbs))) continue;
     try {
       await ensureExcluded(repoAbs, CLAUDE_EXCLUDE);
+      await ensureExcluded(repoAbs, SPECIFY_EXCLUDE);
       excluded.push(repoAbs);
     } catch {
       // best-effort — never fail rehydrate over a single repo's exclude file

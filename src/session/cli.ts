@@ -328,6 +328,7 @@ const FIELD_FLAGS = {
   mode: "--mode",
   intensity: "--intensity",
   harness: "--harness",
+  sddKit: "--sdd",
 } satisfies Record<Exclude<keyof JourneyDispatch, "evidence" | "sessionId" | "redispatchReason" | "redirectReason" | "blockedReason" | "abandonedReason" | "ciBypass">, string>;
 
 function recoveryRecordCommand(journeyId: string, workspace: string, dispatch: JourneyDispatch, sessionId: string): string {
