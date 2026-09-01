@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { installPersonaIntoRepo, personaSkillDir } from "../harness/persona-install";
+import { ensureReposExcludeClaude } from "../rehydrate/exclude";
 import { resolveAdapter } from "../harness/registry";
 import { readBrain } from "../make-workspace/read";
 import { renderAgentMd } from "./agent";
@@ -19,6 +20,18 @@ async function writePersonaFiles(
   brain: BrainFile,
   reports: PersonaReport[],
 ): Promise<void> {
+  // BEFORE the first persona file lands in any repo, make `.claude/` locally
+  // ignored there. This is hiring — the first moment AIPe writes into someone
+  // else's repository — and the exclusion used to be installed only by
+  // `rehydrate`, which runs later or not at all. In the gap, `.claude/` was
+  // plain untracked content in every onboarded repo: a `git add -A` would commit
+  // the whole persona roster into the OFFICIAL repository, where it does not
+  // belong and where nobody asked for it.
+  //
+  // Same shape as every defect this repo has been paying for: the protection
+  // existed and was not on the path. It is idempotent, so rehydrate calling it
+  // again is free.
+  await ensureReposExcludeClaude(workspaceDir);
   const adapter = await resolveAdapter(workspaceDir);
   for (const report of reports) {
     const repo = brain.repos.find((r) => r.name === report.repo);
