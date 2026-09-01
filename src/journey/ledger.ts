@@ -332,6 +332,7 @@ const GATED_SDD_KIT = "spec-kit";
 export type LedgerGateCode =
   | "evidence-required"
   | "sdd-artifacts-required"
+  | "reviewer-cannot-build"
   | "verify-needs-delivery"
   | "verify-needs-qa"
   | "verification-incomplete"
@@ -529,6 +530,39 @@ export async function recordDispatchGuarded(
         ok: false,
         code: "sdd-artifacts-required",
         message: `unit ${unitName} ${origin} — a "delivered" claim requires ${missing.join(" and ")} committed in the worktree. The spec-first flow is the delivery contract, not a suggestion (7/7 deliveries skipped it once it was only prose); what is demanded is those two ARTEFACTS, not any one harness's way of writing them (the repo carries Spec Kit's templates under .specify/); commit them, then re-record.${escape} (worktree ${dispatch.worktree})`,
+      };
+    }
+  }
+
+  // 1b-bis — #72, THE OTHER HALF OF THE SAME RULE. Today's gate already refuses
+  // a specialist VERIFYING a delivery it made. This refuses the mirror: a
+  // specialist DELIVERING on a task where it already sat as the QA.
+  //
+  // Both are one rule — "the reviewer and the builder are different people" —
+  // and shipping only one half is the exact defect this repo keeps paying for:
+  // fix one member of a family, leave the siblings. The rule existed in prose in
+  // the review-delivery skill and was VIOLATED THREE TIMES IN ONE DAY (Donald
+  // #252, Chuck #4, Viola #25). Prose is not a gate.
+  //
+  // Why it matters, in one line from the issue: if the QA fixes what it
+  // reviewed, nobody reviewed the fix — the gate stops being a gate.
+  //
+  // Scoped to the task group, like every other gate here, and judged on the
+  // EVIDENCE's authorship (`by: "qa"`), not on a name or a roster role: the
+  // ledger's own record of who filed a QA verdict is the fact, and it is the
+  // same field the verify gate reads.
+  if (dispatch.status === "delivered") {
+    const ranTheGate = gateRows.some(
+      (d) =>
+        d.specialist.toLowerCase() === dispatch.specialist.toLowerCase() &&
+        (d.status === "verified" || d.status === "failed") &&
+        d.evidence?.by === "qa",
+    );
+    if (ranTheGate) {
+      return {
+        ok: false,
+        code: "reviewer-cannot-build",
+        message: `unit ${unitName} — ${dispatch.specialist} already recorded a QA verdict on this task and cannot now deliver it. If the reviewer fixes what it reviewed, nobody reviewed the fix. Dispatch the fix to a builder; the QA re-tests it afterwards.`,
       };
     }
   }
