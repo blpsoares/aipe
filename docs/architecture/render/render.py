@@ -336,6 +336,54 @@ def render_svg(spec, lang, mid):
         + "".join(edge_svg) + "".join(label_svg) + "".join(node_svg) + "</svg>")
 
 
+# ── Diagram-only page (PNG source: graph, no chrome) ──────────────────────────
+LEGEND_MIN_CSS = """
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 18px; font-size: 12.5px; color: rgb(var(--muted)); }
+.lg { display: inline-flex; align-items: center; gap: 7px; }
+.lg b { color: rgb(var(--text)); font-weight: 600; font-family: var(--mono-ui); font-size: 12px; }""".strip("\n")
+
+
+def render_diagram_page(spec, lang, tokens, legend=False):
+    """Minimal standalone page: the graph (and, optionally, a compact kind
+    legend) — nothing else. This is screenshotted for the published PNG; it is
+    never itself a committed artifact. Reuses render_svg (the graph layout is
+    not duplicated) and GRAPH_CSS (the node/edge/badge presentation is not
+    duplicated either)."""
+    svg = render_svg(spec, lang, f"arrow-{lang}-diagram")
+    legend_html = ""
+    if legend:
+        kinds_used = [k for k in KIND_ORDER if any(n["kind"] == k for n in spec["nodes"])]
+        chips = "".join(
+            f'<span class="lg"><span class="badge kind-{k} sm"></span>'
+            f'<b>{esc(k)}</b> · {esc(KIND_DEF[k][lang])}</span>' for k in kinds_used)
+        legend_html = f'<div class="legend">{chips}</div>'
+    return f"""<!DOCTYPE html>
+<html lang="{lang}" data-theme="light" data-diagram="{esc(spec['id'])}">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+{tokens}
+</style>
+<style>
+:root {{ --sans-ui: "Inter", var(--sans); --mono-ui: "JetBrains Mono", var(--mono); }}
+* {{ box-sizing: border-box; }}
+html, body {{ margin: 0; }}
+body {{ font-family: var(--sans-ui); }}
+#frame {{ display: inline-block; padding: 24px; background: var(--bg); }}
+{GRAPH_CSS}
+{LEGEND_MIN_CSS if legend else ""}
+</style>
+</head>
+<body>
+<div id="frame">
+{svg}
+{legend_html}
+</div>
+</body>
+</html>"""
+
+
 # ── One language view (header + graph + numbered panel) ──────────────────────
 def render_view(spec, lang):
     did = spec["id"]
@@ -377,6 +425,60 @@ def render_view(spec, lang):
   <div class="detail-h">{esc(UI['detail'][lang])}</div>
   {''.join(rows)}
 </div>"""
+
+
+# ── Graph-only CSS (shared by the composed HTML page and the diagram-only PNG
+# page below — same node/edge/badge presentation everywhere, one place to fix). ──
+GRAPH_CSS = """
+svg.diagram {
+  display: block; margin: 0 auto; max-width: 100%; height: auto;
+  background: rgb(var(--surface-2) / .4); border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 16px); padding: 8px;
+}
+.edge { fill: none; stroke: rgb(var(--faint)); stroke-width: 1.7; }
+.edge.back { stroke: rgb(var(--faint) / .85); stroke-dasharray: 5 4; }
+.arrowhead { fill: rgb(var(--faint)); }
+.elabfo { overflow: visible; }
+.elab {
+  font-family: var(--mono-ui); font-size: 10.5px; line-height: 1.25;
+  color: rgb(var(--muted)); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 2px 6px; text-align: center; box-shadow: var(--shadow-1);
+}
+.node {
+  height: 100%; display: flex; align-items: center; gap: 12px;
+  background: rgb(var(--surface-1)); border: 1px solid var(--line-2);
+  border-radius: var(--radius, 12px); padding: 10px 14px; box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.node.state { border-left: 5px solid var(--stripe); }
+.nlabel {
+  font-family: var(--mono-ui); font-size: 13px; font-weight: 500;
+  color: rgb(var(--text)); line-height: 1.3;
+}
+/* kind badge — SHAPE + fill encode kind (brand/grey only, never --st-*).
+   The number is wrapped in <i> above the shape so a rotated diamond never tilts it. */
+.badge {
+  position: relative; flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--mono-ui); font-weight: 700; font-size: 13px;
+}
+.badge > i { position: relative; z-index: 1; font-style: normal; }
+.badge.sm { width: 16px; height: 16px; }
+.badge.kind-deterministic { background: rgb(var(--brand)); color: var(--on-brand); }
+.badge.kind-judgment {
+  background: rgb(var(--surface-1)); color: rgb(var(--brand-strong));
+  border: 2px solid rgb(var(--brand));
+}
+.badge.kind-structure { background: rgb(var(--muted)); color: var(--on-brand); border-radius: 6px; }
+.badge.kind-denied {
+  background: rgb(var(--surface-2)); color: rgb(var(--muted));
+  border: 2px double rgb(var(--faint));
+}
+.badge.kind-gate { background: transparent; color: var(--on-brand); }
+.badge.kind-gate::before {
+  content: ""; position: absolute; inset: 1px; z-index: 0;
+  background: rgb(var(--brand-strong)); border-radius: 5px; transform: rotate(45deg);
+}""".strip("\n")
 
 
 # ── Full bilingual page ──────────────────────────────────────────────────────
@@ -445,55 +547,7 @@ h1 {{ font-size: 30px; font-weight: 700; margin: 8px 0 6px; letter-spacing: -.01
 .lg b {{ color: rgb(var(--text)); font-weight: 600; font-family: var(--mono-ui); font-size: 12px; }}
 
 .scroller {{ overflow-x: auto; padding: 8px 0 4px; }}
-svg.diagram {{
-  display: block; margin: 0 auto; max-width: 100%; height: auto;
-  background: rgb(var(--surface-2) / .4); border: 1px solid var(--line);
-  border-radius: var(--radius-lg, 16px); padding: 8px;
-}}
-.edge {{ fill: none; stroke: rgb(var(--faint)); stroke-width: 1.7; }}
-.edge.back {{ stroke: rgb(var(--faint) / .85); stroke-dasharray: 5 4; }}
-.arrowhead {{ fill: rgb(var(--faint)); }}
-.elabfo {{ overflow: visible; }}
-.elab {{
-  font-family: var(--mono-ui); font-size: 10.5px; line-height: 1.25;
-  color: rgb(var(--muted)); background: var(--bg); border: 1px solid var(--line);
-  border-radius: 6px; padding: 2px 6px; text-align: center; box-shadow: var(--shadow-1);
-}}
-.node {{
-  height: 100%; display: flex; align-items: center; gap: 12px;
-  background: rgb(var(--surface-1)); border: 1px solid var(--line-2);
-  border-radius: var(--radius, 12px); padding: 10px 14px; box-shadow: var(--shadow-1);
-  overflow: hidden;
-}}
-.node.state {{ border-left: 5px solid var(--stripe); }}
-.nlabel {{
-  font-family: var(--mono-ui); font-size: 13px; font-weight: 500;
-  color: rgb(var(--text)); line-height: 1.3;
-}}
-/* kind badge — SHAPE + fill encode kind (brand/grey only, never --st-*).
-   The number is wrapped in <i> above the shape so a rotated diamond never tilts it. */
-.badge {{
-  position: relative; flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  font-family: var(--mono-ui); font-weight: 700; font-size: 13px;
-}}
-.badge > i {{ position: relative; z-index: 1; font-style: normal; }}
-.badge.sm {{ width: 16px; height: 16px; }}
-.badge.kind-deterministic {{ background: rgb(var(--brand)); color: var(--on-brand); }}
-.badge.kind-judgment {{
-  background: rgb(var(--surface-1)); color: rgb(var(--brand-strong));
-  border: 2px solid rgb(var(--brand));
-}}
-.badge.kind-structure {{ background: rgb(var(--muted)); color: var(--on-brand); border-radius: 6px; }}
-.badge.kind-denied {{
-  background: rgb(var(--surface-2)); color: rgb(var(--muted));
-  border: 2px double rgb(var(--faint));
-}}
-.badge.kind-gate {{ background: transparent; color: var(--on-brand); }}
-.badge.kind-gate::before {{
-  content: ""; position: absolute; inset: 1px; z-index: 0;
-  background: rgb(var(--brand-strong)); border-radius: 5px; transform: rotate(45deg);
-}}
+{GRAPH_CSS}
 .detail-h {{
   font-family: var(--mono-ui); font-size: 11px; letter-spacing: .08em;
   text-transform: uppercase; color: rgb(var(--faint));
@@ -600,33 +654,46 @@ def cmd_html():
 
 
 def cmd_shoot():
-    """The committed publication asset: Portuguese, light, 2x."""
+    """The committed publication asset: Portuguese, light, 2x — the graph plus a
+    compact kind legend, framed tight with a small uniform margin. No eyebrow,
+    title, argument, node/edge counts or note panel — those stay in the HTML
+    only. The legend was a PE call (j-20260831-al, task png-so-o-diagrama): a
+    reader cannot otherwise tell what a diamond or an outlined circle means.
+
+    Screenshots render_diagram_page (graph + legend, nothing else) rendered to
+    a throwaway temp HTML — never HTML_DIR, the composed ../diagrams/html/*.html
+    pages are untouched by this journey."""
+    import tempfile
     from playwright.sync_api import sync_playwright
     specs = load_specs()
-    htmls = [(d["id"], os.path.join(HTML_DIR, f"{d['id']}.html")) for _, d in specs]
-    missing = [h for _, h in htmls if not os.path.exists(h)]
-    if missing:
-        raise SystemExit(f"HTML not built yet (run 'html'): {missing[:2]}")
+    validate(specs)
+    tokens = _tokens()
     os.makedirs(PNG_DIR, exist_ok=True)
     shots = []
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        for did, h in htmls:
-            page = browser.new_page(viewport={"width": 1180, "height": 900}, device_scale_factor=2)
-            page.goto("file://" + h)
-            page.evaluate("() => { window.__setLang('pt'); window.__setTheme('light'); }")
-            try:
-                page.wait_for_load_state("networkidle", timeout=6000)
-            except Exception:
-                pass
-            png = os.path.join(PNG_DIR, f"{did}.pt.png")
-            page.screenshot(path=png, full_page=True)
-            shots.append(png)
-            page.close()
+        with tempfile.TemporaryDirectory() as tmp:
+            for _, d in specs:
+                page_html = render_diagram_page(d, "pt", tokens, legend=True)
+                tmp_path = os.path.join(tmp, f"{d['id']}.html")
+                open(tmp_path, "w", encoding="utf-8").write(page_html)
+                page = browser.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=2)
+                page.goto("file://" + tmp_path)
+                try:
+                    page.wait_for_load_state("networkidle", timeout=6000)
+                except Exception:
+                    pass
+                png = os.path.join(PNG_DIR, f"{d['id']}.pt.png")
+                # Element screenshot of #frame, not full_page: crops exactly to
+                # the graph + its own small padding, never to the (unbounded)
+                # viewport — so no empty area inherited from the page layout.
+                page.locator("#frame").screenshot(path=png)
+                shots.append(png)
+                page.close()
         browser.close()
     for s in shots:
         print(f"  shot {os.path.relpath(s, PKG)}")
-    print(f"{len(shots)} PT PNG -> {os.path.relpath(PNG_DIR, PKG)}")
+    print(f"{len(shots)} PT PNG (diagram + kind legend) -> {os.path.relpath(PNG_DIR, PKG)}")
     return shots
 
 
