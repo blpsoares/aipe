@@ -150,3 +150,51 @@ test("the FORGE path closes the unit too — reconcile, not just the guarded wri
     expect(rows.find((d) => d.specialist === "Mike")!.status).toBe("dispatched");
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+// ── the independent QA's findings, each pinned ───────────────────────────────
+
+test("the closure names the landing WITHOUT the operator repeating --pr", async () => {
+  // `pr` is not sticky (reopening must not carry an old PR forward), so the
+  // `merged` write drops the url the delivery carried. Reading it off the
+  // post-merge row made EVERY closure on the ordinary flow say "landed —" with
+  // nothing after it: an audit record that cannot point at what closed it.
+  const dir = await ws();
+  try {
+    await recordDispatch(dir, "j1", { ...DEV, status: "delivered", pr: "http://pr/5", evidence: devEv });
+    await recordDispatch(dir, "j1", { ...DEV, specialist: "Getz", branch: "bq", worktree: "/wq", status: "verified", evidence: qaEv });
+    await recordDispatch(dir, "j1", { ...DEV, status: "merged" }); // no --pr repeated
+    const getz = (await readLedger(dir, "j1"))!.dispatches.find((d) => d.specialist === "Getz")!;
+    expect(getz.closedReason).toContain("http://pr/5");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("closing a RETRACTION does not resurrect the pass it took back", async () => {
+  // `verifiedRound` counts on a `closed` row, because closing is not a
+  // retraction. But `failed` IS one — and closing it carried the stamp over, so
+  // every landing erased every retraction and the audit produced a sentence that
+  // contradicted itself ("merged on round 1, but the last pass was round 1").
+  const dir = await ws();
+  try {
+    await recordDispatch(dir, "j1", { ...DEV, status: "delivered", evidence: devEv });
+    await recordDispatch(dir, "j1", { ...DEV, specialist: "Getz", branch: "bq", worktree: "/wq", status: "verified", round: 1, verifiedRound: 1, evidence: qaEv });
+    // the QA takes it back
+    await recordDispatch(dir, "j1", { ...DEV, specialist: "Getz", branch: "bq", worktree: "/wq", status: "failed", evidence: qaEv });
+    await recordDispatch(dir, "j1", { ...DEV, status: "merged" });
+
+    const getz = (await readLedger(dir, "j1"))!.dispatches.find((d) => d.specialist === "Getz")!;
+    expect(getz.status).toBe("closed");
+    expect(getz.verifiedRound).toBeUndefined(); // the retraction stands
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("a closed row cannot be revived silently — reopening finished work needs a reason", async () => {
+  const dir = await ws();
+  try {
+    await recordDispatch(dir, "j1", { ...DEV, task: "t", status: "closed", closedReason: "unit landed" });
+    const silent = await recordDispatchGuarded(dir, "j1", { ...DEV, task: "t", status: "dispatched" });
+    expect(silent.ok).toBe(false);
+    expect(silent.code).toBe("redispatch-needs-reason");
+    const withReason = await recordDispatchGuarded(dir, "j1", { ...DEV, task: "t", status: "dispatched" }, { reason: "reabrindo: faltou um caso" });
+    expect(withReason.ok).toBe(true);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

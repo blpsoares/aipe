@@ -14,23 +14,33 @@
 //   2. Every existing ledger must still load intact. This is pure and total:
 //      unknown fields ride through untouched, a legacy record with no envelope is
 //      preserved, and a ledger with nothing to fix round-trips unchanged.
+import type { DispatchStatus } from "./types";
 import { canonicalizeDispatch, normalizeRepo, normalizeSpecialist } from "./normalize";
 import type { PersonaRegistryEntry } from "../hire-specialists/types";
 import type { JourneyDispatch, JourneyLedger } from "./types";
 
 // The same status precedence the ledger gate uses to judge "most advanced".
-const RANK: Record<string, number> = {
+// `Record<DispatchStatus, …>`, never `Record<string, …>`: the loose type is why
+// `abandoned` was missing here from the start and `closed` joined it — both fell
+// to `?? 0`, the FLOOR, so any duplicate row outranked them and dedupe silently
+// discarded a terminal record with its reason and its `verifiedRound`. Typed
+// exhaustively, the next status cannot slip past.
+const RANK: Record<DispatchStatus, number> = {
   removed: 0,
   dispatched: 1,
   failed: 2,
   escalated: 2,
   redirected: 2,
   blocked: 2,
+  abandoned: 2,
+  // Terminal. Ranked ABOVE the pending band so a landing's closure is never
+  // thrown away in favour of a stale duplicate that merely looks busier.
+  closed: 4,
   delivered: 3,
   verified: 4,
   merged: 5,
 };
-const rankOf = (s: string): number => RANK[s] ?? 0;
+const rankOf = (s: DispatchStatus): number => RANK[s];
 
 // The dedup identity is (normalized repo, normalized specialist, BRANCH). Branch
 // is the reliable join: the coordinator's `Jane` + `--package` + bare-repo row and

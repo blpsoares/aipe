@@ -72,10 +72,17 @@ export function closesOnLanding(
 }
 
 /** The reason stamped on each closed row — says WHICH landing closed it. */
-export function landingReason(landed: JourneyDispatch): string {
+export function landingReason(landed: JourneyDispatch, prFallback?: string): string {
   const unit = `${landed.repo}${landed.package ? `/${landed.package}` : ""}`;
-  return landed.pr
-    ? `unit ${unit} landed (${landed.pr}) — this record's work is finished with it`
+  // `pr` is deliberately NOT sticky — reopening a unit must not carry the old
+  // PR forward — so the `merged` write drops the url the `delivered` record
+  // carried, and reading it off the post-merge row produced a reason that named
+  // no landing at all. On the ordinary flow (PR recorded at delivery, merge
+  // recorded without repeating it) EVERY closure said "landed —" with nothing
+  // after it: an audit record that cannot point at what closed it.
+  const pr = landed.pr ?? prFallback;
+  return pr
+    ? `unit ${unit} landed (${pr}) — this record's work is finished with it`
     : `unit ${unit} landed — this record's work is finished with it`;
 }
 
@@ -87,12 +94,22 @@ export function landingReason(landed: JourneyDispatch): string {
 export function applyLandingCloses(
   dispatches: JourneyDispatch[],
   landedIndex: number,
+  prFallback?: string,
 ): { dispatches: JourneyDispatch[]; closed: LandingClose[] } {
   const closed = closesOnLanding(dispatches, landedIndex);
   if (closed.length === 0) return { dispatches, closed };
-  const reason = landingReason(dispatches[landedIndex]!);
-  const next = dispatches.map((d, i) =>
-    closed.some((c) => c.index === i) ? { ...d, status: "closed" as const, closedReason: reason } : d,
-  );
+  const reason = landingReason(dispatches[landedIndex]!, prFallback);
+  const next = dispatches.map((d, i) => {
+    if (!closed.some((c) => c.index === i)) return d;
+    const row = { ...d, status: "closed" as const, closedReason: reason };
+    // A `failed` row is a QA taking its own approval BACK. Closing it must not
+    // resurrect the pass it retracted: `verifiedRound` is counted on a `closed`
+    // row (closing is not a retraction), so carrying it over from a retraction
+    // made every landing erase every retraction — the audit then reported
+    // "merged on round 1, but the last pass was round 1", a sentence that
+    // contradicts itself. The retraction stands; the pass does not.
+    if (d.status === "failed") delete (row as { verifiedRound?: number }).verifiedRound;
+    return row;
+  });
   return { dispatches: next, closed };
 }

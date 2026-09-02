@@ -29,17 +29,30 @@
 // three values, or the gate would route on a scale the router does not speak.
 import type { TaskSize } from "../toolbox/types";
 
-export type DispatchStatus =
-  | "dispatched"
-  | "delivered"
-  | "verified"
-  | "failed"
-  | "escalated"
-  | "blocked"
-  | "abandoned"
-  | "merged"
-  | "removed"
-  | "redirected"
+// THE SINGLE SOURCE OF TRUTH for the status vocabulary.
+//
+// The list is the primary artefact and the union is DERIVED from it, not the
+// other way round. That inversion is the whole point: an independent QA added up
+// what happened when `closed` was appended to a hand-written union — the two
+// `Record<DispatchStatus, …>` maps broke and told the author, and EVERY array,
+// `Set` and if-chain stayed silently wrong. Eight sites. One of them was a drift
+// test written to catch exactly this, which passed because both sides of its
+// comparison omitted the new value.
+//
+// Adding a status here now breaks every exhaustive `Record` in the codebase at
+// compile time, which is the only mechanism that does not depend on someone
+// remembering the list of places to look.
+export const DISPATCH_STATUSES = [
+  "dispatched",
+  "delivered",
+  "verified",
+  "failed",
+  "escalated",
+  "blocked",
+  "abandoned",
+  "merged",
+  "removed",
+  "redirected",
   // The terminal state for a record whose work ENDED WELL but not by its own
   // delivery: the unit it belonged to landed, or another journey took the work
   // over. It exists because there was no word for that (#97, #106).
@@ -52,20 +65,10 @@ export type DispatchStatus =
   //
   // Always carries `closedReason`: the whole value of the status is saying WHY
   // it ended without a verdict of its own.
-  | "closed";
+  "closed",
+] as const;
 
-export const DISPATCH_STATUSES: DispatchStatus[] = [
-  "dispatched",
-  "delivered",
-  "verified",
-  "failed",
-  "escalated",
-  "blocked",
-  "abandoned",
-  "merged",
-  "removed",
-  "redirected",
-];
+export type DispatchStatus = (typeof DISPATCH_STATUSES)[number];
 
 // Statuses that assert a unit of work reached a real, checked VERDICT and
 // therefore MUST carry evidence (Pilar 1 — verify-before-done): a dev

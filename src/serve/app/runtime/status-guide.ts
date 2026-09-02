@@ -29,6 +29,7 @@ const CANONICAL_ORDER: DispatchStatus[] = [
   "blocked",
   "abandoned",
   "redirected",
+  "closed",
 ];
 
 const CANONICAL: Record<DispatchStatus, Omit<StatusEntry, "key">> = {
