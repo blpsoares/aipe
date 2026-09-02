@@ -35,6 +35,11 @@ const RANK: Record<string, number> = {
   redirected: 2,
   blocked: 2,
   abandoned: 2,
+  // #97 — finished, and finished ABOVE a pending state so a closed QA row is
+  // never read as the task's live position. It sits below `delivered` because a
+  // task whose dev row is still delivered is genuinely further along than one
+  // whose only remaining record is a closure.
+  closed: 2,
   delivered: 3,
   verified: 4,
   merged: 5,
@@ -92,7 +97,15 @@ export function verifyJourney(
     if (gapped.length === 0) continue;
     const unit = packageFqid(gapped[0]!.repo, gapped[0]!.package);
     // A retracted pass does not count, exactly as the write gate reads it.
-    const passed = Math.max(0, ...rows.filter((d) => d.status === "verified").map((d) => d.verifiedRound ?? 0));
+    // A `closed` row's pass still COUNTS. Closing is what a landing
+    // does to a moot record; it is not a retraction. Only a `failed` retracts —
+    // that is a QA taking its own approval back. Conflating the two made the
+    // audit lose its sharper diagnosis ("passed round 1, merged on round 2") and
+    // fall back to "no pass at all", which is true but says less.
+    const passed = Math.max(
+      0,
+      ...rows.filter((d) => d.status === "verified" || d.status === "closed").map((d) => d.verifiedRound ?? 0),
+    );
     const round = Math.max(1, ...rows.map((d) => d.round ?? 1));
     const prs = gapped.map((d) => d.pr ?? "?").join(", ");
     findings.push({

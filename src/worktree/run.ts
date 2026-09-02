@@ -5,6 +5,7 @@ import { personaSlug } from "../hire-specialists/render";
 import { readPersonas } from "../hire-specialists/read-personas";
 import type { PersonaRole } from "../hire-specialists/types";
 import { readLedger } from "../journey/ledger";
+import { TERMINAL_STATUSES } from "../journey/types";
 import type { DispatchStatus, JourneyDispatch } from "../journey/types";
 import { deriveSpec, isValidJourneyId } from "./naming";
 import {
@@ -23,7 +24,10 @@ import type { CreateResult, RemoveResult, WorktreeRow } from "./types";
 // A dispatch is TERMINAL once its PR has merged or its worktree was already
 // removed — only then is it safe for prune to reclaim. Everything else
 // (dispatched/delivered/escalated) is live work and must be kept.
-const TERMINAL_STATUSES: DispatchStatus[] = ["merged", "removed"];
+// Imported, not re-declared. This file kept a private copy of the same name and
+// the same idea, so adding `closed` to the shared one changed nothing here and
+// prune went on treating a closed record as live work — pinning the very QA
+// worktree #97 exists to reclaim.
 function isActiveDispatch(status: DispatchStatus): boolean {
   return !TERMINAL_STATUSES.includes(status);
 }

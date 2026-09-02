@@ -29,6 +29,7 @@ const CANONICAL_ORDER: DispatchStatus[] = [
   "blocked",
   "abandoned",
   "redirected",
+  "closed",
 ];
 
 const CANONICAL: Record<DispatchStatus, Omit<StatusEntry, "key">> = {
@@ -37,6 +38,7 @@ const CANONICAL: Record<DispatchStatus, Omit<StatusEntry, "key">> = {
   verified: { tone: "accent", meaning: "sg_verified_m", cause: "sg_verified_c", unblock: "sg_verified_u", who: "sg_who_coord", laws: ["sg_law_qa"] },
   merged: { tone: "accent", meaning: "sg_merged_m", cause: "sg_merged_c", unblock: "sg_merged_u", who: "sg_who_none", laws: ["sg_law_landing"] },
   removed: { tone: "slate", meaning: "sg_removed_m", cause: "sg_removed_c", unblock: "sg_removed_u", who: "sg_who_none", laws: [] },
+  closed: { tone: "slate", meaning: "sg_closed_m", cause: "sg_closed_c", unblock: "sg_closed_u", who: "sg_who_none", laws: [] },
   failed: { tone: "rose", meaning: "sg_failed_m", cause: "sg_failed_c", unblock: "sg_failed_u", who: "sg_who_dev", laws: ["sg_law_qa"] },
   escalated: { tone: "amber", meaning: "sg_escalated_m", cause: "sg_escalated_c", unblock: "sg_escalated_u", who: "sg_who_pe", laws: ["sg_law_landing"] },
   blocked: { tone: "amber", meaning: "sg_blocked_m", cause: "sg_blocked_c", unblock: "sg_blocked_u", who: "sg_who_coord", laws: [] },

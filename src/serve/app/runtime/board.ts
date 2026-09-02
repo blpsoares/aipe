@@ -62,6 +62,11 @@ export function columnOf(d: Dispatch, session?: SessionInfo): BoardColumn | null
   switch (d.status) {
     case "removed":
       return null; // worktree torn down — pure history, off the live board
+    case "closed":
+      // Finished with the landing of its unit. Pure history, like `removed` —
+      // it fell through to the working column and showed a closed QA gate as
+      // live work, which is the opposite of what closing it was for.
+      return null;
     case "verified":
       return "ready";
     case "delivered":

@@ -38,7 +38,7 @@ import { run as shellHook } from "./shell-hook/cli";
 import { maybeOfferUpdate } from "./update/notify";
 import { recordWorkspace } from "./runtime/workspaces";
 
-export const VERSION = "1.18.2";
+export const VERSION = "1.19.0";
 
 type Subcommand = (args: string[]) => Promise<number>;
 

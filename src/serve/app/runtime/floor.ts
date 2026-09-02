@@ -81,7 +81,10 @@ export interface PhaseInputs {
 
 export function derivePhase(d: Dispatch, inputs: PhaseInputs = {}): Phase {
   const status = d.status;
-  if (status === "merged" || status === "removed") return "closed";
+  // `closed` is terminal: the unit it belonged to landed, or another journey
+  // took the work over. Falling through to the live band below made the console
+  // render a finished record as somebody working right now.
+  if (status === "merged" || status === "removed" || status === "closed") return "closed";
   if (status === "verified") return "verified";
   if (status === "escalated") return "escalated";
   if (status === "redirected") return "redirected";

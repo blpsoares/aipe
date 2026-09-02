@@ -35,6 +35,10 @@ const GLOSSARY: Record<DispatchStatus, string> = {
   abandoned: "Abandonado",
   redirected: "Redirecionado",
   removed: "Removido",
+  // Ended well, without a verdict of its own: the unit landed, or another
+  // journey took the work over. Not "abandonado" — that word was what a
+  // SUCCESS had to be filed under before this state existed.
+  closed: "Encerrado",
 };
 
 export function statusWord(s: DispatchStatus): string {
@@ -62,7 +66,7 @@ export function taskStatusCell(s: DispatchStatus, publish: PublishState | null):
 // table and the gate can never disagree about which row speaks for the task.
 const RANK: Record<DispatchStatus, number> = {
   removed: 0, dispatched: 1, failed: 2, escalated: 2, redirected: 2,
-  blocked: 2, abandoned: 2, delivered: 3, verified: 4, merged: 5,
+  blocked: 2, abandoned: 2, closed: 2, delivered: 3, verified: 4, merged: 5,
 };
 
 export interface TaskLine {
