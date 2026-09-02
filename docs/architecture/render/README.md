@@ -2,11 +2,24 @@
 
 The single versioned pipeline for the six specs in `../diagrams/*.yaml`. It reads
 the YAML, validates it, and emits the **published figures** as versioned assets:
-one bilingual HTML (EN/PT toggle) per diagram in `../diagrams/html/`, and one
-Portuguese PNG per diagram in `../diagrams/png/`. **Nothing is authored per
-diagram** — every node, edge, label, note and evidence pointer comes from the spec,
-so a correction is made in exactly one place (the spec) and re-flows to all
-outputs. See `../README.md` for the normative schema.
+one bilingual HTML (EN/PT toggle) per diagram in `../diagrams/html/` — the full
+composed page (eyebrow, title, argument, full-prose kind legend, numbered note/
+evidence panel) — and one Portuguese PNG per diagram in `../diagrams/png/` — the
+**graph plus a compact kind legend**: boxes, arrows, edge labels, the badge
+number/shape/fill that identifies each node, and a one-line-per-kind chip strip
+underneath so the shape is translatable without the HTML open next to it. No
+eyebrow, title, argument, node/edge count, or note panel in the PNG — those stay
+in the HTML only. (The legend-vs-no-legend call was made by the PE on
+j-20260831-al/png-so-o-diagrama, after comparing both: a diamond or an outlined
+circle means nothing without a key.) **Nothing is authored per diagram** — every
+node, edge, label, note and evidence pointer comes from the spec, so a correction
+is made in exactly one place (the spec) and re-flows to all outputs. See
+`../README.md` for the normative schema.
+
+The two outputs share the graph layout and node/edge/badge CSS (`render_svg` /
+`GRAPH_CSS`) — the PNG is not a screenshot of the HTML page cropped down, it is a
+second, minimal page (`render_diagram_page`) built from the same graph code, so
+the layout is never duplicated between the two.
 
 The artifacts are committed. Regenerate them from the specs; never hand-edit an
 HTML or PNG.
@@ -43,12 +56,15 @@ python3 render.py validate    # schema + evidence pointers, no output written
 python3 render.py html         # write ../diagrams/html/*.html (bilingual)
 /tmp/arch-venv/bin/python render.py all    # html + ../diagrams/png/*.pt.png (needs playwright)
 
-# uncommitted verification shots — both languages × both themes — to a scratch dir:
+# uncommitted verification shots of the composed HTML — both languages × both
+# themes — to a scratch dir:
 /tmp/arch-venv/bin/python render.py verify --out /tmp/arch-verify
 ```
 
 The committed PNG is Portuguese, light theme, `device_scale_factor=2` (the
-publication master; the site is PT). The HTML carries both languages.
+publication master; the site is PT), and shows the graph plus a compact kind
+legend — no eyebrow, title, argument, counts, or note panel. The HTML carries
+both languages and the full composition (full-prose legend included).
 
 ## Verifying a render (mandatory for any visual change)
 
