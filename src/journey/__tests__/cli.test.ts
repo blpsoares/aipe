@@ -149,6 +149,9 @@ test("journey dedupe collapses an on-disk duplicate stuck behind a merged unit",
   ledger = parse(await readFile(join(dir, ".aipe", "journeys", "j1.yaml"), "utf8")) as { dispatches: { specialist: string; status: string }[] };
   // The duplicate is gone; the merged unit and the QA row that gated it remain.
   expect(ledger.dispatches.length).toBe(2);
-  expect(ledger.dispatches.map((d) => d.status).sort()).toEqual(["merged", "verified"]);
+  // #97 — o pouso fecha a unidade inteira: a linha do QA que gateava esta PR
+  // deixa de ficar aberta para sempre. Era exatamente isso que enchia a fila
+  // "precisa de você" com 20 registros de QA presos em PRs já mescladas.
+  expect(ledger.dispatches.map((d) => d.status).sort()).toEqual(["closed", "merged"]);
   expect(ledger.dispatches.some((d) => d.status === "merged")).toBe(true); // immutable, survived
 });
