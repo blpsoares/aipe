@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parse, stringify } from "yaml";
 import { resolveVerdict, type PrChecksResolver } from "./checks";
 import type { TaskSize } from "../toolbox/types";
+import { applyLandingCloses } from "./land";
 import {
   CI_GATED_STATUSES,
   EVIDENCE_REQUIRED_STATUSES,
@@ -236,6 +237,18 @@ export async function recordDispatch(
     // the specialist's name to the incoming caller's casing.
     ledger.dispatches[idx] = mergeDispatch(existing, { ...dispatch, specialist: existing.specialist });
   } else ledger.dispatches.push(dispatch);
+
+  // #97 — a landing closes the whole unit. Done HERE, in the one raw writer, so
+  // it happens on every path that lands a unit: the guarded CLI, and anything
+  // else that ever records `merged`. Putting it in the guard instead would have
+  // left the forge path (`journey reconcile`, which never goes through the
+  // guard) still stranding QA rows — the same "the rule holds only on the path a
+  // human types" shape that has cost this repo a whole day.
+  const landedIndex = idx >= 0 ? idx : ledger.dispatches.length - 1;
+  if (ledger.dispatches[landedIndex]?.status === "merged") {
+    const applied = applyLandingCloses(ledger.dispatches, landedIndex);
+    ledger.dispatches = applied.dispatches;
+  }
   return writeLedger(workspaceDir, ledger);
 }
 
@@ -342,6 +355,7 @@ export type LedgerGateCode =
   | "redirect-needs-reason"
   | "blocked-needs-reason"
   | "abandoned-needs-reason"
+  | "closed-needs-reason"
   | "ci-red"
   | "ci-pending"
   | "ci-none"
@@ -441,7 +455,7 @@ export async function recordDispatchGuarded(
   // and the merge landed on a task whose only standing verdict was a failure.
   const gateVerifiedRound = Math.max(
     0,
-    ...gateRows.filter((d) => d.status === "verified").map((d) => d.verifiedRound ?? 0),
+    ...gateRows.filter((d) => d.status === "verified" || d.status === "closed").map((d) => d.verifiedRound ?? 0),
   );
 
   // The row this write will actually upsert onto — same identity recordDispatch
@@ -726,6 +740,16 @@ export async function recordDispatchGuarded(
   // with no verdict" — without a reason it is exactly the same silence it was
   // introduced to replace, so it is refused the same way a reasonless
   // redirect/blocked is.
+  // A `closed` recorded BY HAND needs its reason, exactly like abandoned: the
+  // whole value of the status is saying why it ended without a verdict. (The
+  // landing cascade supplies its own reason and does not come through here.)
+  if (dispatch.status === "closed" && !opts.reason?.trim()) {
+    return {
+      ok: false,
+      code: "closed-needs-reason",
+      message: `unit ${dispatch.repo}${pkg ? `/${pkg}` : ""} is being recorded "closed" — --reason is required (which unit landed, or which journey took the work over), so a terminal record never reads as an unexplained disappearance.`,
+    };
+  }
   if (dispatch.status === "abandoned" && !opts.reason?.trim()) {
     return {
       ok: false,
@@ -829,6 +853,8 @@ export async function recordDispatchGuarded(
         ? { ...dispatch, blockedReason: opts.reason!.trim() }
         : dispatch.status === "abandoned"
           ? { ...dispatch, abandonedReason: opts.reason!.trim() }
+          : dispatch.status === "closed"
+            ? { ...dispatch, closedReason: opts.reason!.trim() }
           : ciBypass
             ? { ...dispatch, ciBypass }
             : dispatch;

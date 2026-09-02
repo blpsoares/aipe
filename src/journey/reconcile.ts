@@ -4,6 +4,7 @@
 // the CLI wires in the real `gh` via ghPrState.
 import { listJourneys, readLedger, writeLedger } from "./ledger";
 import type { JourneyDispatch } from "./types";
+import { applyLandingCloses } from "./land";
 import { dedupeLedger } from "./dedupe";
 import { parsePrUrl } from "../forge/slug";
 import { readPersonas } from "../hire-specialists/read-personas";
@@ -73,9 +74,19 @@ export async function reconcileJourney(
   for (const d of dispatches) {
     const k = unitKey(d);
     roundBy.set(k, Math.max(roundBy.get(k) ?? 1, d.round ?? 1));
-    if (d.status === "verified") passedBy.set(k, Math.max(passedBy.get(k) ?? 0, d.verifiedRound ?? 0));
+    // A `closed` pass still counts — see verify.ts: closing is what a landing
+    // does to a moot record, not a retraction. Only `failed` takes it back.
+    if (d.status === "verified" || d.status === "closed") passedBy.set(k, Math.max(passedBy.get(k) ?? 0, d.verifiedRound ?? 0));
     else passedBy.set(k, passedBy.get(k) ?? 0);
   }
+
+  // #97 — the landings this pass produced, so the unit-closing cascade runs on
+  // the FORGE path too. It lives in `recordDispatch` for the guarded path, and
+  // this function writes with `writeLedger` directly — so putting it in one and
+  // not the other would have left the rule holding only where a human types it,
+  // which is the shape that has cost this repo a whole day. Verified by driving
+  // the real `journey reconcile`, not by trusting the unit tests.
+  const landedIndexes: number[] = [];
 
   for (const d of dispatches) {
     if (!RECONCILABLE.has(d.status) || !d.pr) continue;
@@ -92,11 +103,17 @@ export async function reconcileJourney(
       const k = unitKey(d);
       if ((passedBy.get(k) ?? 0) < (roundBy.get(k) ?? 1)) d.qaGap = true;
       merged.push(d.pr);
+      landedIndexes.push(dispatches.indexOf(d));
     }
   }
 
+  let finalDispatches = dispatches;
+  for (const i of landedIndexes) {
+    finalDispatches = applyLandingCloses(finalDispatches, i).dispatches;
+  }
+
   if (dd.changed || merged.length > 0) {
-    await writeLedger(workspaceDir, { ...dd.ledger, dispatches });
+    await writeLedger(workspaceDir, { ...dd.ledger, dispatches: finalDispatches });
   }
   return { journey: id, checked, merged, collapsed };
 }

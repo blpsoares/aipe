@@ -39,7 +39,20 @@ export type DispatchStatus =
   | "abandoned"
   | "merged"
   | "removed"
-  | "redirected";
+  | "redirected"
+  // The terminal state for a record whose work ENDED WELL but not by its own
+  // delivery: the unit it belonged to landed, or another journey took the work
+  // over. It exists because there was no word for that (#97, #106).
+  //
+  // Without it, a QA gate row stayed `dispatched`/`failed` forever after the PR
+  // it was gating merged — the queue reached 25 entries with 20 of them exactly
+  // this — and a journey that SUCCEEDED had to be filed as `abandoned`, "a
+  // success recorded with the word for a failure", surviving only because it fit
+  // in `--reason`.
+  //
+  // Always carries `closedReason`: the whole value of the status is saying WHY
+  // it ended without a verdict of its own.
+  | "closed";
 
 export const DISPATCH_STATUSES: DispatchStatus[] = [
   "dispatched",
@@ -73,6 +86,11 @@ export const CI_GATED_STATUSES: DispatchStatus[] = ["delivered", "verified"];
 
 // A unit whose PR has merged is immutable within the journey — never re-dispatched.
 export const IMMUTABLE_STATUSES: DispatchStatus[] = ["merged"];
+
+// Terminal: the record is finished and is nobody's pending item. `closed` is
+// here and `merged` is here; a `failed` is NOT — it is the dev's turn, which is
+// a different thing from finished.
+export const TERMINAL_STATUSES: DispatchStatus[] = ["merged", "closed", "removed"];
 
 // Proof that a claimed "done" actually holds — attached to the ledger, never a
 // bare assertion. `by` is which side produced it (the dev's own checks, or the
@@ -180,6 +198,11 @@ export interface JourneyDispatch {
   // `blockedReason`/`redirectReason`: the whole value of the status is saying
   // WHY it is not a verdict, so a reasonless one is refused.
   abandonedReason?: string;
+  // Why a record was `closed` — which unit landed, or which journey took the
+  // work over. Required by the ledger gate whenever `closed` is recorded, the
+  // same discipline as blocked/redirect/abandoned reasons: a terminal state
+  // whose reason is missing is the silence it was introduced to replace.
+  closedReason?: string;
   // The fix-loop round this unit is on, starting at 1 and incremented by the
   // ledger itself every time finished work is reopened (delivered/verified/
   // failed → dispatched). It exists so a QA pass can be tied to the DELIVERY it
